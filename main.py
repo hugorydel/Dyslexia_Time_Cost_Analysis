@@ -53,6 +53,19 @@ class DyslexiaTimeAnalysisPipeline:
 
     def __init__(self, config_obj=None):
         self.config = config_obj or config
+
+        # Convert config module to dict-like object if needed
+        if hasattr(self.config, "__dict__") and not hasattr(self.config, "get"):
+
+            class ConfigDict:
+                def __init__(self, config_module):
+                    self.__dict__.update(config_module.__dict__)
+
+                def get(self, key, default=None):
+                    return getattr(self, key, default)
+
+            self.config = ConfigDict(self.config)
+
         self.feature_extractor = FeatureExtractor(self.config)
         self.statistical_analyzer = DyslexiaStatisticalAnalyzer(self.config)
         self.visualization_suite = DyslexiaVisualizationSuite(self.config)
@@ -82,48 +95,240 @@ class DyslexiaTimeAnalysisPipeline:
         if not copco_path.exists():
             raise FileNotFoundError(f"CopCo data not found at {copco_path}")
 
-        # Try to find data files
-        data_files = (
-            list(copco_path.glob("*.csv"))
-            + list(copco_path.glob("*.xlsx"))
-            + list(copco_path.glob("*.pkl"))
-        )
+        # Look for FixationReports folder (main eye-tracking data)
+        fixation_reports_path = copco_path / "FixationReports"
+        extracted_features_path = copco_path / "ExtractedFeatures"
+        dataset_stats_path = copco_path / "DatasetStatistics"
 
-        if not data_files:
-            raise FileNotFoundError(f"No data files found in {copco_path}")
+        logger.info(f"Found CopCo structure:")
+        logger.info(f"  FixationReports: {fixation_reports_path.exists()}")
+        logger.info(f"  ExtractedFeatures: {extracted_features_path.exists()}")
+        logger.info(f"  DatasetStatistics: {dataset_stats_path.exists()}")
 
-        # Load the main data file (adjust based on actual CopCo structure)
-        main_data_file = None
-        for file in data_files:
-            if any(
-                keyword in file.name.lower()
-                for keyword in ["fixation", "eye", "gaze", "copco"]
-            ):
-                main_data_file = file
-                break
-
-        if not main_data_file:
-            main_data_file = data_files[0]  # Use first available file
-
-        logger.info(f"Loading data from {main_data_file}")
-
-        # Load based on file type
-        if main_data_file.suffix == ".csv":
-            data = pd.read_csv(main_data_file)
-        elif main_data_file.suffix == ".xlsx":
-            data = pd.read_excel(main_data_file)
-        elif main_data_file.suffix == ".pkl":
-            data = pd.read_pickle(main_data_file)
+        # Load fixation data (main analysis data)
+        if fixation_reports_path.exists():
+            logger.info("Loading fixation reports...")
+            fixation_data = self._load_fixation_reports(fixation_reports_path)
         else:
-            raise ValueError(f"Unsupported file format: {main_data_file.suffix}")
+            raise FileNotFoundError(
+                f"FixationReports folder not found at {fixation_reports_path}"
+            )
 
-        logger.info(f"Loaded data with shape: {data.shape}")
-        logger.info(f"Columns: {list(data.columns)}")
+        # Optionally load extracted features to supplement
+        if extracted_features_path.exists():
+            logger.info("Loading extracted features...")
+            feature_data = self._load_extracted_features(extracted_features_path)
+            # Merge with fixation data if possible
+            fixation_data = self._merge_with_features(fixation_data, feature_data)
+
+        # Load participant statistics if available
+        if dataset_stats_path.exists():
+            logger.info("Loading participant statistics...")
+            participant_stats = self._load_participant_stats(dataset_stats_path)
+            fixation_data = self._merge_with_participant_stats(
+                fixation_data, participant_stats
+            )
+
+        logger.info(f"Final loaded data shape: {fixation_data.shape}")
+        logger.info(f"Columns: {list(fixation_data.columns)}")
 
         # Basic preprocessing
-        data = self._preprocess_copco_data(data)
+        fixation_data = self._preprocess_copco_data(fixation_data)
 
-        return data
+        return fixation_data
+
+    def _load_fixation_reports(self, fixation_path: Path) -> pd.DataFrame:
+        """Load all fixation report .txt files"""
+
+        txt_files = list(fixation_path.glob("*.txt"))
+
+        if not txt_files:
+            raise FileNotFoundError(f"No .txt files found in {fixation_path}")
+
+        logger.info(f"Found {len(txt_files)} fixation report files")
+
+        all_fixations = []
+
+        for txt_file in txt_files:
+            logger.info(f"Loading {txt_file.name}...")
+
+            # Extract subject ID from filename
+            subject_id = txt_file.stem  # filename without extension
+
+            try:
+                # Try different separators (tab, comma, space)
+                for sep in ["\t", ",", " ", "|"]:
+                    try:
+                        df = pd.read_csv(txt_file, sep=sep, encoding="utf-8")
+                        if len(df.columns) > 1:  # Successfully parsed multiple columns
+                            break
+                    except:
+                        continue
+                else:
+                    # If all separators fail, try reading as single column and split
+                    with open(txt_file, "r", encoding="utf-8") as f:
+                        lines = f.readlines()
+
+                    # Skip header lines and find the actual data
+                    data_lines = []
+                    for line in lines:
+                        line = line.strip()
+                        if (
+                            line
+                            and not line.startswith("#")
+                            and not line.startswith("RECORDING")
+                        ):
+                            data_lines.append(line.split())
+
+                    if data_lines:
+                        # Try to create DataFrame from split lines
+                        df = pd.DataFrame(data_lines)
+                    else:
+                        logger.warning(f"Could not parse {txt_file.name}, skipping...")
+                        continue
+
+                # Add subject ID
+                df["subject_id"] = subject_id
+                all_fixations.append(df)
+
+            except Exception as e:
+                logger.warning(f"Error loading {txt_file.name}: {e}")
+                continue
+
+        if not all_fixations:
+            raise ValueError("No fixation files could be loaded successfully")
+
+        # Combine all fixation data
+        combined_data = pd.concat(all_fixations, ignore_index=True)
+        logger.info(f"Combined fixation data shape: {combined_data.shape}")
+
+        return combined_data
+
+    def _load_extracted_features(self, features_path: Path) -> pd.DataFrame:
+        """Load extracted features CSV files"""
+
+        csv_files = list(features_path.glob("*.csv"))
+
+        if not csv_files:
+            logger.warning(f"No CSV files found in {features_path}")
+            return pd.DataFrame()
+
+        logger.info(f"Found {len(csv_files)} feature CSV files")
+
+        all_features = []
+
+        for csv_file in csv_files:
+            try:
+                df = pd.read_csv(csv_file)
+                # Extract subject ID from filename
+                subject_id = csv_file.stem
+                df["subject_id"] = subject_id
+                all_features.append(df)
+
+            except Exception as e:
+                logger.warning(f"Error loading {csv_file.name}: {e}")
+                continue
+
+        if all_features:
+            combined_features = pd.concat(all_features, ignore_index=True)
+            logger.info(f"Combined features shape: {combined_features.shape}")
+            return combined_features
+        else:
+            return pd.DataFrame()
+
+    def _load_participant_stats(self, stats_path: Path) -> pd.DataFrame:
+        """Load participant statistics"""
+
+        participant_stats_file = stats_path / "participant_stats.csv"
+
+        if participant_stats_file.exists():
+            try:
+                stats_df = pd.read_csv(participant_stats_file)
+                logger.info(f"Loaded participant stats: {stats_df.shape}")
+                return stats_df
+            except Exception as e:
+                logger.warning(f"Error loading participant stats: {e}")
+
+        return pd.DataFrame()
+
+    def _merge_with_features(
+        self, fixation_data: pd.DataFrame, feature_data: pd.DataFrame
+    ) -> pd.DataFrame:
+        """Merge fixation data with extracted features"""
+
+        if feature_data.empty:
+            return fixation_data
+
+        # Try to merge on common columns (subject_id, trial_id, word_id, etc.)
+        common_cols = set(fixation_data.columns) & set(feature_data.columns)
+
+        if "subject_id" in common_cols:
+            try:
+                # Simple merge on subject_id first
+                merged = fixation_data.merge(
+                    feature_data, on="subject_id", how="left", suffixes=("", "_feat")
+                )
+                logger.info(f"Merged with features. New shape: {merged.shape}")
+                return merged
+            except Exception as e:
+                logger.warning(f"Could not merge with features: {e}")
+
+        return fixation_data
+
+    def _merge_with_participant_stats(
+        self, fixation_data: pd.DataFrame, participant_stats: pd.DataFrame
+    ) -> pd.DataFrame:
+        """Merge fixation data with participant statistics"""
+
+        if participant_stats.empty:
+            return fixation_data
+
+        # Store participant stats for dyslexic identification
+        self._participant_stats = participant_stats
+
+        # Look for participant/subject identifier column
+        possible_id_cols = [
+            "participant",
+            "subject",
+            "subject_id",
+            "participant_id",
+            "part",
+        ]
+
+        stats_id_col = None
+        for col in possible_id_cols:
+            if col in participant_stats.columns:
+                stats_id_col = col
+                break
+
+        if stats_id_col and "subject_id" in fixation_data.columns:
+            try:
+                # Rename for consistent merging
+                if stats_id_col != "subject_id":
+                    participant_stats = participant_stats.rename(
+                        columns={stats_id_col: "subject_id"}
+                    )
+
+                merged = fixation_data.merge(
+                    participant_stats,
+                    on="subject_id",
+                    how="left",
+                    suffixes=("", "_stats"),
+                )
+                logger.info(f"Merged with participant stats. New shape: {merged.shape}")
+                return merged
+
+            except Exception as e:
+                logger.warning(f"Could not merge with participant stats: {e}")
+
+        return fixation_data
+
+    def _get_config_value(self, key, default=None):
+        """Safely get config value"""
+        if hasattr(self.config, "get"):
+            return self.config.get(key, default)
+        else:
+            return getattr(self.config, key, default)
 
     def _preprocess_copco_data(self, data: pd.DataFrame) -> pd.DataFrame:
         """Preprocess CopCo data to standard format"""
@@ -139,28 +344,41 @@ class DyslexiaTimeAnalysisPipeline:
 
         # Standardize column names (adjust based on actual CopCo structure)
         column_mapping = {
-            # Common variations in eye-tracking datasets
+            # CopCo specific mappings based on your data
             "RECORDING_SESSION_LABEL": "subject_id",
-            "subject": "subject_id",
-            "participant": "subject_id",
-            "trial": "trial_id",
-            "sentence": "trial_id",
-            "word": "word_text",
+            "TRIAL_INDEX": "trial_id",
+            "trialId": "trial_id",
             "CURRENT_FIX_DURATION": "fixation_duration",
-            "fixation_dur": "fixation_duration",
-            "duration": "fixation_duration",
             "CURRENT_FIX_X": "x_position",
             "CURRENT_FIX_Y": "y_position",
-            "fix_x": "x_position",
-            "fix_y": "y_position",
-            "CURRENT_FIX_INDEX": "fixation_index",
-            "group": "dyslexic",
+            "word": "word_text",
+            "wordId": "word_position",
+            "sentenceId": "sentence_id",
+            "paragraphId": "paragraph_id",
+            "part": "participant_id",
+            # Additional useful columns from CopCo
+            "word_first_fix_dur": "first_fixation_duration",
+            "word_first_pass_dur": "gaze_duration",
+            "word_total_fix_dur": "total_reading_time",
+            "CURRENT_FIX_INTEREST_AREA_LABEL": "interest_area_label",
         }
 
         # Apply column mapping
         for old_name, new_name in column_mapping.items():
-            if old_name in data.columns:
+            if old_name in data.columns and old_name != new_name:
                 data = data.rename(columns={old_name: new_name})
+
+        logger.info(f"After column mapping: {data.shape}")
+
+        # Handle duplicate columns by keeping only the first occurrence
+        if data.columns.duplicated().any():
+            logger.warning("Found duplicate column names, removing duplicates...")
+            duplicated_cols = data.columns[data.columns.duplicated()].tolist()
+            logger.warning(f"Duplicate columns: {duplicated_cols}")
+
+            # Keep only the first occurrence of each column
+            data = data.loc[:, ~data.columns.duplicated()]
+            logger.info(f"After removing duplicates: {data.shape}")
 
         # Ensure required columns exist
         required_columns = ["subject_id", "trial_id", "word_text", "fixation_duration"]
@@ -178,47 +396,232 @@ class DyslexiaTimeAnalysisPipeline:
                 duration_cols = [
                     col
                     for col in data.columns
-                    if "dur" in col.lower() or "time" in col.lower()
+                    if "dur" in col.lower() and "fix" in col.lower()
                 ]
                 if duration_cols:
                     data["fixation_duration"] = data[duration_cols[0]]
+                    logger.info(f"Using {duration_cols[0]} as fixation_duration")
+
+        # Filter out rows where critical data is missing
+        initial_rows = len(data)
+
+        # Remove rows with missing subject_id
+        if "subject_id" in data.columns:
+            data = data.dropna(subset=["subject_id"])
+            logger.info(
+                f"Removed {initial_rows - len(data)} rows with missing subject_id"
+            )
+
+        # Remove rows with missing word_text
+        if "word_text" in data.columns:
+            data = data.dropna(subset=["word_text"])
+            data = data[data["word_text"].astype(str).str.len() > 0]
+            logger.info(
+                f"Removed rows with missing/empty word_text. Remaining: {len(data)}"
+            )
+
+        # Check if we still have data
+        if len(data) == 0:
+            raise ValueError(
+                "No data remaining after preprocessing. Check your data format."
+            )
 
         # Basic data cleaning
         # Remove fixations that are too short or too long
         if "fixation_duration" in data.columns:
+            before_filter = len(data)
             data = data[
                 (data["fixation_duration"] >= 50) & (data["fixation_duration"] <= 2000)
             ]
-
-        # Remove missing word texts
-        if "word_text" in data.columns:
-            data = data.dropna(subset=["word_text"])
-            data = data[data["word_text"].str.len() > 0]
+            logger.info(
+                f"Filtered fixation durations: {before_filter} -> {len(data)} rows"
+            )
 
         # Create word position if not available
         if "word_position" not in data.columns and "trial_id" in data.columns:
-            data["word_position"] = data.groupby("trial_id").cumcount() + 1
+            data["word_position"] = (
+                data.groupby(["subject_id", "trial_id"]).cumcount() + 1
+            )
 
         # Infer dyslexic group if not explicitly coded
         if "dyslexic" not in data.columns:
-            # Try to infer from subject_id patterns or other indicators
-            if "group_id" in data.columns:
-                data["dyslexic"] = data["group_id"] == 1
-            elif "group" in data.columns:
-                data["dyslexic"] = data["group"].isin(["dyslexic", "DYS", "D"])
-            else:
-                logger.warning(
-                    "Cannot determine dyslexic group - using random assignment for testing"
-                )
-                np.random.seed(self.config.RANDOM_STATE)
-                subjects = data["subject_id"].unique()
-                dyslexic_subjects = np.random.choice(
-                    subjects, size=len(subjects) // 2, replace=False
-                )
-                data["dyslexic"] = data["subject_id"].isin(dyslexic_subjects)
+            # Look for dyslexic indicators in participant stats or subject IDs
+            dyslexic_subjects = self._identify_dyslexic_subjects(data)
+            data["dyslexic"] = data["subject_id"].isin(dyslexic_subjects)
+
+            n_dyslexic = data["dyslexic"].sum()
+            n_total = len(data)
+            logger.info(
+                f"Identified {n_dyslexic}/{n_total} fixations from dyslexic subjects"
+            )
 
         # Create eye measures if not available
         data = self._create_eye_measures(data)
+
+        logger.info(f"Preprocessed data shape: {data.shape}")
+        return data
+
+    def _identify_dyslexic_subjects(self, data: pd.DataFrame) -> set:
+        """Identify which subjects are dyslexic based on available information"""
+
+        # Check if data is empty
+        if len(data) == 0:
+            logger.warning("Cannot identify dyslexic subjects: data is empty")
+            return set()
+
+        # Try to get unique subject IDs
+        if "subject_id" not in data.columns:
+            logger.warning("No subject_id column found")
+            return set()
+
+        try:
+            # Make sure we get a Series, not DataFrame
+            subject_column = data["subject_id"]
+
+            # Handle case where subject_id might be a DataFrame (duplicate columns)
+            if isinstance(subject_column, pd.DataFrame):
+                logger.warning("subject_id returned DataFrame, using first column")
+                subject_column = subject_column.iloc[:, 0]
+
+            logger.info(f"Subject column type: {type(subject_column)}")
+            logger.info(
+                f"Subject column shape: {getattr(subject_column, 'shape', 'no shape')}"
+            )
+
+            unique_subjects = subject_column.unique()
+            logger.info(
+                f"Found {len(unique_subjects)} unique subjects: {list(unique_subjects)[:10]}..."
+            )  # Show first 10
+
+        except Exception as e:
+            logger.error(f"Error getting unique subjects: {e}")
+            logger.info(f"Available columns: {list(data.columns)}")
+            logger.info(f"Data shape: {data.shape}")
+
+            # Fallback: try to find any subject identifier column
+            subject_cols = [
+                col
+                for col in data.columns
+                if "subject" in str(col).lower()
+                or "participant" in str(col).lower()
+                or col == "part"
+            ]
+            logger.info(f"Potential subject columns: {subject_cols}")
+
+            if subject_cols:
+                try:
+                    subject_col = data[subject_cols[0]]
+                    if isinstance(subject_col, pd.DataFrame):
+                        subject_col = subject_col.iloc[:, 0]
+                    unique_subjects = subject_col.unique()
+                    logger.info(
+                        f"Using column '{subject_cols[0]}' as subject identifier"
+                    )
+                except Exception as e2:
+                    logger.error(
+                        f"Failed to get unique values from {subject_cols[0]}: {e2}"
+                    )
+                    return set()
+            else:
+                logger.error("Could not find any subject identifier column")
+                return set()
+
+        # Method 1: Check if there's a group indicator in the data
+        group_indicators = ["group", "condition", "participant_type", "dyslexic"]
+        for col in group_indicators:
+            if col in data.columns:
+                try:
+                    dyslexic_mask = data[col].isin(
+                        ["dyslexic", "DYS", "D", 1, "1", "Dyslexic"]
+                    )
+                    if dyslexic_mask.any():
+                        subject_series = data[dyslexic_mask]["subject_id"]
+                        if isinstance(subject_series, pd.DataFrame):
+                            subject_series = subject_series.iloc[:, 0]
+                        dyslexic_subjects = set(subject_series.unique())
+                        logger.info(
+                            f"Found dyslexic group indicator in column '{col}': {len(dyslexic_subjects)} subjects"
+                        )
+                        return dyslexic_subjects
+                except Exception as e:
+                    logger.warning(f"Error checking group indicator '{col}': {e}")
+                    continue
+
+        # Method 2: Check subject ID patterns (common in dyslexia studies)
+        dyslexic_subjects = set()
+        for subject in unique_subjects:
+            subject_str = str(subject).upper()
+            # Common patterns: DYS_, D_, starts with D, contains DYS
+            if any(pattern in subject_str for pattern in ["DYS", "DYSLEXIC"]):
+                dyslexic_subjects.add(subject)
+            elif subject_str.startswith("D") and len(subject_str) <= 4:  # D1, D2, etc.
+                dyslexic_subjects.add(subject)
+
+        if dyslexic_subjects:
+            logger.info(
+                f"Identified dyslexic subjects by ID pattern: {len(dyslexic_subjects)} subjects"
+            )
+            logger.info(f"Dyslexic subjects: {list(dyslexic_subjects)}")
+            return dyslexic_subjects
+
+        # Method 3: Check participant statistics file for group assignment
+        if hasattr(self, "_participant_stats") and not self._participant_stats.empty:
+            try:
+                stats = self._participant_stats
+                logger.info(f"Participant stats columns: {list(stats.columns)}")
+
+                group_cols = [
+                    col
+                    for col in stats.columns
+                    if "group" in col.lower()
+                    or "condition" in col.lower()
+                    or "dyslexic" in col.lower()
+                ]
+                logger.info(f"Potential group columns in stats: {group_cols}")
+
+                for col in group_cols:
+                    unique_values = stats[col].unique()
+                    logger.info(f"Values in {col}: {unique_values}")
+
+                    dyslexic_mask = stats[col].isin(
+                        ["dyslexic", "DYS", "D", 1, "1", "Dyslexic"]
+                    )
+                    if dyslexic_mask.any():
+                        # Find the subject ID column in stats
+                        subject_col = None
+                        for scol in ["subject_id", "participant", "subject", "part"]:
+                            if scol in stats.columns:
+                                subject_col = scol
+                                break
+
+                        if subject_col:
+                            dyslexic_subjects = set(
+                                stats[dyslexic_mask][subject_col].values
+                            )
+                            logger.info(
+                                f"Found dyslexic groups in participant stats column '{col}': {len(dyslexic_subjects)} subjects"
+                            )
+                            return dyslexic_subjects
+            except Exception as e:
+                logger.warning(f"Error checking participant stats: {e}")
+
+        # Method 4: Default split (for testing purposes)
+        logger.warning(
+            "Could not identify dyslexic subjects - using balanced random assignment"
+        )
+        try:
+            np.random.seed(self._get_config_value("RANDOM_STATE", 42))
+            n_dyslexic = len(unique_subjects) // 2
+            dyslexic_subjects = set(
+                np.random.choice(unique_subjects, size=n_dyslexic, replace=False)
+            )
+            logger.info(
+                f"Randomly assigned {len(dyslexic_subjects)} subjects as dyslexic"
+            )
+            return dyslexic_subjects
+        except Exception as e:
+            logger.error(f"Error in random assignment: {e}")
+            return set()
 
         logger.info(f"Preprocessed data shape: {data.shape}")
         return data

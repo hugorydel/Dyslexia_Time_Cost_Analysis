@@ -1,6 +1,8 @@
 # Data paths
 DATA_ROOT = "D:"  # External drive location
-COPCO_PATH = f"{DATA_ROOT}/CopCo"  # Adjust based on your structure
+COPCO_PATH = (
+    f"{DATA_ROOT}/Dyslexia Research/CopCo_Data"  # Adjust based on your structure
+)
 
 # Analysis parameters
 RANDOM_STATE = 42
@@ -21,3 +23,8 @@ SPACING_THRESHOLD = 0.5  # Character spacing threshold
 FIGURE_DPI = 300
 FIGURE_FORMAT = "pdf"  # or "png"
 COLOR_PALETTE = "viridis"
+
+# Helper function for accessing config values
+def get(key, default=None):
+    """Get configuration value with default fallback"""
+    return globals().get(key, default)
