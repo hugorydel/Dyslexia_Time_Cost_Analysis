@@ -123,7 +123,6 @@
   ],
   "subjects": 53,
   "trials": 189,
-  "dyslexic_proportion": 0.4774970247416223,
   "missing_data": {
     "subject_id": 0,
     "trial_id": 0,
@@ -242,6 +241,9 @@
     "skipping_probability": 0,
     "regression_probability": 0
   },
+  "dyslexic_subjects": 19,
+  "control_subjects": 34,
+  "dyslexic_proportion": 0.3584905660377358,
   "fixation_stats": {
     "mean": 227.70461133730035,
     "std": 100.09244093211844,
