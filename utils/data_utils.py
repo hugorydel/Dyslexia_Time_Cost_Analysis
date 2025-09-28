@@ -90,7 +90,7 @@ def merge_with_participant_stats(
 
 def identify_dyslexic_subjects(
     data: pd.DataFrame, participant_stats: pd.DataFrame
-) -> Set[str]:
+) -> tuple[Set[str], dict[str, list]]:
     """
     Identify dyslexic subjects from participant statistics
 
@@ -99,7 +99,8 @@ def identify_dyslexic_subjects(
         participant_stats: Participant statistics with dyslexia labels
 
     Returns:
-        Set of subject IDs for dyslexic participants
+        Tuple of (dyslexic_subject_set, subject_lists_dict)
+        subject_lists_dict contains 'dyslexic' and 'control' keys with sorted lists
 
     Raises:
         ValueError: If dyslexic subjects cannot be identified
@@ -125,11 +126,13 @@ def identify_dyslexic_subjects(
                 f"Groups identified: {len(dyslexic_subjects)} dyslexic, {len(control_subjects)} control"
             )
 
-            # Store for JSON output (will be accessed later)
-            data._dyslexic_subject_list = sorted(list(dyslexic_subjects))
-            data._control_subject_list = sorted(list(control_subjects))
+            # Return subject lists for JSON output
+            subject_lists = {
+                "dyslexic": sorted(list(dyslexic_subjects)),
+                "control": sorted(list(control_subjects)),
+            }
 
-            return dyslexic_subjects
+            return dyslexic_subjects, subject_lists
 
     # No fallback - raise error for proper scientific practice
     raise ValueError(

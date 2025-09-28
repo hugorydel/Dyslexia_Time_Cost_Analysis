@@ -118,16 +118,14 @@ class DyslexiaTimeAnalysisPipeline:
 
         # Assign dyslexic groups using participant stats
         if "dyslexic" not in data.columns:
-            dyslexic_subjects = identify_dyslexic_subjects(
+            dyslexic_subjects, subject_lists = identify_dyslexic_subjects(
                 data, self._participant_stats
             )
             data["dyslexic"] = data["subject_id"].isin(dyslexic_subjects)
 
             # Store group lists for JSON output
-            self._dyslexic_subjects = sorted(list(dyslexic_subjects))
-            self._control_subjects = sorted(
-                [s for s in data["subject_id"].unique() if s not in dyslexic_subjects]
-            )
+            self._dyslexic_subjects = subject_lists["dyslexic"]
+            self._control_subjects = subject_lists["control"]
 
         # Create additional measures for analysis
         data = create_additional_measures(data)
