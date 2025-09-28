@@ -298,31 +298,3 @@ def create_additional_measures(data: pd.DataFrame) -> pd.DataFrame:
         data["word_length"] = data["word_text"].str.len()
 
     return data
-
-
-def create_text_data_from_words(data: pd.DataFrame) -> pd.DataFrame:
-    """
-    Create text data by reconstructing sentences from word sequences
-
-    Args:
-        data: Word-level data with trial and position information
-
-    Returns:
-        DataFrame with reconstructed sentence text
-    """
-    sentence_data = []
-
-    for (subject_id, trial_id), trial_data in data.groupby(["subject_id", "trial_id"]):
-        trial_words = trial_data.sort_values("word_position")["word_text"]
-        sentence_text = " ".join(trial_words.astype(str))
-
-        sentence_data.append(
-            {
-                "subject_id": subject_id,
-                "trial_id": trial_id,
-                "sentence_text": sentence_text,
-                "n_words": len(trial_words),
-            }
-        )
-
-    return pd.DataFrame(sentence_data)

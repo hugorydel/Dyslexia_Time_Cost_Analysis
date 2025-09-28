@@ -7,7 +7,6 @@ Uses ExtractedFeatures as primary data source
 import argparse
 import logging
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -16,15 +15,10 @@ import pandas as pd
 # Import configuration
 import config
 
-# Import custom modules
-from feature_extraction import FeatureExtractor
-from statistical_models import DyslexiaStatisticalAnalyzer
-
 # Import utilities
 from utils.data_utils import (
     clean_word_data,
     create_additional_measures,
-    create_text_data_from_words,
     identify_dyslexic_subjects,
     load_extracted_features,
     load_participant_stats,
@@ -36,16 +30,11 @@ from utils.misc_utils import (
     setup_logging,
     validate_config,
 )
-from utils.stats_utils import (
-    calculate_basic_statistics,
-    calculate_group_summary_stats,
-    generate_analysis_summary,
-)
+from utils.stats_utils import calculate_basic_statistics, calculate_group_summary_stats
 from utils.visualization_utils import (
     create_exploratory_plots,
     create_group_summary_plots,
 )
-from visualization_module import DyslexiaVisualizationSuite
 
 # Set up logging
 setup_logging()
@@ -62,10 +51,6 @@ class DyslexiaTimeAnalysisPipeline:
 
         # Validate configuration
         validate_config(self.config)
-
-        self.feature_extractor = FeatureExtractor(self.config)
-        self.statistical_analyzer = DyslexiaStatisticalAnalyzer(self.config)
-        self.visualization_suite = DyslexiaVisualizationSuite(self.config)
 
         # Create output directories
         self.results_dir = Path("results")
@@ -197,79 +182,6 @@ class DyslexiaTimeAnalysisPipeline:
 
     def run_full_analysis(self, save_intermediate=True) -> dict:
         """Run the complete analysis pipeline with word-level data"""
-
-        logger.info("=" * 60)
-        logger.info("STARTING FULL DYSLEXIA TIME COST ANALYSIS")
-        logger.info("=" * 60)
-
-        results = {
-            "timestamp": datetime.now().isoformat(),
-            "data_summary": {},
-            "features": {},
-            "statistical_results": {},
-            "figures": {},
-            "summary": {},
-        }
-
-        try:
-            # Step 1: Load word-level data
-            logger.info("Step 1: Loading word-level data...")
-            word_data = self.load_copco_data()
-            results["data_summary"] = {
-                "n_words": len(word_data),
-                "n_subjects": word_data["subject_id"].nunique(),
-                "n_dyslexic_subjects": word_data.groupby("subject_id")["dyslexic"]
-                .first()
-                .sum(),
-            }
-
-            if save_intermediate:
-                word_data.to_pickle(self.results_dir / "word_data.pkl")
-
-            # Step 2: Feature extraction
-            logger.info("Step 2: Extracting features...")
-            text_data = create_text_data_from_words(word_data)
-            featured_data = self.feature_extractor.extract_word_features(
-                word_data, text_data
-            )
-
-            if save_intermediate:
-                featured_data.to_pickle(self.results_dir / "featured_data.pkl")
-
-            # Step 3: Statistical analysis
-            logger.info("Step 3: Running statistical analysis...")
-            statistical_results = self.statistical_analyzer.run_comprehensive_analysis(
-                featured_data
-            )
-            results["statistical_results"] = statistical_results
-
-            if save_intermediate:
-                self.statistical_analyzer.save_results(str(self.results_dir / "models"))
-
-            # Step 4: Visualization
-            logger.info("Step 4: Creating visualizations...")
-            figure_paths = self.visualization_suite.save_all_figures(
-                featured_data, statistical_results
-            )
-            results["figures"] = figure_paths
-
-            # Step 5: Generate summary
-            logger.info("Step 5: Generating summary...")
-            results["summary"] = generate_analysis_summary(results)
-
-            # Save complete results
-            save_json_results(results, self.results_dir / "complete_results.json")
-
-            logger.info("=" * 60)
-            logger.info("ANALYSIS COMPLETED SUCCESSFULLY!")
-            logger.info("=" * 60)
-
-            return results
-
-        except Exception as e:
-            logger.error(f"Analysis failed: {str(e)}")
-            logger.error("Stack trace:", exc_info=True)
-            raise
 
 
 def main():

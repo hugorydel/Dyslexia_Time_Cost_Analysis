@@ -338,23 +338,3 @@ def calculate_basic_statistics(
             )
 
     return stats
-
-
-def generate_analysis_summary(results: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Generate final analysis summary
-
-    Args:
-        results: Dictionary with analysis results
-
-    Returns:
-        Summary dictionary
-    """
-    return {
-        "hypotheses_tested": 3,
-        "data_type": "Word-level eye-tracking from ExtractedFeatures",
-        "key_findings": ["Analysis completed with proper word-level data"],
-        "recommendations": [
-            "Results now based on actual words rather than character fixations"
-        ],
-    }
