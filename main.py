@@ -137,6 +137,36 @@ class DyslexiaTimeAnalysisPipeline:
         # Create additional measures for analysis
         data = create_additional_measures(data)
 
+        # Enhanced skipping analysis using RawData
+        logger.info("Attempting enhanced skipping analysis using RawData...")
+        try:
+            from utils.skipping_utils import enhanced_skipping_analysis
+
+            copco_path = Path(self.config.COPCO_PATH)
+            enhanced_data, skipping_results = enhanced_skipping_analysis(
+                copco_path, data
+            )
+
+            if skipping_results:
+                logger.info("Enhanced skipping analysis successful!")
+                logger.info(
+                    f"Overall skipping rate: {skipping_results.get('overall_skipping_rate', 0)*100:.1f}%"
+                )
+
+                # Store skipping results for later use
+                self._skipping_analysis = skipping_results
+                data = enhanced_data
+            else:
+                logger.warning(
+                    "Enhanced skipping analysis failed - using basic measures"
+                )
+                self._skipping_analysis = {}
+
+        except Exception as e:
+            logger.warning(f"Enhanced skipping analysis failed: {e}")
+            logger.warning("Continuing with basic skipping measures")
+            self._skipping_analysis = {}
+
         logger.info(f"Preprocessed data shape: {data.shape}")
         return data
 
@@ -444,8 +474,58 @@ class DyslexiaTimeAnalysisPipeline:
 
                 plot_idx += 1
 
-            # 5. Regression Probability by Group (instead of skipping)
-            if "regression_probability" in subject_averages.columns:
+            # 5. Skipping Probability by Group (if enhanced analysis available)
+            if (
+                hasattr(self, "_skipping_analysis")
+                and self._skipping_analysis
+                and "subject_level_skipping_by_group" in self._skipping_analysis
+            ):
+
+                ax = axes[plot_idx // 2, plot_idx % 2]
+                groups = ["Control", "Dyslexic"]
+
+                skipping_data = self._skipping_analysis[
+                    "subject_level_skipping_by_group"
+                ]
+
+                means = [
+                    skipping_data.get("control", {}).get("mean", 0),
+                    skipping_data.get("dyslexic", {}).get("mean", 0),
+                ]
+                stds = [
+                    skipping_data.get("control", {}).get("std", 0),
+                    skipping_data.get("dyslexic", {}).get("std", 0),
+                ]
+
+                bars = ax.bar(
+                    groups,
+                    means,
+                    yerr=stds,
+                    capsize=5,
+                    alpha=0.7,
+                    color=["darkseagreen", "plum"],
+                )
+                ax.set_title(
+                    "Word Skipping Probability by Group\n(Enhanced Analysis)",
+                    fontweight="bold",
+                )
+                ax.set_ylabel("Skipping Probability")
+                ax.set_ylim(0, max(means) * 1.3 if max(means) > 0 else 0.5)
+
+                for bar, mean, std in zip(bars, means, stds):
+                    height = bar.get_height()
+                    ax.text(
+                        bar.get_x() + bar.get_width() / 2.0,
+                        height + std + 0.01,
+                        f"{mean:.3f}±{std:.3f}",
+                        ha="center",
+                        va="bottom",
+                    )
+
+                plot_idx += 1
+
+            # Alternative: Show regression probability if no skipping data available
+            elif "regression_probability" in subject_averages.columns:
                 ax = axes[plot_idx // 2, plot_idx % 2]
                 groups = ["Control", "Dyslexic"]
                 means = [

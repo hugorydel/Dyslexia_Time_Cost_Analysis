@@ -9,6 +9,7 @@ from typing import Optional, Set
 
 import numpy as np
 import pandas as pd
+
 from column_mappings import apply_mapping
 
 logger = logging.getLogger(__name__)
@@ -231,22 +232,17 @@ def create_additional_measures(data: pd.DataFrame) -> pd.DataFrame:
     Returns:
         DataFrame with additional computed measures
     """
-    # Note: Skipping probability cannot be calculated from ExtractedFeatures alone
-    # because this dataset only contains words that were actually fixated.
-    # Skipped words are not included in this data.
-    # For proper skipping analysis, we would need FixationReports or InterestAreaReports.
-
-    # Mark all words in this dataset as fixated (by definition)
+    # Mark all words in this dataset as fixated (by definition of ExtractedFeatures)
     if "n_fixations" in data.columns:
         data["was_fixated"] = data["n_fixations"] > 0
-        # Set skipping to NaN to indicate we cannot calculate this measure
-        data["skipping_probability"] = np.nan
-        logger.warning(
-            "Skipping probability cannot be calculated from ExtractedFeatures data - "
-            "this dataset only contains fixated words. Skipped words are not included."
+        # Initialize skipping probability - will be updated by skipping analysis if available
+        data["skipping_probability"] = (
+            0.0  # For fixated words, skipping probability is 0
         )
+        data["skipped"] = False
     else:
         data["skipping_probability"] = np.nan
+        data["skipped"] = np.nan
 
     # Regression probability - can be estimated from go-past time vs gaze duration
     if "word_go_past_time" in data.columns and "gaze_duration" in data.columns:

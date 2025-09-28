@@ -1,7 +1,7 @@
 {
   "data_shape": [
     206967,
-    37
+    38
   ],
   "columns": [
     "participant_id",
@@ -39,6 +39,7 @@
     "dyslexic",
     "was_fixated",
     "skipping_probability",
+    "skipped",
     "regression_probability",
     "word_length"
   ],
@@ -78,7 +79,8 @@
     "pseudohomophone_score": 150311,
     "dyslexic": 0,
     "was_fixated": 0,
-    "skipping_probability": 206967,
+    "skipping_probability": 0,
+    "skipped": 0,
     "regression_probability": 0,
     "word_length": 0
   },
@@ -144,14 +146,6 @@
     "dyslexic_count": 56656,
     "cohens_d": 0.2679329171682825
   },
-  "skipping_probability_by_group": {
-    "control_mean": NaN,
-    "control_std": NaN,
-    "control_count": 0,
-    "dyslexic_mean": NaN,
-    "dyslexic_std": NaN,
-    "dyslexic_count": 0
-  },
   "regression_probability_by_group": {
     "control_mean": 0.1,
     "control_std": 0.3,
@@ -200,14 +194,6 @@
     "dyslexic_mean": 1.89,
     "dyslexic_std": 0.38,
     "dyslexic_n_subjects": 19
-  },
-  "skipping_probability_subject_level_by_group": {
-    "control_mean": NaN,
-    "control_std": NaN,
-    "control_n_subjects": 0,
-    "dyslexic_mean": NaN,
-    "dyslexic_std": NaN,
-    "dyslexic_n_subjects": 0
   },
   "regression_probability_subject_level_by_group": {
     "control_mean": 0.1,

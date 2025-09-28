@@ -46,12 +46,15 @@ def calculate_cohens_d(group1: pd.Series, group2: pd.Series) -> float:
     return cohens_d
 
 
-def calculate_group_summary_stats(data: pd.DataFrame) -> Dict[str, Any]:
+def calculate_group_summary_stats(
+    data: pd.DataFrame, skipping_analysis: Dict = None
+) -> Dict[str, Any]:
     """
     Calculate summary statistics by group for key measures
 
     Args:
         data: DataFrame with dyslexic column and eye-tracking measures
+        skipping_analysis: Optional enhanced skipping analysis results
 
     Returns:
         Dictionary with group statistics for each measure
@@ -69,12 +72,55 @@ def calculate_group_summary_stats(data: pd.DataFrame) -> Dict[str, Any]:
         "gaze_duration",
         "word_go_past_time",
         "n_fixations",
-        "skipping_probability",
         "regression_probability",
     ]
 
+    # Add skipping_probability to measures if we have enhanced analysis
+    if skipping_analysis and "skipping_by_group" in skipping_analysis:
+        word_level_measures.append("skipping_probability")
+
     for measure in word_level_measures:
-        if measure in data.columns:
+        if measure == "skipping_probability" and skipping_analysis:
+            # Use enhanced skipping analysis results instead of data
+            skipping_by_group = skipping_analysis.get("skipping_by_group", {})
+
+            control_stats = skipping_by_group.get("control", {})
+            dyslexic_stats = skipping_by_group.get("dyslexic", {})
+
+            group_stats[f"{measure}_by_group"] = {
+                **{f"control_{k}": v for k, v in control_stats.items()},
+                **{f"dyslexic_{k}": v for k, v in dyslexic_stats.items()},
+            }
+
+            # Add Cohen's d if we have both groups
+            if control_stats and dyslexic_stats:
+                # Calculate Cohen's d from group means and stds
+                control_mean = control_stats.get("mean", 0)
+                dyslexic_mean = dyslexic_stats.get("mean", 0)
+                control_std = control_stats.get("std", 0)
+                dyslexic_std = dyslexic_stats.get("std", 0)
+                control_n = control_stats.get("count", 0)
+                dyslexic_n = dyslexic_stats.get("count", 0)
+
+                if (
+                    control_n > 0
+                    and dyslexic_n > 0
+                    and (control_std > 0 or dyslexic_std > 0)
+                ):
+                    # Pooled standard deviation
+                    pooled_std = np.sqrt(
+                        (
+                            (control_n - 1) * control_std**2
+                            + (dyslexic_n - 1) * dyslexic_std**2
+                        )
+                        / (control_n + dyslexic_n - 2)
+                    )
+                    if pooled_std > 0:
+                        cohens_d = (dyslexic_mean - control_mean) / pooled_std
+                        group_stats[f"{measure}_by_group"]["cohens_d"] = float(cohens_d)
+
+        elif measure in data.columns:
+            # Use regular data for other measures
             group_summary = (
                 data.groupby("dyslexic")[measure].agg(["mean", "std", "count"]).round(2)
             )
@@ -115,14 +161,28 @@ def calculate_group_summary_stats(data: pd.DataFrame) -> Dict[str, Any]:
             {
                 measure: "mean"
                 for measure in word_level_measures
-                if measure in data.columns
+                if measure in data.columns and measure != "skipping_probability"
             }
         )
         .reset_index()
     )
 
     for measure in word_level_measures:
-        if measure in subject_level.columns:
+        if measure == "skipping_probability" and skipping_analysis:
+            # Use enhanced skipping analysis for subject-level skipping
+            subject_skipping = skipping_analysis.get(
+                "subject_level_skipping_by_group", {}
+            )
+
+            control_stats = subject_skipping.get("control", {})
+            dyslexic_stats = subject_skipping.get("dyslexic", {})
+
+            group_stats[f"{measure}_subject_level_by_group"] = {
+                **{f"control_{k}": v for k, v in control_stats.items()},
+                **{f"dyslexic_{k}": v for k, v in dyslexic_stats.items()},
+            }
+
+        elif measure in subject_level.columns:
             subj_group_summary = (
                 subject_level.groupby("dyslexic")[measure]
                 .agg(["mean", "std", "count"])
