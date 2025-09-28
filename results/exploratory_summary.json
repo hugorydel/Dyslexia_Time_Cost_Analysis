@@ -1,6 +1,6 @@
 {
   "data_shape": [
-    208716,
+    335180,
     38
   ],
   "columns": [
@@ -37,9 +37,9 @@
     "dyslexia",
     "pseudohomophone_score",
     "dyslexic",
+    "skipped",
     "was_fixated",
     "skipping_probability",
-    "skipped",
     "regression_probability",
     "word_length"
   ],
@@ -53,17 +53,17 @@
     "word_position": 0,
     "word_text": 0,
     "char_IA_ids": 0,
-    "landing_position": 0,
-    "first_fixation_duration": 0,
-    "gaze_duration": 0,
-    "word_go_past_time": 0,
-    "word_mean_fix_dur": 0,
-    "total_reading_time": 0,
+    "landing_position": 126302,
+    "first_fixation_duration": 126302,
+    "gaze_duration": 126302,
+    "word_go_past_time": 126302,
+    "word_mean_fix_dur": 126302,
+    "total_reading_time": 126302,
     "n_fixations": 0,
-    "word_mean_sacc_dur": 658,
-    "word_peak_sacc_velocity": 658,
+    "word_mean_sacc_dur": 126960,
+    "word_peak_sacc_velocity": 126960,
     "subject_id": 0,
-    "Unnamed: 17": 208716,
+    "Unnamed: 17": 335180,
     "comprehension_accuracy": 0,
     "number_of_speeches": 0,
     "number_of_questions": 0,
@@ -74,63 +74,38 @@
     "sex": 0,
     "native_language": 0,
     "vision": 0,
-    "score_reading_comprehension_test": 42914,
+    "score_reading_comprehension_test": 77735,
     "dyslexia": 0,
-    "pseudohomophone_score": 151096,
+    "pseudohomophone_score": 253004,
     "dyslexic": 0,
+    "skipped": 0,
     "was_fixated": 0,
     "skipping_probability": 0,
-    "skipped": 0,
     "regression_probability": 0,
     "word_length": 0
   },
   "trials": 179,
-  "unique_words": 7907,
+  "unique_words": 7952,
   "dyslexic_subjects": 19,
   "control_subjects": 38,
   "dyslexic_proportion": 0.3333333333333333,
   "word_stats": {
-    "mean_length": 5.418036949730735,
-    "std_length": 3.4186847751483573,
+    "mean_length": 4.692427949161645,
+    "std_length": 3.1661273587003578,
     "min_length": 1,
-    "max_length": 46
+    "max_length": 29
   },
   "reading_time_stats": {
-    "mean": 377.06667912378543,
-    "std": 324.5709848667339,
+    "mean": 381.44357471825657,
+    "std": 362.3395973014967,
     "min": 101.0,
-    "max": 3987.0
+    "max": 19838.0
   },
   "skipping_analysis": {
-    "enhanced_analysis_performed": true,
-    "overall_skipping_rate": 0.40680175240151356,
-    "total_words_analyzed": 348322,
-    "fixated_words": 206624,
-    "skipped_words": 141698,
-    "by_group": {
-      "control": {
-        "mean": 0.4213924025885159,
-        "std": 0.4937831497811069,
-        "count": 255745
-      },
-      "dyslexic": {
-        "mean": 0.28939939175844814,
-        "std": 0.45348635650629965,
-        "count": 82533
-      }
-    },
-    "subject_level_by_group": {
-      "control": {
-        "mean": 0.4265886463432655,
-        "std": 0.19212079581854455,
-        "n_subjects": 38
-      },
-      "dyslexic": {
-        "mean": 0.2806586087052327,
-        "std": 0.058281911174538126,
-        "n_subjects": 19
-      }
-    }
+    "enhanced_analysis_performed": false,
+    "note": "Enhanced skipping analysis not available - using basic measures from ExtractedFeatures only",
+    "basic_skipping_rate": 0.376818425920401,
+    "mean_skipping_probability": 0.376818425920401
   },
   "participant_groups": {
     "dyslexic_subjects": [
@@ -197,122 +172,105 @@
     ]
   },
   "total_reading_time_by_group": {
-    "control_mean": 337.53,
-    "control_std": 265.48,
-    "control_count": 151096,
-    "dyslexic_mean": 480.73,
-    "dyslexic_std": 426.54,
-    "dyslexic_count": 57620,
-    "cohens_d": 0.45004299358593386
+    "control_mean": 338.48,
+    "control_std": 274.77,
+    "control_count": 151113,
+    "dyslexic_mean": 493.82,
+    "dyslexic_std": 509.7,
+    "dyslexic_count": 57765,
+    "cohens_d": 0.4368174173753778
   },
   "first_fixation_duration_by_group": {
-    "control_mean": 213.2,
-    "control_std": 84.54,
-    "control_count": 151096,
-    "dyslexic_mean": 244.29,
-    "dyslexic_std": 104.07,
-    "dyslexic_count": 57620,
-    "cohens_d": 0.34414886299513636
+    "control_mean": 213.21,
+    "control_std": 84.56,
+    "control_count": 151113,
+    "dyslexic_mean": 244.38,
+    "dyslexic_std": 104.19,
+    "dyslexic_count": 57765,
+    "cohens_d": 0.34473610158749857
   },
   "gaze_duration_by_group": {
-    "control_mean": 251.26,
-    "control_std": 151.33,
-    "control_count": 151096,
-    "dyslexic_mean": 311.01,
-    "dyslexic_std": 228.75,
-    "dyslexic_count": 57620,
-    "cohens_d": 0.33922018422438416
+    "control_mean": 251.36,
+    "control_std": 152.54,
+    "control_count": 151113,
+    "dyslexic_mean": 315.3,
+    "dyslexic_std": 266.12,
+    "dyslexic_count": 57765,
+    "cohens_d": 0.3350084287644984
   },
   "word_go_past_time_by_group": {
-    "control_mean": 363.54,
-    "control_std": 818.9,
-    "control_count": 151096,
-    "dyslexic_mean": 535.84,
-    "dyslexic_std": 1316.12,
-    "dyslexic_count": 57620,
-    "cohens_d": 0.17552365687483215
+    "control_mean": 363.82,
+    "control_std": 821.85,
+    "control_count": 151113,
+    "dyslexic_mean": 541.13,
+    "dyslexic_std": 1323.43,
+    "dyslexic_count": 57765,
+    "cohens_d": 0.17974607695401817
   },
   "n_fixations_by_group": {
-    "control_mean": 1.58,
-    "control_std": 1.07,
-    "control_count": 151096,
-    "dyslexic_mean": 1.94,
-    "dyslexic_std": 1.5,
-    "dyslexic_count": 57620,
-    "cohens_d": 0.29918835341675165
+    "control_mean": 0.95,
+    "control_std": 1.15,
+    "control_count": 253004,
+    "dyslexic_mean": 1.39,
+    "dyslexic_std": 1.71,
+    "dyslexic_count": 82176,
+    "cohens_d": 0.34109554021508465
   },
   "regression_probability_by_group": {
-    "control_mean": 0.1,
-    "control_std": 0.3,
-    "control_count": 151096,
-    "dyslexic_mean": 0.16,
-    "dyslexic_std": 0.37,
-    "dyslexic_count": 57620,
-    "cohens_d": 0.19950297474625717
-  },
-  "skipping_probability_by_group": {
-    "control_mean": 0.4213924025885159,
-    "control_std": 0.4937831497811069,
-    "control_count": 255745,
-    "dyslexic_mean": 0.28939939175844814,
-    "dyslexic_std": 0.45348635650629965,
-    "dyslexic_count": 82533,
-    "cohens_d": -0.27256587139299093
+    "control_mean": 0.06,
+    "control_std": 0.24,
+    "control_count": 253004,
+    "dyslexic_mean": 0.12,
+    "dyslexic_std": 0.32,
+    "dyslexic_count": 82176,
+    "cohens_d": 0.21468291865147068
   },
   "total_reading_time_subject_level_by_group": {
-    "control_mean": 339.32,
-    "control_std": 66.1,
+    "control_mean": 340.03,
+    "control_std": 67.0,
     "control_n_subjects": 38,
-    "dyslexic_mean": 513.13,
-    "dyslexic_std": 185.83,
+    "dyslexic_mean": 529.71,
+    "dyslexic_std": 209.92,
     "dyslexic_n_subjects": 19
   },
   "first_fixation_duration_subject_level_by_group": {
-    "control_mean": 214.29,
-    "control_std": 30.25,
+    "control_mean": 214.3,
+    "control_std": 30.26,
     "control_n_subjects": 38,
-    "dyslexic_mean": 249.3,
-    "dyslexic_std": 27.76,
+    "dyslexic_mean": 249.34,
+    "dyslexic_std": 27.82,
     "dyslexic_n_subjects": 19
   },
   "gaze_duration_subject_level_by_group": {
-    "control_mean": 252.0,
-    "control_std": 44.25,
+    "control_mean": 252.06,
+    "control_std": 44.31,
     "control_n_subjects": 38,
-    "dyslexic_mean": 322.25,
-    "dyslexic_std": 61.89,
+    "dyslexic_mean": 326.98,
+    "dyslexic_std": 67.71,
     "dyslexic_n_subjects": 19
   },
   "word_go_past_time_subject_level_by_group": {
-    "control_mean": 358.79,
-    "control_std": 70.66,
+    "control_mean": 359.01,
+    "control_std": 70.89,
     "control_n_subjects": 38,
-    "dyslexic_mean": 568.13,
-    "dyslexic_std": 193.47,
+    "dyslexic_mean": 573.93,
+    "dyslexic_std": 200.59,
     "dyslexic_n_subjects": 19
   },
   "n_fixations_subject_level_by_group": {
-    "control_mean": 1.58,
-    "control_std": 0.18,
+    "control_mean": 0.95,
+    "control_std": 0.24,
     "control_n_subjects": 38,
-    "dyslexic_mean": 2.02,
-    "dyslexic_std": 0.53,
+    "dyslexic_mean": 1.53,
+    "dyslexic_std": 0.63,
     "dyslexic_n_subjects": 19
   },
   "regression_probability_subject_level_by_group": {
-    "control_mean": 0.1,
-    "control_std": 0.03,
+    "control_mean": 0.06,
+    "control_std": 0.02,
     "control_n_subjects": 38,
-    "dyslexic_mean": 0.17,
+    "dyslexic_mean": 0.12,
     "dyslexic_std": 0.05,
-    "dyslexic_n_subjects": 19
-  },
-  "skipping_probability_subject_level_by_group": {
-    "control_mean": 0.4265886463432655,
-    "control_std": 0.19212079581854455,
-    "control_n_subjects": 38,
-    "dyslexic_mean": 0.2806586087052327,
-    "dyslexic_std": 0.058281911174538126,
     "dyslexic_n_subjects": 19
   }
 }

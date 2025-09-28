@@ -341,3 +341,132 @@ def enhanced_skipping_analysis(
     except Exception as e:
         logger.error(f"Error in enhanced skipping analysis: {e}")
         return extracted_features, {}
+
+
+def calculate_skipping_from_extracted_features(data: pd.DataFrame) -> Dict[str, any]:
+    """
+    Calculate skipping probabilities directly from ExtractedFeatures data
+    """
+    # Use the correct column name from ExtractedFeatures
+    fixation_col = "number_of_fixations"
+
+    if fixation_col not in data.columns:
+        logger.warning(f"No {fixation_col} column found - cannot calculate skipping")
+        return {}
+
+    # Simple approach: words with 0 fixations were skipped
+    data["skipped"] = data[fixation_col] == 0
+    data["was_fixated"] = data[fixation_col] > 0
+
+    # Calculate overall statistics
+    total_words = len(data)
+    skipped_words = data["skipped"].sum()
+    fixated_words = data["was_fixated"].sum()
+    overall_skipping_rate = skipped_words / total_words if total_words > 0 else 0
+
+    logger.info(f"Skipping analysis from ExtractedFeatures:")
+    logger.info(f"  Total words: {total_words:,}")
+    logger.info(f"  Skipped: {skipped_words:,} ({overall_skipping_rate*100:.1f}%)")
+    logger.info(f"  Fixated: {fixated_words:,} ({(1-overall_skipping_rate)*100:.1f}%)")
+
+    results = {
+        "overall_skipping_rate": overall_skipping_rate,
+        "total_words": total_words,
+        "skipped_words": int(skipped_words),
+        "fixated_words": int(fixated_words),
+        "analysis_method": "direct_from_extracted_features",
+    }
+
+    # Group-level analysis if dyslexic column exists
+    if "dyslexic" in data.columns:
+        group_results = analyze_skipping_by_groups_simple(data)
+        results.update(group_results)
+
+    return results
+
+
+def create_additional_measures(data: pd.DataFrame) -> pd.DataFrame:
+    """
+    Create additional measures for analysis using correct column names
+    """
+    # Use the correct column name from ExtractedFeatures
+    fixation_col = "number_of_fixations"
+
+    # Simple skipping analysis: words with 0 fixations were skipped
+    if fixation_col in data.columns:
+        data["skipped"] = data[fixation_col] == 0
+        data["was_fixated"] = data[fixation_col] > 0
+        data["skipping_probability"] = data["skipped"].astype(float)
+
+        # Also create the n_fixations alias for consistency with other code
+        data["n_fixations"] = data[fixation_col]
+    else:
+        data["skipped"] = np.nan
+        data["was_fixated"] = np.nan
+        data["skipping_probability"] = np.nan
+        data["n_fixations"] = np.nan
+
+    # Regression probability - can be estimated from go-past time vs gaze duration
+    if "word_go_past_time" in data.columns and "gaze_duration" in data.columns:
+        # If go-past time > gaze duration, there was likely a regression
+        data["regression_probability"] = (
+            data["word_go_past_time"] > data["gaze_duration"]
+        ).astype(float)
+    else:
+        data["regression_probability"] = 0.1  # Placeholder
+
+    # Word length
+    if "word_text" in data.columns:
+        data["word_length"] = data["word_text"].str.len()
+
+    return data
+
+
+def analyze_skipping_by_groups_simple(data: pd.DataFrame) -> Dict[str, any]:
+    """
+    Analyze skipping patterns by dyslexic groups using simple approach
+    """
+    results = {}
+
+    # Word-level skipping by group
+    group_skipping = data.groupby("dyslexic")["skipped"].agg(["mean", "std", "count"])
+
+    results["skipping_by_group"] = {}
+    if False in group_skipping.index:
+        results["skipping_by_group"]["control"] = {
+            "mean": float(group_skipping.loc[False, "mean"]),
+            "std": float(group_skipping.loc[False, "std"]),
+            "count": int(group_skipping.loc[False, "count"]),
+        }
+
+    if True in group_skipping.index:
+        results["skipping_by_group"]["dyslexic"] = {
+            "mean": float(group_skipping.loc[True, "mean"]),
+            "std": float(group_skipping.loc[True, "std"]),
+            "count": int(group_skipping.loc[True, "count"]),
+        }
+
+    # Subject-level skipping rates
+    subject_skipping = (
+        data.groupby(["subject_id", "dyslexic"])["skipped"].mean().reset_index()
+    )
+    subject_group_skipping = subject_skipping.groupby("dyslexic")["skipped"].agg(
+        ["mean", "std", "count"]
+    )
+
+    results["subject_level_skipping_by_group"] = {}
+    if False in subject_group_skipping.index:
+        results["subject_level_skipping_by_group"]["control"] = {
+            "mean": float(subject_group_skipping.loc[False, "mean"]),
+            "std": float(subject_group_skipping.loc[False, "std"]),
+            "n_subjects": int(subject_group_skipping.loc[False, "count"]),
+        }
+
+    if True in subject_group_skipping.index:
+        results["subject_level_skipping_by_group"]["dyslexic"] = {
+            "mean": float(subject_group_skipping.loc[True, "mean"]),
+            "std": float(subject_group_skipping.loc[True, "std"]),
+            "n_subjects": int(subject_group_skipping.loc[True, "count"]),
+        }
+
+    return results

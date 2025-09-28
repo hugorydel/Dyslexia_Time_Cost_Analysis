@@ -127,27 +127,23 @@ class DyslexiaTimeAnalysisPipeline:
             self._dyslexic_subjects = subject_lists["dyslexic"]
             self._control_subjects = subject_lists["control"]
 
-        # Create additional measures for analysis
+        # Create additional measures for analysis (includes simple skipping)
         data = create_additional_measures(data)
 
-        # Enhanced skipping analysis using RawData
-        logger.info("Performing skipping analysis...")
+        # Simple skipping analysis using n_fixations directly
+        logger.info("Calculating skipping probabilities...")
         try:
-            from utils.skipping_utils import enhanced_skipping_analysis
+            from utils.skipping_utils import calculate_skipping_from_extracted_features
 
-            copco_path = Path(self.config.COPCO_PATH)
-            enhanced_data, skipping_results = enhanced_skipping_analysis(
-                copco_path, data
-            )
+            skipping_results = calculate_skipping_from_extracted_features(data)
 
             if skipping_results:
                 logger.info(
                     f"Skipping analysis: {skipping_results.get('overall_skipping_rate', 0)*100:.1f}% overall rate"
                 )
                 self._skipping_analysis = skipping_results
-                data = enhanced_data
             else:
-                logger.warning("Skipping analysis failed - using basic measures")
+                logger.warning("Skipping analysis failed")
                 self._skipping_analysis = {}
 
         except Exception as e:

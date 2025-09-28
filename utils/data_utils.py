@@ -142,62 +142,143 @@ def identify_dyslexic_subjects(
 
 
 def clean_word_data(data: pd.DataFrame, config) -> pd.DataFrame:
-    """Clean and filter word-level data"""
+    """
+    Clean and filter word-level data while preserving skipped words
+    """
     if data.empty:
         raise ValueError("Input data is empty")
 
     initial_rows = len(data)
+    logger.info(f"Starting with {initial_rows:,} total word entries")
 
-    # Remove rows with missing critical data
+    # Step 1: Remove rows with missing critical identifiers
     data = data.dropna(subset=["subject_id", "word_text"])
     data = data[data["word_text"].astype(str).str.strip() != ""]
 
-    # Filter extreme outliers in eye measures
-    if "total_reading_time" in data.columns:
-        max_duration = getattr(config, "MAX_FIXATION_DURATION", 5000)
-        data = data[
-            (data["total_reading_time"] >= 50)
-            & (data["total_reading_time"] <= max_duration)
-        ]
+    after_missing = len(data)
+    if initial_rows > after_missing:
+        logger.info(
+            f"Removed {initial_rows - after_missing:,} words with missing identifiers"
+        )
 
-    # Filter extremely long words if specified
+    # Step 2: Identify skipped vs fixated words BEFORE removing reading times
+    fixation_col = "number_of_fixations"
+
+    if fixation_col in data.columns:
+        # Identify skipped words (0 fixations) vs fixated words (1+ fixations)
+        skipped_words = (data[fixation_col] == 0).sum()
+        fixated_words = (data[fixation_col] > 0).sum()
+        nan_fixations = data[fixation_col].isna().sum()
+
+        logger.info(f"Word fixation patterns:")
+        logger.info(f"  - Skipped words (0 fixations): {skipped_words:,}")
+        logger.info(f"  - Fixated words (1+ fixations): {fixated_words:,}")
+        logger.info(f"  - Unknown fixations (NaN): {nan_fixations:,}")
+
+        # Remove only words with NaN fixation counts (true missing data)
+        if nan_fixations > 0:
+            data = data.dropna(subset=[fixation_col])
+            logger.info(f"Removed {nan_fixations:,} words with unknown fixation status")
+
+        # Now handle reading times appropriately
+        if "total_reading_time" in data.columns:
+            # For fixated words, reading time should exist
+            fixated_mask = data[fixation_col] > 0
+            fixated_with_nan_rt = fixated_mask & data["total_reading_time"].isna()
+
+            if fixated_with_nan_rt.sum() > 0:
+                logger.info(
+                    f"Found {fixated_with_nan_rt.sum():,} fixated words with missing reading times - removing"
+                )
+                data = data[~fixated_with_nan_rt]
+
+            # For skipped words, NaN reading time is expected and OK
+            skipped_mask = data[fixation_col] == 0
+            skipped_with_rt = skipped_mask & data["total_reading_time"].notna()
+
+            if skipped_with_rt.sum() > 0:
+                logger.warning(
+                    f"Found {skipped_with_rt.sum():,} skipped words with reading times - unusual but keeping"
+                )
+
+            # Apply reading time filters ONLY to fixated words
+            if fixated_mask.sum() > 0:
+                max_duration = getattr(config, "MAX_FIXATION_DURATION", 8000)
+                min_duration = getattr(config, "MIN_FIXATION_DURATION", 80)
+
+                fixated_data = data[fixated_mask]
+                rt_99th = fixated_data["total_reading_time"].quantile(0.99)
+                logger.info(
+                    f"Fixated words reading times: median {fixated_data['total_reading_time'].median():.0f}ms, 99th percentile {rt_99th:.0f}ms"
+                )
+
+                # Count outliers among fixated words only
+                too_long = (fixated_data["total_reading_time"] > max_duration).sum()
+                too_short = (fixated_data["total_reading_time"] < min_duration).sum()
+
+                # Apply filters only to fixated words
+                outlier_mask = fixated_mask & (
+                    (data["total_reading_time"] < min_duration)
+                    | (data["total_reading_time"] > max_duration)
+                )
+
+                if outlier_mask.sum() > 0:
+                    logger.info(
+                        f"Removed {outlier_mask.sum():,} fixated words with extreme reading times ({too_short:,} too short, {too_long:,} too long)"
+                    )
+                    data = data[~outlier_mask]
+
+    else:
+        logger.warning(
+            f"No {fixation_col} column found - cannot distinguish skipped vs fixated words"
+        )
+
+    # Step 3: Filter extremely long words (data entry errors)
     if "word_text" in data.columns and hasattr(config, "MAX_WORD_LENGTH"):
         word_lengths = data["word_text"].str.len()
-        data = data[word_lengths <= config.MAX_WORD_LENGTH]
+        max_length = config.MAX_WORD_LENGTH
+
+        too_long_words = (word_lengths > max_length).sum()
+        if too_long_words > 0:
+            logger.info(
+                f"Removed {too_long_words:,} words longer than {max_length} characters (likely data errors)"
+            )
+            data = data[word_lengths <= max_length]
+
+    final_rows = len(data)
+    retention_rate = final_rows / initial_rows * 100
+
+    # Final breakdown
+    if fixation_col in data.columns:
+        final_skipped = (data[fixation_col] == 0).sum()
+        final_fixated = (data[fixation_col] > 0).sum()
+        logger.info(
+            f"Final dataset: {final_skipped:,} skipped words, {final_fixated:,} fixated words"
+        )
+
+    logger.info(
+        f"Data cleaning complete: {final_rows:,} words retained ({retention_rate:.1f}% of original)"
+    )
 
     if len(data) == 0:
         raise ValueError("No data remaining after preprocessing")
-
-    filtered_count = initial_rows - len(data)
-    if filtered_count > 0:
-        logger.info(
-            f"Filtered {filtered_count:,} outlier words ({filtered_count/initial_rows*100:.1f}%)"
-        )
 
     return data
 
 
 def create_additional_measures(data: pd.DataFrame) -> pd.DataFrame:
     """
-    Create additional measures for analysis
-
-    Args:
-        data: DataFrame with basic eye-tracking measures
-
-    Returns:
-        DataFrame with additional computed measures
+    Create additional measures for analysis using simple skipping approach
     """
-    # Mark all words in this dataset as fixated (by definition of ExtractedFeatures)
+    # Simple skipping analysis: words with 0 fixations were skipped
     if "n_fixations" in data.columns:
+        data["skipped"] = data["n_fixations"] == 0
         data["was_fixated"] = data["n_fixations"] > 0
-        # Initialize skipping probability - will be updated by skipping analysis if available
-        data["skipping_probability"] = (
-            0.0  # For fixated words, skipping probability is 0
-        )
-        data["skipped"] = False
+        data["skipping_probability"] = data["skipped"].astype(float)
     else:
-        data["skipping_probability"] = np.nan
         data["skipped"] = np.nan
+        data["was_fixated"] = np.nan
+        data["skipping_probability"] = np.nan
 
     # Regression probability - can be estimated from go-past time vs gaze duration
     if "word_go_past_time" in data.columns and "gaze_duration" in data.columns:
