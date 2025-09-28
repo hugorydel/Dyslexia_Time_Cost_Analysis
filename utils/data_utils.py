@@ -18,36 +18,26 @@ logger = logging.getLogger(__name__)
 def load_extracted_features(features_path: Path) -> pd.DataFrame:
     """
     Load all ExtractedFeatures CSV files - these contain the actual word-level data
-
-    Args:
-        features_path: Path to ExtractedFeatures directory
-
-    Returns:
-        Combined DataFrame with all participant data
     """
     csv_files = list(features_path.glob("*.csv"))
 
     if not csv_files:
         raise FileNotFoundError(f"No CSV files found in {features_path}")
 
-    logger.info(f"Loading {len(csv_files)} participant feature files...")
+    logger.info(f"Loading {len(csv_files)} participant files...")
 
     all_data = []
-
     for csv_file in csv_files:
         try:
             df = pd.read_csv(csv_file)
-
             # Extract subject ID from filename (P01, P02, etc.)
             p_match = re.search(r"P(\d+)", csv_file.stem)
             if p_match:
                 subject_id = f"P{p_match.group(1).zfill(2)}"
             else:
                 subject_id = csv_file.stem
-
             df["subject_id"] = subject_id
             all_data.append(df)
-
         except Exception as e:
             logger.warning(f"Error loading {csv_file.name}: {e}")
             continue
@@ -56,36 +46,21 @@ def load_extracted_features(features_path: Path) -> pd.DataFrame:
         raise ValueError("No feature files could be loaded successfully")
 
     combined_data = pd.concat(all_data, ignore_index=True)
-
     # Apply column mapping
     combined_data = apply_mapping(combined_data, "extracted_features")
-
-    logger.info(f"Combined word-level data shape: {combined_data.shape}")
-    logger.info(f"Columns: {list(combined_data.columns)}")
 
     return combined_data
 
 
 def load_participant_stats(stats_path: Path) -> pd.DataFrame:
-    """
-    Load participant statistics for group assignment
-
-    Args:
-        stats_path: Path to DatasetStatistics directory
-
-    Returns:
-        DataFrame with participant statistics
-    """
+    """Load participant statistics for group assignment"""
     participant_stats_file = stats_path / "participant_stats.csv"
 
     if participant_stats_file.exists():
         try:
             stats_df = pd.read_csv(participant_stats_file)
-
             # Apply column mapping
             stats_df = apply_mapping(stats_df, "participant_stats")
-
-            logger.info(f"Loaded participant stats: {stats_df.shape}")
             return stats_df
         except Exception as e:
             logger.warning(f"Error loading participant stats: {e}")
@@ -96,16 +71,7 @@ def load_participant_stats(stats_path: Path) -> pd.DataFrame:
 def merge_with_participant_stats(
     word_data: pd.DataFrame, participant_stats: pd.DataFrame
 ) -> pd.DataFrame:
-    """
-    Merge word data with participant statistics
-
-    Args:
-        word_data: DataFrame with word-level data
-        participant_stats: DataFrame with participant statistics
-
-    Returns:
-        Merged DataFrame
-    """
+    """Merge word data with participant statistics"""
     if participant_stats.empty:
         return word_data
 
@@ -116,9 +82,7 @@ def merge_with_participant_stats(
             how="left",
             suffixes=("", "_stats"),
         )
-        logger.info(f"Merged with participant stats. New shape: {merged.shape}")
         return merged
-
     except Exception as e:
         logger.warning(f"Could not merge with participant stats: {e}")
         return word_data
@@ -141,11 +105,6 @@ def identify_dyslexic_subjects(
         ValueError: If dyslexic subjects cannot be identified
     """
     if not participant_stats.empty and "dyslexia" in participant_stats.columns:
-        logger.info("Found 'dyslexia' column in participant stats!")
-
-        dyslexia_values = participant_stats["dyslexia"].value_counts()
-        logger.info(f"Dyslexia column values: {dyslexia_values.to_dict()}")
-
         # Create dyslexic mask
         dyslexic_mask = (
             participant_stats["dyslexia"]
@@ -163,35 +122,24 @@ def identify_dyslexic_subjects(
             )
 
             logger.info(
-                f"Dyslexic subjects: {len(dyslexic_subjects)} - {sorted(list(dyslexic_subjects))}"
+                f"Groups identified: {len(dyslexic_subjects)} dyslexic, {len(control_subjects)} control"
             )
-            logger.info(
-                f"Control subjects: {len(control_subjects)} - {sorted(list(control_subjects))}"
-            )
+
+            # Store for JSON output (will be accessed later)
+            data._dyslexic_subject_list = sorted(list(dyslexic_subjects))
+            data._control_subject_list = sorted(list(control_subjects))
 
             return dyslexic_subjects
 
     # No fallback - raise error for proper scientific practice
     raise ValueError(
         "Cannot identify dyslexic vs control subjects. "
-        "Required participant statistics with 'dyslexia' column not found or invalid. "
-        "Please ensure participant_stats.csv contains a 'dyslexia' column with clear group labels."
+        "Required participant statistics with 'dyslexia' column not found or invalid."
     )
 
 
 def clean_word_data(data: pd.DataFrame, config) -> pd.DataFrame:
-    """
-    Clean and filter word-level data
-
-    Args:
-        data: Raw word-level data
-        config: Configuration object with filtering parameters
-
-    Returns:
-        Cleaned DataFrame
-    """
-    logger.info("Cleaning word-level data...")
-
+    """Clean and filter word-level data"""
     if data.empty:
         raise ValueError("Input data is empty")
 
@@ -214,10 +162,14 @@ def clean_word_data(data: pd.DataFrame, config) -> pd.DataFrame:
         word_lengths = data["word_text"].str.len()
         data = data[word_lengths <= config.MAX_WORD_LENGTH]
 
-    logger.info(f"Filtered data: {initial_rows} -> {len(data)} rows")
-
     if len(data) == 0:
         raise ValueError("No data remaining after preprocessing")
+
+    filtered_count = initial_rows - len(data)
+    if filtered_count > 0:
+        logger.info(
+            f"Filtered {filtered_count:,} outlier words ({filtered_count/initial_rows*100:.1f}%)"
+        )
 
     return data
 

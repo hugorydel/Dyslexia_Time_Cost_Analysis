@@ -15,22 +15,12 @@ logger = logging.getLogger(__name__)
 
 
 def load_results_files(copco_path: Path) -> pd.DataFrame:
-    """
-    Load RESULTS_FILE.txt files to get complete text for skipping analysis
-
-    Args:
-        copco_path: Path to CopCo_Data directory
-
-    Returns:
-        DataFrame with complete text data per trial
-    """
+    """Load RESULTS_FILE.txt files to get complete text for skipping analysis"""
     raw_data_path = copco_path / "RawData"
 
     if not raw_data_path.exists():
         logger.warning(f"RawData directory not found at {raw_data_path}")
         return pd.DataFrame()
-
-    logger.info("Loading RESULTS_FILE.txt files for skipping analysis...")
 
     all_raw_data = []
     participant_dirs = list(raw_data_path.glob("P*"))
@@ -46,16 +36,11 @@ def load_results_files(copco_path: Path) -> pd.DataFrame:
         # Look for RESULTS_FILE.txt
         results_files = list(participant_dir.glob("RESULTS_FILE.txt"))
         if not results_files:
-            logger.warning(f"No RESULTS_FILE.txt found for {subject_id}")
             continue
-
-        results_file = results_files[0]
 
         try:
             # Load RESULTS_FILE.txt - tab separated with headers
-            df = pd.read_csv(results_file, sep="\t", encoding="utf-8")
-
-            # Add subject_id column
+            df = pd.read_csv(results_files[0], sep="\t", encoding="utf-8")
             df["subject_id"] = subject_id
 
             # Keep only experiment trials (not practice)
@@ -69,7 +54,7 @@ def load_results_files(copco_path: Path) -> pd.DataFrame:
             all_raw_data.append(df)
 
         except Exception as e:
-            logger.warning(f"Error loading {results_file}: {e}")
+            logger.warning(f"Error loading {results_files[0]}: {e}")
             continue
 
     if not all_raw_data:
@@ -77,10 +62,6 @@ def load_results_files(copco_path: Path) -> pd.DataFrame:
         return pd.DataFrame()
 
     raw_df = pd.concat(all_raw_data, ignore_index=True)
-    logger.info(
-        f"Loaded raw data: {len(raw_df)} trials from {raw_df['subject_id'].nunique()} participants"
-    )
-
     return raw_df
 
 
@@ -122,15 +103,7 @@ def simple_tokenize(text: str) -> List[str]:
 
 
 def create_trial_word_lists(results_data: pd.DataFrame) -> pd.DataFrame:
-    """
-    Create word lists for each trial from RESULTS_FILE data
-
-    Args:
-        results_data: DataFrame with RESULTS_FILE data
-
-    Returns:
-        DataFrame with all words that should have been read per trial
-    """
+    """Create word lists for each trial from RESULTS_FILE data"""
     trial_words = []
 
     for _, trial in results_data.iterrows():
@@ -164,17 +137,7 @@ def create_trial_word_lists(results_data: pd.DataFrame) -> pd.DataFrame:
 def calculate_trial_based_skipping(
     extracted_features: pd.DataFrame, trial_words: pd.DataFrame
 ) -> Dict[str, any]:
-    """
-    Calculate skipping probabilities using trial-based matching
-
-    Args:
-        extracted_features: DataFrame with fixated words from ExtractedFeatures
-        trial_words: DataFrame with all words from RESULTS_FILE
-
-    Returns:
-        Dictionary with skipping analysis results
-    """
-    logger.info("Calculating trial-based skipping probabilities...")
+    """Calculate skipping probabilities using trial-based matching"""
 
     # Group fixated words by trial for faster lookup
     fixated_by_trial = {}
@@ -195,9 +158,6 @@ def calculate_trial_based_skipping(
     skipped_words = []
     fixated_words = []
 
-    debug_matches = []  # For debugging
-    debug_misses = []
-
     for _, word_row in trial_words.iterrows():
         trial_key = (word_row["subject_id"], word_row["trial_id"])
         word = word_row["word_text"].lower().strip()
@@ -212,20 +172,13 @@ def calculate_trial_based_skipping(
 
         if was_fixated:
             fixated_words.append(word_row)
-            debug_matches.append((trial_key, word_pos, word))
         else:
             skipped_words.append(word_row)
-            debug_misses.append((trial_key, word_pos, word))
 
     total_words = len(trial_words)
     n_fixated = len(fixated_words)
     n_skipped = len(skipped_words)
     skipping_rate = n_skipped / total_words if total_words > 0 else 0
-
-    logger.info(f"Trial-based matching complete:")
-    logger.info(
-        f"  Total words: {total_words}, Fixated: {n_fixated} ({n_fixated/total_words*100:.1f}%), Skipped: {n_skipped} ({skipping_rate*100:.1f}%)"
-    )
 
     return {
         "overall_skipping_rate": skipping_rate,
@@ -349,36 +302,19 @@ def analyze_skipping_by_groups(
 def enhanced_skipping_analysis(
     copco_path: Path, extracted_features: pd.DataFrame
 ) -> Tuple[pd.DataFrame, Dict]:
-    """
-    Complete pipeline for enhanced skipping analysis using trial-based matching
-
-    Args:
-        copco_path: Path to CopCo_Data directory
-        extracted_features: DataFrame with ExtractedFeatures data
-
-    Returns:
-        Tuple of (enhanced_extracted_features, skipping_analysis_results)
-    """
+    """Complete pipeline for enhanced skipping analysis using trial-based matching"""
     try:
         # Load RESULTS_FILE data
         results_data = load_results_files(copco_path)
 
         if results_data.empty:
-            logger.warning(
-                "No RESULTS_FILE data available - cannot calculate proper skipping probabilities"
-            )
             return extracted_features, {}
 
         # Create trial word lists
         trial_words = create_trial_word_lists(results_data)
 
         if trial_words.empty:
-            logger.warning("No trial words could be extracted")
             return extracted_features, {}
-
-        logger.info(
-            f"Created trial word list: {len(trial_words)} words from {trial_words['trial_id'].nunique()} trials"
-        )
 
         # Calculate trial-based skipping
         skipping_results = calculate_trial_based_skipping(
@@ -393,7 +329,7 @@ def enhanced_skipping_analysis(
         # Combine results
         final_results = {**skipping_results, **group_analysis}
 
-        # Update extracted_features to reflect that these are fixated words (skipping_probability = 0)
+        # Update extracted_features to reflect that these are fixated words
         enhanced_features = extracted_features.copy()
         enhanced_features["skipping_probability"] = (
             0.0  # All words in ExtractedFeatures were fixated
@@ -404,5 +340,4 @@ def enhanced_skipping_analysis(
 
     except Exception as e:
         logger.error(f"Error in enhanced skipping analysis: {e}")
-        logger.error("Traceback:", exc_info=True)
         return extracted_features, {}

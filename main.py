@@ -73,14 +73,13 @@ class DyslexiaTimeAnalysisPipeline:
         """
         Load CopCo dataset using ExtractedFeatures as primary source
         """
-        logger.info("Loading CopCo dataset from ExtractedFeatures...")
+        logger.info("Loading CopCo dataset...")
 
         copco_path = Path(self.config.COPCO_PATH)
-
         if not copco_path.exists():
             raise FileNotFoundError(f"CopCo data not found at {copco_path}")
 
-        # Load ExtractedFeatures (this has the word-level eye-tracking data we need!)
+        # Load ExtractedFeatures
         extracted_features_path = copco_path / "ExtractedFeatures"
         dataset_stats_path = copco_path / "DatasetStatistics"
 
@@ -90,16 +89,12 @@ class DyslexiaTimeAnalysisPipeline:
             )
 
         # Load the word-level eye-tracking data
-        logger.info("Loading word-level eye-tracking data from ExtractedFeatures...")
         word_data = load_extracted_features(extracted_features_path)
 
         # Load participant statistics for group assignment
         if dataset_stats_path.exists():
-            logger.info("Loading participant statistics...")
             participant_stats = load_participant_stats(dataset_stats_path)
             word_data = merge_with_participant_stats(word_data, participant_stats)
-
-            # Store participant stats for group assignment
             self._participant_stats = participant_stats
         else:
             self._participant_stats = pd.DataFrame()
@@ -107,13 +102,13 @@ class DyslexiaTimeAnalysisPipeline:
         # Basic preprocessing
         word_data = self._preprocess_word_data(word_data)
 
-        logger.info(f"Final loaded data shape: {word_data.shape}")
+        logger.info(
+            f"Loaded: {len(word_data):,} words from {word_data['subject_id'].nunique()} participants"
+        )
         return word_data
 
     def _preprocess_word_data(self, data: pd.DataFrame) -> pd.DataFrame:
         """Preprocess the word-level data"""
-
-        logger.info("Preprocessing word-level data...")
 
         if data.empty:
             raise ValueError("Input data is empty")
@@ -128,17 +123,17 @@ class DyslexiaTimeAnalysisPipeline:
             )
             data["dyslexic"] = data["subject_id"].isin(dyslexic_subjects)
 
-            n_dyslexic_words = data["dyslexic"].sum()
-            n_dyslexic_subjects = len(dyslexic_subjects)
-            logger.info(
-                f"Identified {n_dyslexic_words} words from {n_dyslexic_subjects} dyslexic subjects"
+            # Store group lists for JSON output
+            self._dyslexic_subjects = sorted(list(dyslexic_subjects))
+            self._control_subjects = sorted(
+                [s for s in data["subject_id"].unique() if s not in dyslexic_subjects]
             )
 
         # Create additional measures for analysis
         data = create_additional_measures(data)
 
         # Enhanced skipping analysis using RawData
-        logger.info("Attempting enhanced skipping analysis using RawData...")
+        logger.info("Performing skipping analysis...")
         try:
             from utils.skipping_utils import enhanced_skipping_analysis
 
@@ -148,33 +143,25 @@ class DyslexiaTimeAnalysisPipeline:
             )
 
             if skipping_results:
-                logger.info("Enhanced skipping analysis successful!")
                 logger.info(
-                    f"Overall skipping rate: {skipping_results.get('overall_skipping_rate', 0)*100:.1f}%"
+                    f"Skipping analysis: {skipping_results.get('overall_skipping_rate', 0)*100:.1f}% overall rate"
                 )
-                logger.info(f"Skipping results keys: {list(skipping_results.keys())}")
-
-                # Store skipping results for later use
                 self._skipping_analysis = skipping_results
                 data = enhanced_data
             else:
-                logger.warning(
-                    "Enhanced skipping analysis failed - using basic measures"
-                )
+                logger.warning("Skipping analysis failed - using basic measures")
                 self._skipping_analysis = {}
 
         except Exception as e:
-            logger.warning(f"Enhanced skipping analysis failed: {e}")
-            logger.warning("Continuing with basic skipping measures")
+            logger.warning(f"Skipping analysis failed: {e}")
             self._skipping_analysis = {}
 
-        logger.info(f"Preprocessed data shape: {data.shape}")
         return data
 
     def run_exploratory_analysis(self) -> dict:
         """Run exploratory analysis on the word-level data"""
 
-        logger.info("Running exploratory analysis on word-level data...")
+        logger.info("Running exploratory analysis...")
 
         # Load data
         data = self.load_copco_data()
@@ -184,6 +171,13 @@ class DyslexiaTimeAnalysisPipeline:
 
         # Calculate basic statistics (now includes skipping stats)
         summary = calculate_basic_statistics(data, skipping_analysis)
+
+        # Add participant group details to summary
+        if hasattr(self, "_dyslexic_subjects") and hasattr(self, "_control_subjects"):
+            summary["participant_groups"] = {
+                "dyslexic_subjects": self._dyslexic_subjects,
+                "control_subjects": self._control_subjects,
+            }
 
         # Calculate group statistics if dyslexic column exists
         if "dyslexic" in data.columns:
@@ -195,13 +189,10 @@ class DyslexiaTimeAnalysisPipeline:
 
         # Create plots
         self._create_exploratory_plots(data)
-
-        # Create group summary plots
         self._create_group_summary_plots(data)
 
-        logger.info(
-            f"Exploratory analysis complete. Results saved to {self.results_dir}"
-        )
+        logger.info(f"Analysis complete. Results saved to {self.results_dir}")
+
         return summary
 
     def _create_exploratory_plots(self, data: pd.DataFrame):
@@ -597,12 +588,16 @@ class DyslexiaTimeAnalysisPipeline:
                 )
 
                 length_group_means = (
-                    data.groupby(["word_length_bin", "dyslexic"])["total_reading_time"]
+                    data.groupby(["word_length_bin", "dyslexic"], observed=True)[
+                        "total_reading_time"
+                    ]
                     .mean()
                     .unstack()
                 )
                 length_group_stds = (
-                    data.groupby(["word_length_bin", "dyslexic"])["total_reading_time"]
+                    data.groupby(["word_length_bin", "dyslexic"], observed=True)[
+                        "total_reading_time"
+                    ]
                     .std()
                     .unstack()
                 )
