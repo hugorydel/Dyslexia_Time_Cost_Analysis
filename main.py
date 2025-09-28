@@ -220,9 +220,32 @@ class DyslexiaTimeAnalysisPipeline:
         for csv_file in csv_files:
             try:
                 df = pd.read_csv(csv_file)
-                # Extract subject ID from filename
-                subject_id = csv_file.stem
+
+                # Extract subject ID from filename - be more flexible
+                filename = csv_file.stem  # filename without extension
+                logger.info(f"Processing feature file: {filename}")
+
+                # Try different subject ID extraction methods
+                subject_id = None
+
+                # Method 1: Direct use of filename (P01, P02, etc.)
+                if filename.startswith("P") and len(filename) <= 4:
+                    subject_id = filename
+
+                # Method 2: Extract P## pattern from filename
+                import re
+
+                p_match = re.search(r"P(\d+)", filename)
+                if p_match and not subject_id:
+                    subject_id = f"P{p_match.group(1).zfill(2)}"  # P01, P02, etc.
+
+                # Method 3: Use filename as-is if no pattern found
+                if not subject_id:
+                    subject_id = filename
+
                 df["subject_id"] = subject_id
+                logger.info(f"  Assigned subject_id: {subject_id}")
+
                 all_features.append(df)
 
             except Exception as e:
@@ -232,6 +255,11 @@ class DyslexiaTimeAnalysisPipeline:
         if all_features:
             combined_features = pd.concat(all_features, ignore_index=True)
             logger.info(f"Combined features shape: {combined_features.shape}")
+
+            # Show what subject IDs we actually got
+            unique_subjects = combined_features["subject_id"].unique()
+            logger.info(f"Feature subject IDs: {sorted(unique_subjects)}")
+
             return combined_features
         else:
             return pd.DataFrame()
@@ -254,26 +282,140 @@ class DyslexiaTimeAnalysisPipeline:
     def _merge_with_features(
         self, fixation_data: pd.DataFrame, feature_data: pd.DataFrame
     ) -> pd.DataFrame:
-        """Merge fixation data with extracted features"""
+        """Merge fixation data with extracted features containing word information"""
 
         if feature_data.empty:
+            logger.warning("No feature data available for merging")
             return fixation_data
 
-        # Try to merge on common columns (subject_id, trial_id, word_id, etc.)
-        common_cols = set(fixation_data.columns) & set(feature_data.columns)
+        logger.info("Merging fixation data with word features...")
+        logger.info(f"Fixation data columns: {list(fixation_data.columns)}")
+        logger.info(f"Feature data columns: {list(feature_data.columns)}")
 
-        if "subject_id" in common_cols:
+        # The key insight: match by participant, trial, and word position
+        # Fixation data has: subject_id, trial info, word positions
+        # Feature data has: part, trialId, wordId, word (actual text)
+
+        # Standardize the participant identifiers
+        if "part" in feature_data.columns:
+            feature_data["subject_id"] = feature_data["part"].astype(str)
+
+        # Standardize trial identifiers
+        if "trialId" in feature_data.columns:
+            feature_data["trial_id"] = feature_data["trialId"].astype(str)
+
+        # Check what we have for merging
+        logger.info("Merge key analysis:")
+
+        # Subject IDs
+        if (
+            "subject_id" in fixation_data.columns
+            and "subject_id" in feature_data.columns
+        ):
+            fix_subjects = set(fixation_data["subject_id"].astype(str).unique())
+            feat_subjects = set(feature_data["subject_id"].astype(str).unique())
+            common_subjects = fix_subjects & feat_subjects
+            logger.info(
+                f"Fixation subjects: {len(fix_subjects)}, Feature subjects: {len(feat_subjects)}, Common: {len(common_subjects)}"
+            )
+            logger.info(f"Sample common subjects: {list(common_subjects)[:5]}")
+
+        # Trial IDs
+        if "trial_id" in fixation_data.columns and "trial_id" in feature_data.columns:
+            fix_trials = fixation_data["trial_id"].nunique()
+            feat_trials = feature_data["trial_id"].nunique()
+            logger.info(f"Fixation trials: {fix_trials}, Feature trials: {feat_trials}")
+
+        # Word information in features
+        if "word" in feature_data.columns:
+            word_count = feature_data["word"].notna().sum()
+            unique_words = feature_data["word"].nunique()
+            sample_words = feature_data["word"].dropna().head(10).tolist()
+            logger.info(f"Feature data has {word_count} words, {unique_words} unique")
+            logger.info(f"Sample words: {sample_words}")
+
+        # Try different merge strategies
+        merged_data = fixation_data.copy()
+
+        # Strategy 1: Direct merge on subject_id and trial_id
+        if (
+            "subject_id" in feature_data.columns
+            and "trial_id" in feature_data.columns
+            and "subject_id" in fixation_data.columns
+            and "trial_id" in fixation_data.columns
+        ):
+
             try:
-                # Simple merge on subject_id first
-                merged = fixation_data.merge(
-                    feature_data, on="subject_id", how="left", suffixes=("", "_feat")
-                )
-                logger.info(f"Merged with features. New shape: {merged.shape}")
-                return merged
-            except Exception as e:
-                logger.warning(f"Could not merge with features: {e}")
+                # Ensure consistent data types
+                fixation_data["subject_id"] = fixation_data["subject_id"].astype(str)
+                fixation_data["trial_id"] = fixation_data["trial_id"].astype(str)
+                feature_data["subject_id"] = feature_data["subject_id"].astype(str)
+                feature_data["trial_id"] = feature_data["trial_id"].astype(str)
 
-        return fixation_data
+                # Merge on subject and trial
+                merged_data = fixation_data.merge(
+                    feature_data[
+                        [
+                            "subject_id",
+                            "trial_id",
+                            "wordId",
+                            "word",
+                            "sentenceId",
+                            "paragraphId",
+                        ]
+                    ].drop_duplicates(),
+                    on=["subject_id", "trial_id"],
+                    how="left",
+                    suffixes=("", "_feat"),
+                )
+
+                logger.info(f"After basic merge: {merged_data.shape}")
+
+                # Check if we got word information
+                if "word" in merged_data.columns:
+                    words_available = merged_data["word"].notna().sum()
+                    logger.info(f"Words available after merge: {words_available}")
+
+                    if words_available > 0:
+                        return merged_data
+
+            except Exception as e:
+                logger.warning(f"Basic merge failed: {e}")
+
+        # Strategy 2: Try participant-level merge only
+        if (
+            "subject_id" in feature_data.columns
+            and "subject_id" in fixation_data.columns
+        ):
+            try:
+                # Get unique words per participant
+                participant_words = (
+                    feature_data.groupby("subject_id")["word"].apply(list).reset_index()
+                )
+                participant_words["word_list"] = participant_words["word"]
+
+                merged_data = fixation_data.merge(
+                    participant_words[["subject_id", "word_list"]],
+                    on="subject_id",
+                    how="left",
+                )
+
+                logger.info(f"After participant-level merge: {merged_data.shape}")
+                return merged_data
+
+            except Exception as e:
+                logger.warning(f"Participant-level merge failed: {e}")
+
+        # If merging fails, at least add the available word information
+        if "word" in feature_data.columns:
+            # Create a mapping of all available words
+            all_words = feature_data["word"].dropna().unique()
+            logger.info(f"Adding {len(all_words)} unique words as reference")
+
+            # Store the word list for later use
+            merged_data.attrs["available_words"] = all_words
+
+        return merged_data
 
     def _merge_with_participant_stats(
         self, fixation_data: pd.DataFrame, participant_stats: pd.DataFrame
@@ -388,8 +530,110 @@ class DyslexiaTimeAnalysisPipeline:
             logger.warning(f"Missing required columns: {missing_columns}")
 
             # Try to create missing columns if possible
-            if "word_text" not in data.columns and "word" in data.columns:
-                data["word_text"] = data["word"]
+            if "word_text" not in data.columns:
+                # First, let's diagnose what word information we actually have
+                logger.info("Diagnosing word-related columns...")
+
+                # Fix: Convert column names to strings and filter out numeric-only columns
+                string_columns = [col for col in data.columns if isinstance(col, str)]
+                word_related_cols = [
+                    col for col in string_columns if "word" in col.lower()
+                ]
+                logger.info(f"All word-related columns: {word_related_cols}")
+
+                interest_area_cols = [
+                    col
+                    for col in string_columns
+                    if "interest" in col.lower() and "label" in col.lower()
+                ]
+                logger.info(f"Interest area label columns: {interest_area_cols}")
+
+                # Check what's actually in these columns
+                for col in (
+                    word_related_cols + interest_area_cols + ["word_list"]
+                ):  # Add word_list
+                    if col in data.columns:
+                        non_null_count = data[col].notna().sum()
+                        unique_count = (
+                            data[col].nunique()
+                            if col != "word_list"
+                            else "N/A (list column)"
+                        )
+                        if col == "word_list":
+                            # Special handling for word_list column
+                            sample_values = "Lists of words per participant"
+                        else:
+                            sample_values = (
+                                data[col].dropna().head(10).tolist()
+                                if non_null_count > 0
+                                else []
+                            )
+                        logger.info(
+                            f"  {col}: {non_null_count} non-null, {unique_count} unique, samples: {sample_values}"
+                        )
+
+                # Try different word sources in order of preference
+                word_source = None
+
+                # 1. Check if we have 'word' column from ExtractedFeatures merge
+                if "word" in data.columns and data["word"].notna().sum() > 0:
+                    word_source = "word"
+                    logger.info("Found word column from ExtractedFeatures!")
+                # 2. Try interest area label
+                elif (
+                    "interest_area_label" in data.columns
+                    and data["interest_area_label"].notna().sum() > 0
+                ):
+                    word_source = "interest_area_label"
+                # 3. Try CURRENT_FIX_INTEREST_AREA_LABEL
+                elif (
+                    "CURRENT_FIX_INTEREST_AREA_LABEL" in data.columns
+                    and data["CURRENT_FIX_INTEREST_AREA_LABEL"].notna().sum() > 0
+                ):
+                    word_source = "CURRENT_FIX_INTEREST_AREA_LABEL"
+                # 4. Check if words might be stored as numeric IDs that need mapping
+                elif "wordId" in data.columns and data["wordId"].notna().sum() > 0:
+                    # For now, use wordId as placeholder - in real analysis, this would need word mapping
+                    word_source = "wordId"
+                    logger.warning(
+                        "Using wordId as word identifier - this may limit text analysis"
+                    )
+                # 5. Check if we have a word_list from participant-level merge
+                elif "word_list" in data.columns:
+                    # Create word_text by sampling from the available words
+                    data["word_text"] = data["word_list"].apply(
+                        lambda x: x[0] if isinstance(x, list) and len(x) > 0 else "word"
+                    )
+                    word_source = "word_list"
+                    logger.info("Using word_list from participant-level merge")
+
+                if word_source and word_source != "word_list":
+                    data["word_text"] = data[word_source].astype(str)
+                    logger.info(f"Using {word_source} as word_text")
+
+                    # Show some statistics about the chosen word source
+                    word_stats = data["word_text"].value_counts().head(10)
+                    logger.info(
+                        f"Top 10 most frequent words/labels: {word_stats.to_dict()}"
+                    )
+                elif not word_source:
+                    logger.warning(
+                        "No suitable word information found - creating placeholder"
+                    )
+                    # Create a meaningful placeholder based on fixation position
+                    if "wordId" in data.columns:
+                        data["word_text"] = "word_" + data["wordId"].astype(str)
+                    elif hasattr(data, "attrs") and "available_words" in data.attrs:
+                        # Use available words as reference
+                        available_words = data.attrs["available_words"]
+                        data["word_text"] = (
+                            available_words[0] if len(available_words) > 0 else "word"
+                        )
+                        logger.info(
+                            f"Using first available word: {data['word_text'].iloc[0]}"
+                        )
+                    else:
+                        data["word_text"] = "word"
 
             if "fixation_duration" not in data.columns:
                 # Look for duration-related columns
@@ -402,39 +646,63 @@ class DyslexiaTimeAnalysisPipeline:
                     data["fixation_duration"] = data[duration_cols[0]]
                     logger.info(f"Using {duration_cols[0]} as fixation_duration")
 
-        # Filter out rows where critical data is missing
+        # Filter out rows where critical data is missing, but be less aggressive
         initial_rows = len(data)
 
         # Remove rows with missing subject_id
         if "subject_id" in data.columns:
+            before_subj = len(data)
             data = data.dropna(subset=["subject_id"])
             logger.info(
-                f"Removed {initial_rows - len(data)} rows with missing subject_id"
+                f"Removed {before_subj - len(data)} rows with missing subject_id"
             )
 
-        # Remove rows with missing word_text
+        # Handle word_text more flexibly
         if "word_text" in data.columns:
-            data = data.dropna(subset=["word_text"])
-            data = data[data["word_text"].astype(str).str.len() > 0]
+            before_word = len(data)
+
+            # First, check what's actually in the word_text column
+            non_null_words = data["word_text"].dropna()
+            logger.info(f"Word_text column stats:")
+            logger.info(f"  Total rows: {len(data)}")
+            logger.info(f"  Non-null words: {len(non_null_words)}")
+            if len(non_null_words) > 0:
+                logger.info(f"  Sample words: {list(non_null_words.head(10))}")
+                logger.info(f"  Unique words: {non_null_words.nunique()}")
+
+            # Only remove rows if word_text is completely empty or just whitespace
+            data = data[data["word_text"].notna()]  # Remove NaN
+            data = data[
+                data["word_text"].astype(str).str.strip() != ""
+            ]  # Remove empty strings
+
             logger.info(
-                f"Removed rows with missing/empty word_text. Remaining: {len(data)}"
+                f"Removed {before_word - len(data)} rows with missing/empty word_text. Remaining: {len(data)}"
             )
 
-        # Check if we still have data
-        if len(data) == 0:
-            raise ValueError(
-                "No data remaining after preprocessing. Check your data format."
-            )
-
-        # Basic data cleaning
-        # Remove fixations that are too short or too long
+        # Basic data cleaning - but less aggressive
         if "fixation_duration" in data.columns:
             before_filter = len(data)
+            # Only filter extreme outliers
             data = data[
-                (data["fixation_duration"] >= 50) & (data["fixation_duration"] <= 2000)
+                (data["fixation_duration"] >= 20)  # More lenient lower bound
+                & (data["fixation_duration"] <= 3000)  # More lenient upper bound
             ]
             logger.info(
                 f"Filtered fixation durations: {before_filter} -> {len(data)} rows"
+            )
+
+        # Check if we still have data BEFORE other operations
+        if len(data) == 0:
+            logger.error(
+                "No data remaining after preprocessing. Check your data format."
+            )
+            logger.error("This might be due to:")
+            logger.error("  1. All word_text values are missing/empty")
+            logger.error("  2. Subject_id column is entirely missing")
+            logger.error("  3. Fixation durations are all outside normal ranges")
+            raise ValueError(
+                "No data remaining after preprocessing. Check your data format."
             )
 
         # Create word position if not available
@@ -449,10 +717,11 @@ class DyslexiaTimeAnalysisPipeline:
             dyslexic_subjects = self._identify_dyslexic_subjects(data)
             data["dyslexic"] = data["subject_id"].isin(dyslexic_subjects)
 
-            n_dyslexic = data["dyslexic"].sum()
-            n_total = len(data)
+            n_dyslexic_fixations = data["dyslexic"].sum()
+            n_total_fixations = len(data)
+            n_dyslexic_subjects = len(dyslexic_subjects)
             logger.info(
-                f"Identified {n_dyslexic}/{n_total} fixations from dyslexic subjects"
+                f"Identified {n_dyslexic_fixations}/{n_total_fixations} fixations from {n_dyslexic_subjects} dyslexic subjects"
             )
 
         # Create eye measures if not available
@@ -570,14 +839,63 @@ class DyslexiaTimeAnalysisPipeline:
                 stats = self._participant_stats
                 logger.info(f"Participant stats columns: {list(stats.columns)}")
 
+                # Look for dyslexia column specifically
+                if "dyslexia" in stats.columns:
+                    logger.info("Found 'dyslexia' column in participant stats!")
+
+                    # Show the values in the dyslexia column
+                    dyslexia_values = stats["dyslexia"].value_counts()
+                    logger.info(f"Dyslexia column values: {dyslexia_values.to_dict()}")
+
+                    # Create dyslexic mask - look for 'yes', 'Yes', 'YES', etc.
+                    dyslexic_mask = (
+                        stats["dyslexia"]
+                        .astype(str)
+                        .str.lower()
+                        .isin(["yes", "y", "1", "true", "dyslexic"])
+                    )
+
+                    if dyslexic_mask.any():
+                        # Find the subject ID column in stats
+                        subject_col = None
+                        for scol in [
+                            "subj",
+                            "subject_id",
+                            "participant",
+                            "subject",
+                            "part",
+                        ]:
+                            if scol in stats.columns:
+                                subject_col = scol
+                                break
+
+                        if subject_col:
+                            dyslexic_subjects = set(
+                                stats[dyslexic_mask][subject_col].values
+                            )
+                            control_subjects = set(
+                                stats[~dyslexic_mask][subject_col].values
+                            )
+
+                            logger.info(
+                                f"Found REAL dyslexic groups from participant stats:"
+                            )
+                            logger.info(
+                                f"  Dyslexic subjects: {len(dyslexic_subjects)} - {sorted(list(dyslexic_subjects))}"
+                            )
+                            logger.info(
+                                f"  Control subjects: {len(control_subjects)} - {sorted(list(control_subjects))}"
+                            )
+
+                            return dyslexic_subjects
+
+                # Fallback: look for other group columns
                 group_cols = [
                     col
                     for col in stats.columns
-                    if "group" in col.lower()
-                    or "condition" in col.lower()
-                    or "dyslexic" in col.lower()
+                    if "group" in col.lower() or "condition" in col.lower()
                 ]
-                logger.info(f"Potential group columns in stats: {group_cols}")
+                logger.info(f"Other potential group columns in stats: {group_cols}")
 
                 for col in group_cols:
                     unique_values = stats[col].unique()
@@ -589,7 +907,13 @@ class DyslexiaTimeAnalysisPipeline:
                     if dyslexic_mask.any():
                         # Find the subject ID column in stats
                         subject_col = None
-                        for scol in ["subject_id", "participant", "subject", "part"]:
+                        for scol in [
+                            "subj",
+                            "subject_id",
+                            "participant",
+                            "subject",
+                            "part",
+                        ]:
                             if scol in stats.columns:
                                 subject_col = scol
                                 break
