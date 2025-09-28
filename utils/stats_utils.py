@@ -215,12 +215,15 @@ def calculate_group_summary_stats(
     return group_stats
 
 
-def calculate_basic_statistics(data: pd.DataFrame) -> Dict[str, Any]:
+def calculate_basic_statistics(
+    data: pd.DataFrame, skipping_analysis: Dict = None
+) -> Dict[str, Any]:
     """
     Calculate basic descriptive statistics for the dataset
 
     Args:
         data: DataFrame with eye-tracking data
+        skipping_analysis: Optional enhanced skipping analysis results
 
     Returns:
         Dictionary with basic statistics
@@ -264,6 +267,49 @@ def calculate_basic_statistics(data: pd.DataFrame) -> Dict[str, Any]:
             "min": float(data["total_reading_time"].min()),
             "max": float(data["total_reading_time"].max()),
         }
+
+    # Add skipping statistics if enhanced analysis was performed
+    if skipping_analysis:
+        stats["skipping_analysis"] = {
+            "enhanced_analysis_performed": True,
+            "overall_skipping_rate": float(
+                skipping_analysis.get("overall_skipping_rate", 0)
+            ),
+            "total_words_analyzed": int(skipping_analysis.get("total_words", 0)),
+            "fixated_words": int(skipping_analysis.get("fixated_words", 0)),
+            "skipped_words": int(skipping_analysis.get("skipped_words", 0)),
+        }
+
+        # Add group-level skipping statistics if available
+        if "skipping_by_group" in skipping_analysis:
+            stats["skipping_analysis"]["by_group"] = skipping_analysis[
+                "skipping_by_group"
+            ]
+
+        if "subject_level_skipping_by_group" in skipping_analysis:
+            stats["skipping_analysis"]["subject_level_by_group"] = skipping_analysis[
+                "subject_level_skipping_by_group"
+            ]
+
+        logger.info(f"Added enhanced skipping statistics to basic stats")
+        logger.info(
+            f"Overall skipping rate: {stats['skipping_analysis']['overall_skipping_rate']*100:.1f}%"
+        )
+    else:
+        stats["skipping_analysis"] = {
+            "enhanced_analysis_performed": False,
+            "note": "Enhanced skipping analysis not available - using basic measures from ExtractedFeatures only",
+        }
+
+        # Add basic skipping info from the data if available
+        if "skipped" in data.columns:
+            stats["skipping_analysis"]["basic_skipping_rate"] = float(
+                data["skipped"].mean()
+            )
+        if "skipping_probability" in data.columns:
+            stats["skipping_analysis"]["mean_skipping_probability"] = float(
+                data["skipping_probability"].mean()
+            )
 
     return stats
 

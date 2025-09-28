@@ -152,6 +152,7 @@ class DyslexiaTimeAnalysisPipeline:
                 logger.info(
                     f"Overall skipping rate: {skipping_results.get('overall_skipping_rate', 0)*100:.1f}%"
                 )
+                logger.info(f"Skipping results keys: {list(skipping_results.keys())}")
 
                 # Store skipping results for later use
                 self._skipping_analysis = skipping_results
@@ -178,12 +179,15 @@ class DyslexiaTimeAnalysisPipeline:
         # Load data
         data = self.load_copco_data()
 
-        # Calculate basic statistics
-        summary = calculate_basic_statistics(data)
+        # Get skipping analysis results if available
+        skipping_analysis = getattr(self, "_skipping_analysis", {})
+
+        # Calculate basic statistics (now includes skipping stats)
+        summary = calculate_basic_statistics(data, skipping_analysis)
 
         # Calculate group statistics if dyslexic column exists
         if "dyslexic" in data.columns:
-            group_stats = calculate_group_summary_stats(data)
+            group_stats = calculate_group_summary_stats(data, skipping_analysis)
             summary.update(group_stats)
 
         # Save results
