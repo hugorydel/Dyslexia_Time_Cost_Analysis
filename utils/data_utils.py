@@ -162,7 +162,8 @@ def clean_word_data(data: pd.DataFrame, config) -> pd.DataFrame:
         )
 
     # Step 2: Identify skipped vs fixated words BEFORE removing reading times
-    fixation_col = "number_of_fixations"
+    # Use the mapped column name (n_fixations, not number_of_fixations)
+    fixation_col = "n_fixations"
 
     if fixation_col in data.columns:
         # Identify skipped words (0 fixations) vs fixated words (1+ fixations)
@@ -268,12 +269,15 @@ def clean_word_data(data: pd.DataFrame, config) -> pd.DataFrame:
 
 def create_additional_measures(data: pd.DataFrame) -> pd.DataFrame:
     """
-    Create additional measures for analysis using simple skipping approach
+    Create additional measures for analysis using correct column names
     """
+    # Use the mapped column name (n_fixations, not number_of_fixations)
+    fixation_col = "n_fixations"
+
     # Simple skipping analysis: words with 0 fixations were skipped
-    if "n_fixations" in data.columns:
-        data["skipped"] = data["n_fixations"] == 0
-        data["was_fixated"] = data["n_fixations"] > 0
+    if fixation_col in data.columns:
+        data["skipped"] = data[fixation_col] == 0
+        data["was_fixated"] = data[fixation_col] > 0
         data["skipping_probability"] = data["skipped"].astype(float)
     else:
         data["skipped"] = np.nan

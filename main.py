@@ -198,22 +198,27 @@ class DyslexiaTimeAnalysisPipeline:
             fig, axes = plt.subplots(2, 2, figsize=(12, 8))
             fig.suptitle("Word-Level Exploratory Data Analysis")
 
-            # Total reading time distribution
+            # Total reading time distribution (only for fixated words)
             if "total_reading_time" in data.columns:
-                axes[0, 0].hist(data["total_reading_time"], bins=50, alpha=0.7)
-                axes[0, 0].set_title("Total Reading Time Distribution")
+                fixated_data = data[data["n_fixations"] > 0]["total_reading_time"]
+                axes[0, 0].hist(fixated_data, bins=50, alpha=0.7)
+                axes[0, 0].set_title("Total Reading Time Distribution (Fixated Words)")
                 axes[0, 0].set_xlabel("Duration (ms)")
 
-            # Group comparison with normalized histograms
+            # Group comparison with normalized histograms (only for fixated words)
             if "dyslexic" in data.columns and "total_reading_time" in data.columns:
+                fixated_mask = data["n_fixations"] > 0
                 for group, label in [(True, "Dyslexic"), (False, "Control")]:
-                    group_data = data[data["dyslexic"] == group]["total_reading_time"]
+                    group_data = data[(data["dyslexic"] == group) & fixated_mask][
+                        "total_reading_time"
+                    ]
                     # Create normalized histogram
-                    counts, bins, patches = axes[0, 1].hist(
-                        group_data, alpha=0.7, label=label, bins=30, density=True
-                    )
+                    if len(group_data) > 0:
+                        counts, bins, patches = axes[0, 1].hist(
+                            group_data, alpha=0.7, label=label, bins=30, density=True
+                        )
 
-                axes[0, 1].set_title("Reading Time by Group (Normalized)")
+                axes[0, 1].set_title("Reading Time by Group (Fixated Words Only)")
                 axes[0, 1].set_xlabel("Duration (ms)")
                 axes[0, 1].set_ylabel("Density (normalized)")
                 axes[0, 1].legend()
@@ -224,12 +229,17 @@ class DyslexiaTimeAnalysisPipeline:
                 axes[1, 0].set_title("Word Length Distribution")
                 axes[1, 0].set_xlabel("Characters")
 
-            # Word frequency (top 20 words)
-            if "word_text" in data.columns:
-                word_counts = data["word_text"].value_counts().head(20)
-                word_counts.plot(kind="bar", ax=axes[1, 1])
-                axes[1, 1].set_title("Top 20 Most Frequent Words")
-                axes[1, 1].tick_params(axis="x", rotation=45)
+            # Skipping vs Fixation patterns
+            if "n_fixations" in data.columns:
+                skipped_count = (data["n_fixations"] == 0).sum()
+                fixated_count = (data["n_fixations"] > 0).sum()
+
+                labels = ["Skipped", "Fixated"]
+                counts = [skipped_count, fixated_count]
+                colors = ["lightcoral", "skyblue"]
+
+                axes[1, 1].pie(counts, labels=labels, colors=colors, autopct="%1.1f%%")
+                axes[1, 1].set_title("Word Skipping vs Fixation")
 
             plt.tight_layout()
             plt.savefig(
@@ -266,8 +276,11 @@ class DyslexiaTimeAnalysisPipeline:
                 return
 
             # Calculate subject-level averages for cleaner group comparisons
+            # Only use fixated words for reading time measures
+            fixated_data = data[data["n_fixations"] > 0]
+
             subject_averages = (
-                data.groupby(["subject_id", "dyslexic"])
+                fixated_data.groupby(["subject_id", "dyslexic"])
                 .agg(
                     {
                         measure: "mean"
@@ -278,7 +291,7 @@ class DyslexiaTimeAnalysisPipeline:
                             "n_fixations",
                             "regression_probability",
                         ]
-                        if measure in data.columns
+                        if measure in fixated_data.columns
                     }
                 )
                 .reset_index()
@@ -463,7 +476,7 @@ class DyslexiaTimeAnalysisPipeline:
 
                 plot_idx += 1
 
-            # 5. Skipping Probability by Group (if enhanced analysis available)
+            # 5. Skipping Probability by Group
             if (
                 hasattr(self, "_skipping_analysis")
                 and self._skipping_analysis
@@ -495,7 +508,7 @@ class DyslexiaTimeAnalysisPipeline:
                     color=["darkseagreen", "plum"],
                 )
                 ax.set_title(
-                    "Word Skipping Probability by Group\n(Enhanced Analysis)",
+                    "Word Skipping Probability by Group",
                     fontweight="bold",
                 )
                 ax.set_ylabel("Skipping Probability")
@@ -513,54 +526,6 @@ class DyslexiaTimeAnalysisPipeline:
 
                 plot_idx += 1
 
-            # Alternative: Show regression probability if no skipping data available
-            elif "regression_probability" in subject_averages.columns:
-                ax = axes[plot_idx // 2, plot_idx % 2]
-                groups = ["Control", "Dyslexic"]
-                means = [
-                    subject_averages[subject_averages["dyslexic"] == False][
-                        "regression_probability"
-                    ].mean(),
-                    subject_averages[subject_averages["dyslexic"] == True][
-                        "regression_probability"
-                    ].mean(),
-                ]
-                stds = [
-                    subject_averages[subject_averages["dyslexic"] == False][
-                        "regression_probability"
-                    ].std(),
-                    subject_averages[subject_averages["dyslexic"] == True][
-                        "regression_probability"
-                    ].std(),
-                ]
-
-                bars = ax.bar(
-                    groups,
-                    means,
-                    yerr=stds,
-                    capsize=5,
-                    alpha=0.7,
-                    color=["darkseagreen", "plum"],
-                )
-                ax.set_title(
-                    "Regression Probability by Group\n(Go-past > Gaze Duration)",
-                    fontweight="bold",
-                )
-                ax.set_ylabel("Regression Probability")
-                ax.set_ylim(0, 1)
-
-                for bar, mean, std in zip(bars, means, stds):
-                    height = bar.get_height()
-                    ax.text(
-                        bar.get_x() + bar.get_width() / 2.0,
-                        height + std + 0.02,
-                        f"{mean:.3f}±{std:.3f}",
-                        ha="center",
-                        va="bottom",
-                    )
-
-                plot_idx += 1
-
             # 6. Word Length Effects by Group (if remaining space)
             if (
                 plot_idx < 6
@@ -569,9 +534,12 @@ class DyslexiaTimeAnalysisPipeline:
             ):
                 ax = axes[plot_idx // 2, plot_idx % 2]
 
+                # Use only fixated words for reading time analysis
+                fixated_data = data[data["n_fixations"] > 0].copy()
+
                 # Create word length bins
-                data["word_length_bin"] = pd.cut(
-                    data["word_length"],
+                fixated_data["word_length_bin"] = pd.cut(
+                    fixated_data["word_length"],
                     bins=[0, 3, 5, 7, float("inf")],
                     labels=[
                         "Short (1-3)",
@@ -582,16 +550,16 @@ class DyslexiaTimeAnalysisPipeline:
                 )
 
                 length_group_means = (
-                    data.groupby(["word_length_bin", "dyslexic"], observed=True)[
-                        "total_reading_time"
-                    ]
+                    fixated_data.groupby(
+                        ["word_length_bin", "dyslexic"], observed=True
+                    )["total_reading_time"]
                     .mean()
                     .unstack()
                 )
                 length_group_stds = (
-                    data.groupby(["word_length_bin", "dyslexic"], observed=True)[
-                        "total_reading_time"
-                    ]
+                    fixated_data.groupby(
+                        ["word_length_bin", "dyslexic"], observed=True
+                    )["total_reading_time"]
                     .std()
                     .unstack()
                 )

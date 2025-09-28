@@ -232,10 +232,32 @@ def calculate_basic_statistics(
         "data_shape": [int(x) for x in data.shape],
         "columns": list(data.columns),
         "subjects": int(data["subject_id"].nunique()),
-        "missing_data": {
-            str(k): int(v) for k, v in data.isnull().sum().to_dict().items()
-        },
     }
+
+    # Data quality metrics (more useful than misleading missing data counts)
+    if "n_fixations" in data.columns:
+        stats["data_quality"] = {
+            "total_words": len(data),
+            "skipped_words": int((data["n_fixations"] == 0).sum()),
+            "fixated_words": int((data["n_fixations"] > 0).sum()),
+            "skipping_rate": float((data["n_fixations"] == 0).mean()),
+        }
+
+        # Only report genuinely concerning missing data
+        concerning_missing = {}
+        critical_id_cols = ["subject_id", "word_text", "trial_id", "word_position"]
+        for col in critical_id_cols:
+            if col in data.columns:
+                missing_count = data[col].isna().sum()
+                if missing_count > 0:
+                    concerning_missing[col] = int(missing_count)
+
+        if concerning_missing:
+            stats["data_quality"]["concerning_missing_data"] = concerning_missing
+        else:
+            stats["data_quality"][
+                "concerning_missing_data"
+            ] = "None - all critical identifiers present"
 
     # Trial and word statistics
     if "trial_id" in data.columns:
@@ -260,13 +282,17 @@ def calculate_basic_statistics(
             "max_length": int(data["word_length"].max()),
         }
 
-    if "total_reading_time" in data.columns:
-        stats["reading_time_stats"] = {
-            "mean": float(data["total_reading_time"].mean()),
-            "std": float(data["total_reading_time"].std()),
-            "min": float(data["total_reading_time"].min()),
-            "max": float(data["total_reading_time"].max()),
-        }
+    # Reading time stats - only for fixated words
+    if "total_reading_time" in data.columns and "n_fixations" in data.columns:
+        fixated_data = data[data["n_fixations"] > 0]["total_reading_time"]
+        if len(fixated_data) > 0:
+            stats["reading_time_stats"] = {
+                "mean": float(fixated_data.mean()),
+                "std": float(fixated_data.std()),
+                "min": float(fixated_data.min()),
+                "max": float(fixated_data.max()),
+                "note": "Statistics for fixated words only (skipped words excluded)",
+            }
 
     # Add skipping statistics if enhanced analysis was performed
     if skipping_analysis:
