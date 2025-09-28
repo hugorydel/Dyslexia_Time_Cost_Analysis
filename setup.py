@@ -79,7 +79,7 @@ def setup_config():
     config_content = '''# Dyslexia Time Cost Analysis Configuration
 
 # Data paths
-DATA_ROOT = "D:"  # External drive location
+DATA_ROOT = "D:"  # Drive location
 COPCO_PATH = f"{DATA_ROOT}/CopCo"  # Adjust based on your structure
 
 # Analysis parameters
