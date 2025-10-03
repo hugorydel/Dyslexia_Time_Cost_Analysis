@@ -232,8 +232,8 @@ class DyslexiaTimeAnalysisPipeline:
             # Bin into frequency categories
             freq_bins = pd.cut(
                 data["word_frequency_zipf"],
-                bins=[0, 3, 4, 5, 10],
-                labels=["Low (≤3)", "Medium (3-4)", "High (4-5)", "Very High (>5)"],
+                bins=[0, 4, 5, 6, 10],
+                labels=["Low (≤4)", "Medium (4-5)", "High (5-6)", "Very High (>6)"],
             )
 
             for measure in [
