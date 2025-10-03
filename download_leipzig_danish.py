@@ -22,18 +22,22 @@ import requests
 LEIPZIG_BASE = "https://downloads.wortschatz-leipzig.de/corpora/"
 
 DANISH_CORPORA = {
-    "dan_news_2021": "dan_news_2021_1M.tar.gz",
-    "dan_web_2019": "dan-dk_web_2019_1M.tar.gz",
-    "dan_wiki_2021": "dan_wikipedia_2021_1M.tar.gz",
     "dan_mixed_2014": "dan_mixed_2014_1M.tar.gz",
+    "dan_news_2021": "dan_news_2021_1M.tar.gz",
+    "dan_news_2020": "dan_news_2020_1M.tar.gz",
+    "dan_newscrawl_2023": "dan_newscrawl_2023_1M.tar.gz",
+    "dan_web_2019": "dan-dk_web_2019_1M.tar.gz",
+    "dan_web_public_2019": "dan-dk_web-public_2019_1M.tar.gz",
+    "dan_wiki_2016": "dan_wikipedia_2016_1M.tar.gz",
+    "dan_wiki_2021": "dan_wikipedia_2021_1M.tar.gz",
 }
 
 OUTPUT_DIR = Path("danish_frequencies")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 # Processing parameters
-TOP_N_WORDS = 1000000  # Keep top 1 million words (adjust as needed)
-MIN_FREQUENCY = 2  # Minimum frequency threshold; >= 2 filters out unreliable low-freq words (e.g. proper names, foreign words, OCR errors that may appear only once)
+TOP_N_WORDS = 250000  # Keep top 250K words (adjust as needed)
+MIN_FREQUENCY = 2  # Minimum frequency threshold
 REMOVE_PUNCT_ONLY = True  # Remove entries that are only punctuation
 ADD_LOG_TRANSFORM = True  # Add log-transformed frequency columns
 

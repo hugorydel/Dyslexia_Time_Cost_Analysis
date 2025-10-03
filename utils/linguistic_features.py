@@ -7,7 +7,7 @@ Based on CopCo corpus standards and current best practices
 
 import logging
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict
 
 import numpy as np
 import pandas as pd
