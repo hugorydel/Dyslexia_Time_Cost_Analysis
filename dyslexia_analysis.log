@@ -1,0 +1,47 @@
+2025-09-30 22:48:56,698 - __main__ - INFO - Dyslexia Time Analysis Pipeline initialized
+2025-09-30 22:48:56,698 - __main__ - INFO - Running exploratory analysis...
+2025-09-30 22:48:56,699 - __main__ - INFO - Loading CopCo dataset...
+2025-09-30 22:48:56,704 - utils.data_utils - INFO - Loading 57 participant files...
+2025-09-30 22:48:59,200 - utils.data_utils - INFO - Starting with 335,203 total word entries
+2025-09-30 22:48:59,429 - utils.data_utils - INFO - Word fixation patterns:
+2025-09-30 22:48:59,429 - utils.data_utils - INFO -   - Skipped words (0 fixations): 126,302
+2025-09-30 22:48:59,430 - utils.data_utils - INFO -   - Fixated words (1+ fixations): 208,901
+2025-09-30 22:48:59,430 - utils.data_utils - INFO -   - Unknown fixations (NaN): 0
+2025-09-30 22:48:59,473 - utils.data_utils - INFO - Fixated words reading times: median 272ms, 99th percentile 1777ms
+2025-09-30 22:48:59,478 - utils.data_utils - INFO - Removed 14 fixated words with extreme reading times (0 too short, 14 too long)
+2025-09-30 22:48:59,619 - utils.data_utils - INFO - Removed 23 words longer than 30 characters (likely data errors)
+2025-09-30 22:48:59,670 - utils.data_utils - INFO - Final dataset: 126,302 skipped words, 208,864 fixated words
+2025-09-30 22:48:59,670 - utils.data_utils - INFO - Data cleaning complete: 335,166 words retained (100.0% of original)
+2025-09-30 22:48:59,687 - utils.data_utils - INFO - Groups identified: 19 dyslexic, 39 control
+2025-09-30 22:48:59,790 - __main__ - INFO - Calculating skipping probabilities...
+2025-09-30 22:48:59,794 - utils.skipping_utils - INFO - Skipping analysis from ExtractedFeatures:
+2025-09-30 22:48:59,794 - utils.skipping_utils - INFO -   Total words: 335,166
+2025-09-30 22:48:59,795 - utils.skipping_utils - INFO -   Skipped: 126,302 (37.7%)
+2025-09-30 22:48:59,795 - utils.skipping_utils - INFO -   Fixated: 208,864 (62.3%)
+2025-09-30 22:48:59,857 - __main__ - INFO - Skipping analysis: 37.7% overall rate
+2025-09-30 22:48:59,879 - __main__ - INFO - Loaded: 335,166 words from 57 participants
+2025-09-30 22:48:59,879 - __main__ - INFO - ============================================================
+2025-09-30 22:48:59,880 - __main__ - INFO - COMPUTING LINGUISTIC FEATURES
+2025-09-30 22:48:59,880 - __main__ - INFO - ============================================================
+2025-09-30 22:48:59,880 - utils.linguistic_features - INFO - Loading Danish frequency list from utils\lemma\lemma-10k-2017-in.txt
+2025-09-30 22:48:59,911 - utils.linguistic_features - INFO - Loaded 9,365 lemma frequencies (0.9026845520178889 total corpus tokens)
+2025-09-30 22:48:59,999 - utils.linguistic_features - INFO - Computing word frequency...
+2025-09-30 22:49:00,108 - utils.linguistic_features - WARNING - 130,357 words (38.9%) not found in frequency list. Assigning minimum frequency.
+2025-09-30 22:49:00,190 - utils.linguistic_features - WARNING - 130,357 words (38.9%) not found in frequency list. Assigning minimum frequency.
+2025-09-30 22:49:00,197 - utils.linguistic_features - INFO - Linguistic features added successfully
+2025-09-30 22:49:00,198 - utils.linguistic_features - INFO - 
+Feature Summary:
+2025-09-30 22:49:00,202 - utils.linguistic_features - INFO -   Word length: mean=4.69, std=3.17
+2025-09-30 22:49:00,208 - utils.linguistic_features - INFO -   Zipf frequency: mean=9.61, std=2.10
+2025-09-30 22:49:00,210 - __main__ - WARNING - Linguistic feature validation warnings:
+2025-09-30 22:49:00,211 - __main__ - WARNING -   - word_frequency_zipf: range [6.76, 12.04] outside expected [0, 8]
+2025-09-30 22:49:00,342 - utils.stats_utils - INFO - Added enhanced skipping statistics to basic stats
+2025-09-30 22:49:00,343 - utils.stats_utils - INFO - Overall skipping rate: 37.7%
+2025-09-30 22:49:00,859 - __main__ - INFO - Analyzing linguistic feature effects...
+2025-09-30 22:49:01,255 - __main__ - INFO - Linguistic feature analysis complete
+2025-09-30 22:49:01,271 - utils.misc_utils - INFO - Results saved to results\exploratory_summary.json
+2025-09-30 22:49:03,272 - utils.visualization_utils - INFO - Exploratory plots saved to results\exploratory_plots.png
+2025-09-30 22:49:06,941 - utils.visualization_utils - INFO - Group summary plots saved to results\group_summary_plots.png
+2025-09-30 22:49:06,953 - __main__ - INFO - Creating linguistic feature visualizations...
+2025-09-30 22:49:09,957 - __main__ - INFO - Linguistic feature plots saved to results\linguistic_features_plots.png
+2025-09-30 22:49:09,978 - __main__ - INFO - Analysis complete. Results saved to results
