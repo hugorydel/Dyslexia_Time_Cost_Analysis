@@ -2,7 +2,7 @@
 """
 Linguistic Feature Computation for Danish Eye-Tracking Data
 Implements word frequency (Zipf scale) and surprisal computation
-Based on CopCo corpus standards and current best practices
+Updated to use Leipzig Corpora frequency data
 """
 
 import logging
@@ -18,19 +18,27 @@ logger = logging.getLogger(__name__)
 class DanishLinguisticFeatures:
     """
     Compute linguistic features for Danish text:
-    - Word frequency (from korpus.dsl.dk lemma lists, Zipf transformed)
+    - Word frequency (from Leipzig Corpora, Zipf transformed)
     - Surprisal (using transformer models)
     - Word length (character count)
     """
 
-    def __init__(self, lemma_file: str = "utils/lemma/lemma-10k-2017-in.txt"):
+    def __init__(
+        self,
+        lemma_file: str = "danish_frequencies/danish_leipzig_for_analysis.txt",
+        use_proportions: bool = True,
+    ):
         """
         Initialize with Danish frequency lists
 
         Args:
-            lemma_file: Path to the lemma frequency file (CopCo standard)
+            lemma_file: Path to the frequency file
+                       Default: Leipzig Corpora processed file (word\tproportion format)
+            use_proportions: If True, expects file to contain proportions
+                           If False, expects raw frequency counts
         """
         self.lemma_file = Path(lemma_file)
+        self.use_proportions = use_proportions
         self.freq_dict = None
         self.total_corpus_tokens = None
 
@@ -42,62 +50,61 @@ class DanishLinguisticFeatures:
         self._surprisal_tokenizer = None
 
     def _load_frequency_dict(self):
-        """Load Danish lemma frequencies from CopCo processing pipeline"""
+        """Load Danish word frequencies from Leipzig Corpora"""
 
         if not self.lemma_file.exists():
             raise FileNotFoundError(
-                f"Lemma frequency file not found: {self.lemma_file}\n"
-                f"Download from: https://github.com/norahollenstein/copco-processing"
+                f"Frequency file not found: {self.lemma_file}\n"
+                f"Run download_leipzig_danish.py to generate this file."
             )
 
         logger.info(f"Loading Danish frequency list from {self.lemma_file}")
 
-        # Try different separators (tab or whitespace)
-        try:
-            freq_df = pd.read_csv(
-                self.lemma_file,
-                sep="\t",
-                names=["lemma", "frequency"],
-                encoding="utf-8",
-            )
-        except:
-            freq_df = pd.read_csv(
-                self.lemma_file,
-                sep=r"\s+",
-                names=["lemma", "frequency"],
-                encoding="utf-8",
-            )
-
-        # Create lookup dictionary (lowercase for matching)
-        self.freq_dict = dict(zip(freq_df["lemma"].str.lower(), freq_df["frequency"]))
-
-        # Calculate total corpus size for Zipf transformation
-        self.total_corpus_tokens = freq_df["frequency"].sum()
-
-        logger.info(
-            f"Loaded {len(self.freq_dict):,} lemma frequencies "
-            f"({self.total_corpus_tokens:,} total corpus tokens)"
+        # Load the frequency file (format: word\tproportion or word\tfrequency)
+        freq_df = pd.read_csv(
+            self.lemma_file,
+            sep="\t",
+            header=None,
+            names=["word", "value"],
+            encoding="utf-8",
         )
+
+        if self.use_proportions:
+            # File contains proportions (value between 0 and 1)
+            self.freq_dict = dict(zip(freq_df["word"].str.lower(), freq_df["value"]))
+            # For proportions, we don't need total_corpus_tokens
+            self.total_corpus_tokens = None
+            logger.info(
+                f"Loaded {len(self.freq_dict):,} word proportions from Leipzig Corpora"
+            )
+        else:
+            # File contains raw frequencies
+            self.freq_dict = dict(zip(freq_df["word"].str.lower(), freq_df["value"]))
+            self.total_corpus_tokens = freq_df["value"].sum()
+            logger.info(
+                f"Loaded {len(self.freq_dict):,} word frequencies "
+                f"({self.total_corpus_tokens:,} total corpus tokens)"
+            )
 
     def compute_word_frequency(
         self, words: pd.Series, return_zipf: bool = True
     ) -> pd.Series:
         """
-        Compute word frequency from Danish lemma lists
+        Compute word frequency from Danish frequency lists
 
         Args:
             words: Series of word strings
             return_zipf: If True, return Zipf-transformed frequencies (recommended)
-                        If False, return raw frequencies
+                        If False, return raw frequencies or proportions
 
         Returns:
-            Series of frequency values (Zipf scale 1-7 or raw counts)
+            Series of frequency values (Zipf scale 1-7 or raw values)
         """
 
         # Match words to frequency dictionary (case-insensitive)
         frequencies = words.str.lower().map(self.freq_dict)
 
-        # Handle missing frequencies (words not in top 10K)
+        # Handle missing frequencies
         n_missing = frequencies.isna().sum()
         if n_missing > 0:
             pct_missing = (n_missing / len(words)) * 100
@@ -105,13 +112,30 @@ class DanishLinguisticFeatures:
                 f"{n_missing:,} words ({pct_missing:.1f}%) not found in frequency list. "
                 f"Assigning minimum frequency."
             )
-            # Assign frequency of 1 to unknown words (will be low Zipf)
-            frequencies = frequencies.fillna(1)
+
+            if self.use_proportions:
+                # For proportions, assign a very small value (1 occurrence per billion words)
+                min_proportion = 1e-9
+                frequencies = frequencies.fillna(min_proportion)
+            else:
+                # For raw frequencies, assign frequency of 1
+                frequencies = frequencies.fillna(1)
 
         if return_zipf:
             # Transform to Zipf scale: log10(freq per billion) + 3
             # This gives interpretable scores from ~1 (rare) to ~7 (very frequent)
-            zipf_freq = np.log10((frequencies / self.total_corpus_tokens) * 1e9) + 3
+
+            if self.use_proportions:
+                # proportions are already normalized (freq / total_tokens)
+                # So we just need: log10(proportion * 1e9) + 3
+                zipf_freq = np.log10(frequencies * 1e9) + 3
+            else:
+                # For raw frequencies: log10((freq / total) * 1e9) + 3
+                zipf_freq = np.log10((frequencies / self.total_corpus_tokens) * 1e9) + 3
+
+            # Handle any -inf values (from log of 0)
+            zipf_freq = zipf_freq.replace([np.inf, -np.inf], np.nan)
+
             return zipf_freq
         else:
             return frequencies
@@ -274,7 +298,7 @@ class DanishLinguisticFeatures:
         Returns:
             DataFrame with added columns:
                 - word_length: character count (if not present)
-                - word_frequency_raw: raw frequency count
+                - word_frequency_raw: raw proportion or frequency
                 - word_frequency_zipf: Zipf-transformed frequency (1-7 scale)
                 - surprisal: -log2 probability (if compute_surprisal=True)
         """
@@ -295,6 +319,12 @@ class DanishLinguisticFeatures:
             data[text_col], return_zipf=True
         )
 
+        # Log statistics about frequency coverage
+        valid_freq = data["word_frequency_zipf"].notna()
+        logger.info(
+            f"Frequency coverage: {valid_freq.sum():,} / {len(data):,} words ({valid_freq.mean()*100:.1f}%)"
+        )
+
         # 3. Surprisal (optional, computationally expensive)
         if compute_surprisal:
             if "sentence_id" not in data.columns:
@@ -312,7 +342,8 @@ class DanishLinguisticFeatures:
         )
         logger.info(
             f"  Zipf frequency: mean={data['word_frequency_zipf'].mean():.2f}, "
-            f"std={data['word_frequency_zipf'].std():.2f}"
+            f"std={data['word_frequency_zipf'].std():.2f}, "
+            f"range=[{data['word_frequency_zipf'].min():.2f}, {data['word_frequency_zipf'].max():.2f}]"
         )
         if compute_surprisal and "surprisal" in data.columns:
             logger.info(

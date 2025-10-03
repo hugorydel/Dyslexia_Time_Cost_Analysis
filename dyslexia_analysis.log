@@ -45,3 +45,195 @@ Feature Summary:
 2025-09-30 22:49:06,953 - __main__ - INFO - Creating linguistic feature visualizations...
 2025-09-30 22:49:09,957 - __main__ - INFO - Linguistic feature plots saved to results\linguistic_features_plots.png
 2025-09-30 22:49:09,978 - __main__ - INFO - Analysis complete. Results saved to results
+2025-10-03 14:36:39,811 - __main__ - INFO - Dyslexia Time Analysis Pipeline initialized
+2025-10-03 14:36:39,811 - __main__ - INFO - Running exploratory analysis...
+2025-10-03 14:36:39,811 - __main__ - INFO - Loading CopCo dataset...
+2025-10-03 14:36:39,817 - utils.data_utils - INFO - Loading 57 participant files...
+2025-10-03 14:36:41,884 - utils.data_utils - INFO - Starting with 335,203 total word entries
+2025-10-03 14:36:42,106 - utils.data_utils - INFO - Word fixation patterns:
+2025-10-03 14:36:42,107 - utils.data_utils - INFO -   - Skipped words (0 fixations): 126,302
+2025-10-03 14:36:42,107 - utils.data_utils - INFO -   - Fixated words (1+ fixations): 208,901
+2025-10-03 14:36:42,107 - utils.data_utils - INFO -   - Unknown fixations (NaN): 0
+2025-10-03 14:36:42,143 - utils.data_utils - INFO - Fixated words reading times: median 272ms, 99th percentile 1777ms
+2025-10-03 14:36:42,146 - utils.data_utils - INFO - Removed 14 fixated words with extreme reading times (0 too short, 14 too long)
+2025-10-03 14:36:42,264 - utils.data_utils - INFO - Removed 23 words longer than 30 characters (likely data errors)
+2025-10-03 14:36:42,310 - utils.data_utils - INFO - Final dataset: 126,302 skipped words, 208,864 fixated words
+2025-10-03 14:36:42,310 - utils.data_utils - INFO - Data cleaning complete: 335,166 words retained (100.0% of original)
+2025-10-03 14:36:42,323 - utils.data_utils - INFO - Groups identified: 19 dyslexic, 39 control
+2025-10-03 14:36:42,410 - __main__ - INFO - Calculating skipping probabilities...
+2025-10-03 14:36:42,415 - utils.skipping_utils - INFO - Skipping analysis from ExtractedFeatures:
+2025-10-03 14:36:42,416 - utils.skipping_utils - INFO -   Total words: 335,166
+2025-10-03 14:36:42,416 - utils.skipping_utils - INFO -   Skipped: 126,302 (37.7%)
+2025-10-03 14:36:42,416 - utils.skipping_utils - INFO -   Fixated: 208,864 (62.3%)
+2025-10-03 14:36:42,478 - __main__ - INFO - Skipping analysis: 37.7% overall rate
+2025-10-03 14:36:42,502 - __main__ - INFO - Loaded: 335,166 words from 57 participants
+2025-10-03 14:36:42,502 - __main__ - INFO - ============================================================
+2025-10-03 14:36:42,502 - __main__ - INFO - COMPUTING LINGUISTIC FEATURES
+2025-10-03 14:36:42,502 - __main__ - INFO - ============================================================
+2025-10-03 14:36:42,502 - utils.linguistic_features - INFO - Loading Danish frequency list from danish_frequencies\danish_leipzig_for_analysis.txt
+2025-10-03 14:36:42,790 - utils.linguistic_features - INFO - Loaded 216,540 word proportions from Leipzig Corpora
+2025-10-03 14:36:42,865 - utils.linguistic_features - INFO - Computing word frequency...
+2025-10-03 14:36:43,050 - utils.linguistic_features - WARNING - 46,454 words (13.9%) not found in frequency list. Assigning minimum frequency.
+2025-10-03 14:36:43,203 - utils.linguistic_features - WARNING - 46,454 words (13.9%) not found in frequency list. Assigning minimum frequency.
+2025-10-03 14:36:43,211 - utils.linguistic_features - INFO - Frequency coverage: 335,166 / 335,166 words (100.0%)
+2025-10-03 14:36:43,212 - utils.linguistic_features - INFO - Linguistic features added successfully
+2025-10-03 14:36:43,212 - utils.linguistic_features - INFO - 
+Feature Summary:
+2025-10-03 14:36:43,216 - utils.linguistic_features - INFO -   Word length: mean=4.69, std=3.17
+2025-10-03 14:36:43,223 - utils.linguistic_features - INFO -   Zipf frequency: mean=5.79, std=1.43, range=[3.00, 9.52]
+2025-10-03 14:36:43,225 - __main__ - WARNING - Linguistic feature validation warnings:
+2025-10-03 14:36:43,225 - __main__ - WARNING -   - word_frequency_zipf: range [3.00, 9.52] outside expected [0, 8]
+2025-10-03 14:36:43,379 - utils.stats_utils - INFO - Added enhanced skipping statistics to basic stats
+2025-10-03 14:36:43,379 - utils.stats_utils - INFO - Overall skipping rate: 37.7%
+2025-10-03 14:36:43,851 - __main__ - INFO - Analyzing linguistic feature effects...
+2025-10-03 14:36:44,232 - __main__ - INFO - Linguistic feature analysis complete
+2025-10-03 14:36:44,247 - utils.misc_utils - INFO - Results saved to results\exploratory_summary.json
+2025-10-03 14:36:45,999 - utils.visualization_utils - INFO - Exploratory plots saved to results\exploratory_plots.png
+2025-10-03 14:36:49,121 - utils.visualization_utils - INFO - Group summary plots saved to results\group_summary_plots.png
+2025-10-03 14:36:49,130 - __main__ - INFO - Creating linguistic feature visualizations...
+2025-10-03 14:36:51,723 - __main__ - INFO - Linguistic feature plots saved to results\linguistic_features_plots.png
+2025-10-03 14:36:51,742 - __main__ - INFO - Analysis complete. Results saved to results
+2025-10-03 14:44:30,324 - __main__ - INFO - Dyslexia Time Analysis Pipeline initialized
+2025-10-03 14:44:30,326 - __main__ - INFO - Running exploratory analysis...
+2025-10-03 14:44:30,326 - __main__ - INFO - Loading CopCo dataset...
+2025-10-03 14:44:30,327 - utils.data_utils - INFO - Loading 57 participant files...
+2025-10-03 14:44:32,075 - utils.data_utils - INFO - Starting with 335,203 total word entries
+2025-10-03 14:44:32,241 - utils.data_utils - INFO - Word fixation patterns:
+2025-10-03 14:44:32,242 - utils.data_utils - INFO -   - Skipped words (0 fixations): 126,302
+2025-10-03 14:44:32,242 - utils.data_utils - INFO -   - Fixated words (1+ fixations): 208,901
+2025-10-03 14:44:32,242 - utils.data_utils - INFO -   - Unknown fixations (NaN): 0
+2025-10-03 14:44:32,272 - utils.data_utils - INFO - Fixated words reading times: median 272ms, 99th percentile 1777ms
+2025-10-03 14:44:32,274 - utils.data_utils - INFO - Removed 14 fixated words with extreme reading times (0 too short, 14 too long)
+2025-10-03 14:44:32,371 - utils.data_utils - INFO - Removed 23 words longer than 30 characters (likely data errors)
+2025-10-03 14:44:32,407 - utils.data_utils - INFO - Final dataset: 126,302 skipped words, 208,864 fixated words
+2025-10-03 14:44:32,408 - utils.data_utils - INFO - Data cleaning complete: 335,166 words retained (100.0% of original)
+2025-10-03 14:44:32,417 - utils.data_utils - INFO - Groups identified: 19 dyslexic, 39 control
+2025-10-03 14:44:32,486 - __main__ - INFO - Calculating skipping probabilities...
+2025-10-03 14:44:32,489 - utils.skipping_utils - INFO - Skipping analysis from ExtractedFeatures:
+2025-10-03 14:44:32,489 - utils.skipping_utils - INFO -   Total words: 335,166
+2025-10-03 14:44:32,490 - utils.skipping_utils - INFO -   Skipped: 126,302 (37.7%)
+2025-10-03 14:44:32,490 - utils.skipping_utils - INFO -   Fixated: 208,864 (62.3%)
+2025-10-03 14:44:32,534 - __main__ - INFO - Skipping analysis: 37.7% overall rate
+2025-10-03 14:44:32,549 - __main__ - INFO - Loaded: 335,166 words from 57 participants
+2025-10-03 14:44:32,550 - __main__ - INFO - ============================================================
+2025-10-03 14:44:32,550 - __main__ - INFO - COMPUTING LINGUISTIC FEATURES
+2025-10-03 14:44:32,550 - __main__ - INFO - ============================================================
+2025-10-03 14:44:32,551 - utils.linguistic_features - INFO - Loading Danish frequency list from danish_frequencies\danish_leipzig_for_analysis.txt
+2025-10-03 14:44:32,991 - utils.linguistic_features - INFO - Loaded 430,947 word proportions from Leipzig Corpora
+2025-10-03 14:44:33,036 - utils.linguistic_features - INFO - Computing word frequency...
+2025-10-03 14:44:33,277 - utils.linguistic_features - WARNING - 43,136 words (12.9%) not found in frequency list. Assigning minimum frequency.
+2025-10-03 14:44:33,509 - utils.linguistic_features - WARNING - 43,136 words (12.9%) not found in frequency list. Assigning minimum frequency.
+2025-10-03 14:44:33,517 - utils.linguistic_features - INFO - Frequency coverage: 335,166 / 335,166 words (100.0%)
+2025-10-03 14:44:33,517 - utils.linguistic_features - INFO - Linguistic features added successfully
+2025-10-03 14:44:33,517 - utils.linguistic_features - INFO - 
+Feature Summary:
+2025-10-03 14:44:33,520 - utils.linguistic_features - INFO -   Word length: mean=4.69, std=3.17
+2025-10-03 14:44:33,527 - utils.linguistic_features - INFO -   Zipf frequency: mean=5.56, std=1.39, range=[3.00, 9.51]
+2025-10-03 14:44:33,529 - __main__ - WARNING - Linguistic feature validation warnings:
+2025-10-03 14:44:33,529 - __main__ - WARNING -   - word_frequency_zipf: range [3.00, 9.51] outside expected [0, 8]
+2025-10-03 14:44:33,676 - utils.stats_utils - INFO - Added enhanced skipping statistics to basic stats
+2025-10-03 14:44:33,676 - utils.stats_utils - INFO - Overall skipping rate: 37.7%
+2025-10-03 14:44:34,066 - __main__ - INFO - Analyzing linguistic feature effects...
+2025-10-03 14:44:34,408 - __main__ - INFO - Linguistic feature analysis complete
+2025-10-03 14:44:34,422 - utils.misc_utils - INFO - Results saved to results\exploratory_summary.json
+2025-10-03 14:44:35,882 - utils.visualization_utils - INFO - Exploratory plots saved to results\exploratory_plots.png
+2025-10-03 14:44:38,133 - utils.visualization_utils - INFO - Group summary plots saved to results\group_summary_plots.png
+2025-10-03 14:44:38,139 - __main__ - INFO - Creating linguistic feature visualizations...
+2025-10-03 14:44:40,500 - __main__ - INFO - Linguistic feature plots saved to results\linguistic_features_plots.png
+2025-10-03 14:44:40,515 - __main__ - INFO - Analysis complete. Results saved to results
+2025-10-03 14:49:24,019 - __main__ - INFO - Dyslexia Time Analysis Pipeline initialized
+2025-10-03 14:49:24,020 - __main__ - INFO - Running exploratory analysis...
+2025-10-03 14:49:24,020 - __main__ - INFO - Loading CopCo dataset...
+2025-10-03 14:49:24,020 - utils.data_utils - INFO - Loading 57 participant files...
+2025-10-03 14:49:25,963 - utils.data_utils - INFO - Starting with 335,203 total word entries
+2025-10-03 14:49:26,169 - utils.data_utils - INFO - Word fixation patterns:
+2025-10-03 14:49:26,169 - utils.data_utils - INFO -   - Skipped words (0 fixations): 126,302
+2025-10-03 14:49:26,169 - utils.data_utils - INFO -   - Fixated words (1+ fixations): 208,901
+2025-10-03 14:49:26,169 - utils.data_utils - INFO -   - Unknown fixations (NaN): 0
+2025-10-03 14:49:26,206 - utils.data_utils - INFO - Fixated words reading times: median 272ms, 99th percentile 1777ms
+2025-10-03 14:49:26,209 - utils.data_utils - INFO - Removed 14 fixated words with extreme reading times (0 too short, 14 too long)
+2025-10-03 14:49:26,318 - utils.data_utils - INFO - Removed 23 words longer than 30 characters (likely data errors)
+2025-10-03 14:49:26,355 - utils.data_utils - INFO - Final dataset: 126,302 skipped words, 208,864 fixated words
+2025-10-03 14:49:26,355 - utils.data_utils - INFO - Data cleaning complete: 335,166 words retained (100.0% of original)
+2025-10-03 14:49:26,362 - utils.data_utils - INFO - Groups identified: 19 dyslexic, 39 control
+2025-10-03 14:49:26,433 - __main__ - INFO - Calculating skipping probabilities...
+2025-10-03 14:49:26,437 - utils.skipping_utils - INFO - Skipping analysis from ExtractedFeatures:
+2025-10-03 14:49:26,437 - utils.skipping_utils - INFO -   Total words: 335,166
+2025-10-03 14:49:26,437 - utils.skipping_utils - INFO -   Skipped: 126,302 (37.7%)
+2025-10-03 14:49:26,437 - utils.skipping_utils - INFO -   Fixated: 208,864 (62.3%)
+2025-10-03 14:49:26,481 - __main__ - INFO - Skipping analysis: 37.7% overall rate
+2025-10-03 14:49:26,499 - __main__ - INFO - Loaded: 335,166 words from 57 participants
+2025-10-03 14:49:26,499 - __main__ - INFO - ============================================================
+2025-10-03 14:49:26,499 - __main__ - INFO - COMPUTING LINGUISTIC FEATURES
+2025-10-03 14:49:26,499 - __main__ - INFO - ============================================================
+2025-10-03 14:49:26,500 - utils.linguistic_features - INFO - Loading Danish frequency list from danish_frequencies\danish_leipzig_for_analysis.txt
+2025-10-03 14:49:27,389 - utils.linguistic_features - INFO - Loaded 870,818 word proportions from Leipzig Corpora
+2025-10-03 14:49:27,454 - utils.linguistic_features - INFO - Computing word frequency...
+2025-10-03 14:49:27,910 - utils.linguistic_features - WARNING - 40,211 words (12.0%) not found in frequency list. Assigning minimum frequency.
+2025-10-03 14:49:28,388 - utils.linguistic_features - WARNING - 40,211 words (12.0%) not found in frequency list. Assigning minimum frequency.
+2025-10-03 14:49:28,396 - utils.linguistic_features - INFO - Frequency coverage: 335,166 / 335,166 words (100.0%)
+2025-10-03 14:49:28,396 - utils.linguistic_features - INFO - Linguistic features added successfully
+2025-10-03 14:49:28,396 - utils.linguistic_features - INFO - 
+Feature Summary:
+2025-10-03 14:49:28,399 - utils.linguistic_features - INFO -   Word length: mean=4.69, std=3.17
+2025-10-03 14:49:28,404 - utils.linguistic_features - INFO -   Zipf frequency: mean=5.18, std=1.40, range=[3.00, 9.51]
+2025-10-03 14:49:28,406 - __main__ - WARNING - Linguistic feature validation warnings:
+2025-10-03 14:49:28,406 - __main__ - WARNING -   - word_frequency_zipf: range [3.00, 9.51] outside expected [0, 8]
+2025-10-03 14:49:28,564 - utils.stats_utils - INFO - Added enhanced skipping statistics to basic stats
+2025-10-03 14:49:28,565 - utils.stats_utils - INFO - Overall skipping rate: 37.7%
+2025-10-03 14:49:28,977 - __main__ - INFO - Analyzing linguistic feature effects...
+2025-10-03 14:49:29,325 - __main__ - INFO - Linguistic feature analysis complete
+2025-10-03 14:49:29,338 - utils.misc_utils - INFO - Results saved to results\exploratory_summary.json
+2025-10-03 14:49:30,830 - utils.visualization_utils - INFO - Exploratory plots saved to results\exploratory_plots.png
+2025-10-03 14:49:33,284 - utils.visualization_utils - INFO - Group summary plots saved to results\group_summary_plots.png
+2025-10-03 14:49:33,290 - __main__ - INFO - Creating linguistic feature visualizations...
+2025-10-03 14:49:35,872 - __main__ - INFO - Linguistic feature plots saved to results\linguistic_features_plots.png
+2025-10-03 14:49:35,889 - __main__ - INFO - Analysis complete. Results saved to results
+2025-10-03 14:56:10,056 - __main__ - INFO - Dyslexia Time Analysis Pipeline initialized
+2025-10-03 14:56:10,057 - __main__ - INFO - Running exploratory analysis...
+2025-10-03 14:56:10,057 - __main__ - INFO - Loading CopCo dataset...
+2025-10-03 14:56:10,058 - utils.data_utils - INFO - Loading 57 participant files...
+2025-10-03 14:56:11,844 - utils.data_utils - INFO - Starting with 335,203 total word entries
+2025-10-03 14:56:12,011 - utils.data_utils - INFO - Word fixation patterns:
+2025-10-03 14:56:12,012 - utils.data_utils - INFO -   - Skipped words (0 fixations): 126,302
+2025-10-03 14:56:12,012 - utils.data_utils - INFO -   - Fixated words (1+ fixations): 208,901
+2025-10-03 14:56:12,012 - utils.data_utils - INFO -   - Unknown fixations (NaN): 0
+2025-10-03 14:56:12,042 - utils.data_utils - INFO - Fixated words reading times: median 272ms, 99th percentile 1777ms
+2025-10-03 14:56:12,044 - utils.data_utils - INFO - Removed 14 fixated words with extreme reading times (0 too short, 14 too long)
+2025-10-03 14:56:12,140 - utils.data_utils - INFO - Removed 23 words longer than 30 characters (likely data errors)
+2025-10-03 14:56:12,176 - utils.data_utils - INFO - Final dataset: 126,302 skipped words, 208,864 fixated words
+2025-10-03 14:56:12,177 - utils.data_utils - INFO - Data cleaning complete: 335,166 words retained (100.0% of original)
+2025-10-03 14:56:12,189 - utils.data_utils - INFO - Groups identified: 19 dyslexic, 39 control
+2025-10-03 14:56:12,261 - __main__ - INFO - Calculating skipping probabilities...
+2025-10-03 14:56:12,266 - utils.skipping_utils - INFO - Skipping analysis from ExtractedFeatures:
+2025-10-03 14:56:12,266 - utils.skipping_utils - INFO -   Total words: 335,166
+2025-10-03 14:56:12,266 - utils.skipping_utils - INFO -   Skipped: 126,302 (37.7%)
+2025-10-03 14:56:12,266 - utils.skipping_utils - INFO -   Fixated: 208,864 (62.3%)
+2025-10-03 14:56:12,314 - __main__ - INFO - Skipping analysis: 37.7% overall rate
+2025-10-03 14:56:12,329 - __main__ - INFO - Loaded: 335,166 words from 57 participants
+2025-10-03 14:56:12,330 - __main__ - INFO - ============================================================
+2025-10-03 14:56:12,330 - __main__ - INFO - COMPUTING LINGUISTIC FEATURES
+2025-10-03 14:56:12,331 - __main__ - INFO - ============================================================
+2025-10-03 14:56:12,331 - utils.linguistic_features - INFO - Loading Danish frequency list from danish_frequencies\danish_leipzig_for_analysis.txt
+2025-10-03 14:56:13,211 - utils.linguistic_features - INFO - Loaded 859,617 word proportions from Leipzig Corpora
+2025-10-03 14:56:13,257 - utils.linguistic_features - INFO - Computing word frequency...
+2025-10-03 14:56:13,704 - utils.linguistic_features - WARNING - 39,235 words (11.7%) not found in frequency list. Assigning minimum frequency.
+2025-10-03 14:56:14,151 - utils.linguistic_features - WARNING - 39,235 words (11.7%) not found in frequency list. Assigning minimum frequency.
+2025-10-03 14:56:14,160 - utils.linguistic_features - INFO - Frequency coverage: 335,166 / 335,166 words (100.0%)
+2025-10-03 14:56:14,160 - utils.linguistic_features - INFO - Linguistic features added successfully
+2025-10-03 14:56:14,161 - utils.linguistic_features - INFO - 
+Feature Summary:
+2025-10-03 14:56:14,164 - utils.linguistic_features - INFO -   Word length: mean=4.69, std=3.17
+2025-10-03 14:56:14,169 - utils.linguistic_features - INFO -   Zipf frequency: mean=5.19, std=1.40, range=[3.00, 9.49]
+2025-10-03 14:56:14,170 - __main__ - WARNING - Linguistic feature validation warnings:
+2025-10-03 14:56:14,170 - __main__ - WARNING -   - word_frequency_zipf: range [3.00, 9.49] outside expected [0, 8]
+2025-10-03 14:56:14,331 - utils.stats_utils - INFO - Added enhanced skipping statistics to basic stats
+2025-10-03 14:56:14,331 - utils.stats_utils - INFO - Overall skipping rate: 37.7%
+2025-10-03 14:56:14,736 - __main__ - INFO - Analyzing linguistic feature effects...
+2025-10-03 14:56:15,064 - __main__ - INFO - Linguistic feature analysis complete
+2025-10-03 14:56:15,075 - utils.misc_utils - INFO - Results saved to results\exploratory_summary.json
+2025-10-03 14:56:16,705 - utils.visualization_utils - INFO - Exploratory plots saved to results\exploratory_plots.png
+2025-10-03 14:56:18,940 - utils.visualization_utils - INFO - Group summary plots saved to results\group_summary_plots.png
+2025-10-03 14:56:18,945 - __main__ - INFO - Creating linguistic feature visualizations...
+2025-10-03 14:56:21,326 - __main__ - INFO - Linguistic feature plots saved to results\linguistic_features_plots.png
+2025-10-03 14:56:21,342 - __main__ - INFO - Analysis complete. Results saved to results

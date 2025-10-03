@@ -23,11 +23,17 @@ LEIPZIG_BASE = "https://downloads.wortschatz-leipzig.de/corpora/"
 
 DANISH_CORPORA = {
     "dan_mixed_2014": "dan_mixed_2014_1M.tar.gz",
+    "dan_news_2007": "dan_news_2007_1M.tar.gz",
     "dan_news_2021": "dan_news_2021_1M.tar.gz",
     "dan_news_2020": "dan_news_2020_1M.tar.gz",
+    "dan_newscrawl_2017": "dan_newscrawl_2017_1M.tar.gz",
+    "dan_newscrawl_2019": "dan_newscrawl_2019_1M.tar.gz",
     "dan_newscrawl_2023": "dan_newscrawl_2023_1M.tar.gz",
+    "dan_web_2014": "dan-dk_web_2014_1M.tar.gz",
+    "dan_web_2015": "dan-dk_web_2015_1M.tar.gz",
     "dan_web_2019": "dan-dk_web_2019_1M.tar.gz",
     "dan_web_public_2019": "dan-dk_web-public_2019_1M.tar.gz",
+    "dan_wiki_2014": "dan_wikipedia_2014_1M.tar.gz",
     "dan_wiki_2016": "dan_wikipedia_2016_1M.tar.gz",
     "dan_wiki_2021": "dan_wikipedia_2021_1M.tar.gz",
 }
@@ -36,7 +42,7 @@ OUTPUT_DIR = Path("danish_frequencies")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 # Processing parameters
-TOP_N_WORDS = 250000  # Keep top 250K words (adjust as needed)
+TOP_N_WORDS = 1000000  # Keep top 1M words
 MIN_FREQUENCY = 2  # Minimum frequency threshold
 REMOVE_PUNCT_ONLY = True  # Remove entries that are only punctuation
 ADD_LOG_TRANSFORM = True  # Add log-transformed frequency columns
