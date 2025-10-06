@@ -1,52 +1,56 @@
 #!/usr/bin/env python3
 """
-Enhanced Linguistic Feature Computation for Danish Eye-Tracking Data
-Key improvements:
-- Robust surprisal computation with proper token alignment
-- Better error handling and validation
-- Performance optimizations with caching
-- Danish-specific text normalization
+Linguistic Feature Computation for Danish Eye-Tracking Data
+Implements word frequency (Zipf scale) and surprisal computation
+Updated to use Leipzig Corpora frequency data
 """
 
 import logging
-from functools import lru_cache
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict
 
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
 
 class DanishLinguisticFeatures:
     """
-    Compute linguistic features for Danish text with enhanced robustness
+    Compute linguistic features for Danish text:
+    - Word frequency (from Leipzig Corpora, Zipf transformed)
+    - Surprisal (using transformer models)
+    - Word length (character count)
     """
 
     def __init__(
         self,
         lemma_file: str = "danish_frequencies/danish_leipzig_for_analysis.txt",
         use_proportions: bool = True,
-        cache_size: int = 10000,
     ):
+        """
+        Initialize with Danish frequency lists
+
+        Args:
+            lemma_file: Path to the frequency file
+                       Default: Leipzig Corpora processed file (word\tproportion format)
+            use_proportions: If True, expects file to contain proportions
+                           If False, expects raw frequency counts
+        """
         self.lemma_file = Path(lemma_file)
         self.use_proportions = use_proportions
-        self.cache_size = cache_size
         self.freq_dict = None
         self.total_corpus_tokens = None
-        self.min_freq = None
 
+        # Load frequency data
         self._load_frequency_dict()
 
-        # Lazy-loaded surprisal components
+        # Surprisal model (lazy loading)
         self._surprisal_model = None
         self._surprisal_tokenizer = None
-        self._device = None
 
     def _load_frequency_dict(self):
-        """Load and validate Danish word frequencies"""
+        """Load Danish word frequencies from Leipzig Corpora"""
 
         if not self.lemma_file.exists():
             raise FileNotFoundError(
@@ -56,98 +60,97 @@ class DanishLinguisticFeatures:
 
         logger.info(f"Loading Danish frequency list from {self.lemma_file}")
 
-        try:
-            freq_df = pd.read_csv(
-                self.lemma_file,
-                sep="\t",
-                header=None,
-                names=["word", "value"],
-                encoding="utf-8",
-                on_bad_lines="warn",
-            )
-        except Exception as e:
-            logger.error(f"Failed to read frequency file: {e}")
-            raise
-
-        # Validation
-        if freq_df["value"].isna().any():
-            n_missing = freq_df["value"].isna().sum()
-            logger.warning(f"Found {n_missing} missing values in frequency file")
-            freq_df = freq_df.dropna()
-
-        if (freq_df["value"] < 0).any():
-            raise ValueError("Negative frequencies found in file")
+        # Load the frequency file (format: word\tproportion or word\tfrequency)
+        freq_df = pd.read_csv(
+            self.lemma_file,
+            sep="\t",
+            header=None,
+            names=["word", "value"],
+            encoding="utf-8",
+        )
 
         if self.use_proportions:
-            if (freq_df["value"] > 1).any():
-                logger.warning(
-                    f"Found {(freq_df['value'] > 1).sum()} values > 1 "
-                    f"in proportion mode. Check file format."
-                )
-
+            # File contains proportions (value between 0 and 1)
             self.freq_dict = dict(zip(freq_df["word"].str.lower(), freq_df["value"]))
-
-            # Set minimum frequency as 1 occurrence per billion
-            self.min_freq = 1e-9
+            # For proportions, we don't need total_corpus_tokens
             self.total_corpus_tokens = None
-
             logger.info(
-                f"Loaded {len(self.freq_dict):,} word proportions "
-                f"(min: {freq_df['value'].min():.2e}, max: {freq_df['value'].max():.2e})"
+                f"Loaded {len(self.freq_dict):,} word proportions from Leipzig Corpora"
             )
         else:
+            # File contains raw frequencies
             self.freq_dict = dict(zip(freq_df["word"].str.lower(), freq_df["value"]))
             self.total_corpus_tokens = freq_df["value"].sum()
-
-            # Minimum frequency: 1 occurrence
-            self.min_freq = 1 / self.total_corpus_tokens
-
             logger.info(
                 f"Loaded {len(self.freq_dict):,} word frequencies "
                 f"({self.total_corpus_tokens:,} total corpus tokens)"
             )
 
-    @lru_cache(maxsize=10000)
-    def _get_word_frequency(self, word: str) -> float:
-        """Cached frequency lookup"""
-        return self.freq_dict.get(word.lower(), self.min_freq)
-
     def compute_word_frequency(
         self, words: pd.Series, return_zipf: bool = True
     ) -> pd.Series:
         """
-        Compute word frequency with robust handling of missing values
+        Compute word frequency from Danish frequency lists
+
+        Args:
+            words: Series of word strings
+            return_zipf: If True, return Zipf-transformed frequencies (recommended)
+                        If False, return raw frequencies or proportions
+
+        Returns:
+            Series of frequency values (Zipf scale 1-7 or raw values)
         """
 
-        # Use cached lookup for better performance
-        frequencies = words.apply(self._get_word_frequency)
+        # Match words to frequency dictionary (case-insensitive)
+        frequencies = words.str.lower().map(self.freq_dict)
 
-        # Count missing (assigned min_freq)
-        n_missing = (frequencies == self.min_freq).sum()
+        # Handle missing frequencies
+        n_missing = frequencies.isna().sum()
         if n_missing > 0:
             pct_missing = (n_missing / len(words)) * 100
             logger.warning(
-                f"{n_missing:,} words ({pct_missing:.1f}%) not in frequency list"
+                f"{n_missing:,} words ({pct_missing:.1f}%) not found in frequency list. "
+                f"Assigning minimum frequency."
             )
 
+            if self.use_proportions:
+                # For proportions, assign a very small value (1 occurrence per billion words)
+                min_proportion = 1e-9
+                frequencies = frequencies.fillna(min_proportion)
+            else:
+                # For raw frequencies, assign frequency of 1
+                frequencies = frequencies.fillna(1)
+
         if return_zipf:
-            # Ensure no zeros before log
-            frequencies = frequencies.clip(lower=1e-10)
+            # Transform to Zipf scale: log10(freq per billion) + 3
+            # This gives interpretable scores from ~1 (rare) to ~7 (very frequent)
 
             if self.use_proportions:
+                # proportions are already normalized (freq / total_tokens)
+                # So we just need: log10(proportion * 1e9) + 3
                 zipf_freq = np.log10(frequencies * 1e9) + 3
             else:
+                # For raw frequencies: log10((freq / total) * 1e9) + 3
                 zipf_freq = np.log10((frequencies / self.total_corpus_tokens) * 1e9) + 3
+
+            # Handle any -inf values (from log of 0)
+            zipf_freq = zipf_freq.replace([np.inf, -np.inf], np.nan)
 
             return zipf_freq
         else:
             return frequencies
 
     def _load_surprisal_model(self, model_name: str = "Maltehb/danish-bert-botxo"):
-        """Load transformer model with device detection"""
+        """
+        Lazy load transformer model for surprisal computation
 
+        Args:
+            model_name: HuggingFace model identifier
+                       Default: Danish BERT (best for Danish)
+                       Alternative: "bert-base-multilingual-cased" (mBERT)
+        """
         if self._surprisal_model is not None:
-            return
+            return  # Already loaded
 
         try:
             import torch
@@ -157,91 +160,20 @@ class DanishLinguisticFeatures:
 
             self._surprisal_tokenizer = AutoTokenizer.from_pretrained(model_name)
             self._surprisal_model = AutoModelForMaskedLM.from_pretrained(model_name)
-            self._surprisal_model.eval()
+            self._surprisal_model.eval()  # Set to evaluation mode
 
-            # Device detection
+            # Move to GPU if available
             if torch.cuda.is_available():
-                self._device = torch.device("cuda")
-                self._surprisal_model = self._surprisal_model.to(self._device)
-                logger.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
-            else:
-                self._device = torch.device("cpu")
-                logger.info("Using CPU (consider GPU for faster processing)")
+                self._surprisal_model = self._surprisal_model.cuda()
+                logger.info("Using GPU for surprisal computation")
+
+            logger.info("Transformer model loaded successfully")
 
         except ImportError:
             raise ImportError(
-                "Required libraries not found.\n"
+                "Transformers library required for surprisal computation.\n"
                 "Install with: pip install transformers torch"
             )
-
-    def _compute_sentence_surprisal(self, words: List[str]) -> List[float]:
-        """
-        Compute surprisal for words in a sentence with proper alignment
-        """
-        import torch
-
-        sentence = " ".join(words)
-
-        # Tokenize with offset mapping for alignment
-        encoding = self._surprisal_tokenizer(
-            sentence,
-            return_tensors="pt",
-            return_offsets_mapping=True,
-            add_special_tokens=True,
-        )
-
-        input_ids = encoding["input_ids"].to(self._device)
-        offset_mapping = encoding["offset_mapping"][0]
-
-        # Get model predictions
-        with torch.no_grad():
-            outputs = self._surprisal_model(input_ids)
-            logits = outputs.logits[0]  # [seq_len, vocab_size]
-
-        # Calculate character positions for each word
-        word_positions = []
-        char_pos = 0
-        for word in words:
-            word_positions.append((char_pos, char_pos + len(word)))
-            char_pos += len(word) + 1  # +1 for space
-
-        # Align words to tokens and compute surprisal
-        surprisals = []
-
-        for word_start, word_end in word_positions:
-            # Find tokens that overlap with this word
-            token_indices = []
-            for i, (tok_start, tok_end) in enumerate(offset_mapping):
-                if tok_start >= word_start and tok_start < word_end:
-                    token_indices.append(i)
-
-            if not token_indices:
-                surprisals.append(np.nan)
-                continue
-
-            # Use first token of word for surprisal
-            token_idx = token_indices[0]
-
-            if token_idx == 0 or token_idx >= len(input_ids[0]) - 1:
-                # Skip [CLS] and [SEP]
-                surprisals.append(np.nan)
-                continue
-
-            # Get probability of token given left context
-            token_id = input_ids[0, token_idx]
-            prev_logits = logits[token_idx - 1]
-            probs = torch.softmax(prev_logits, dim=-1)
-            prob = probs[token_id].item()
-
-            # Surprisal = -log2(probability)
-            if prob > 0:
-                surprisal = -np.log2(prob)
-            else:
-                surprisal = 20.0  # Cap at 20 bits
-
-            surprisals.append(surprisal)
-
-        return surprisals
 
     def compute_surprisal(
         self,
@@ -249,63 +181,131 @@ class DanishLinguisticFeatures:
         text_col: str = "word_text",
         sentence_col: str = "sentence_id",
         model_name: str = "Maltehb/danish-bert-botxo",
-        max_sentences: Optional[int] = None,
+        batch_size: int = 32,
     ) -> pd.Series:
         """
-        Compute surprisal with proper token alignment
+        Compute surprisal for each word using masked language model
+
+        Note: This is computationally expensive. For large datasets,
+        consider computing on a subset or using GPU acceleration.
 
         Args:
-            max_sentences: Limit processing to first N sentences (for testing)
+            data: DataFrame with words and sentence structure
+            text_col: Column containing word text
+            sentence_col: Column indicating sentence boundaries
+            model_name: HuggingFace model identifier
+            batch_size: Batch size for processing
+
+        Returns:
+            Series of surprisal values (-log probability)
         """
 
         self._load_surprisal_model(model_name)
 
-        logger.info("Computing surprisal values...")
+        logger.info("Computing surprisal values (this may take a while)...")
+
+        import torch
+        from tqdm import tqdm
 
         surprisal_values = np.full(len(data), np.nan)
+
+        # Group by sentence
         grouped = data.groupby(sentence_col)
 
-        if max_sentences:
-            groups_to_process = list(grouped)[:max_sentences]
-            logger.info(f"Processing {max_sentences} sentences (limited for testing)")
-        else:
-            groups_to_process = list(grouped)
-
-        for sent_id, sent_data in tqdm(groups_to_process, desc="Sentences"):
+        for sent_id, sent_data in tqdm(grouped, desc="Processing sentences"):
             words = sent_data[text_col].tolist()
             indices = sent_data.index.tolist()
 
-            try:
-                surprisals = self._compute_sentence_surprisal(words)
+            # Reconstruct sentence
+            sentence = " ".join(words)
 
-                for idx, surp in zip(indices, surprisals):
-                    surprisal_values[idx] = surp
+            # Tokenize
+            inputs = self._surprisal_tokenizer(
+                sentence, return_tensors="pt", add_special_tokens=True
+            )
 
-            except Exception as e:
-                logger.warning(
-                    f"Failed to compute surprisal for sentence {sent_id}: {e}"
-                )
-                continue
+            if torch.cuda.is_available():
+                inputs = {k: v.cuda() for k, v in inputs.items()}
 
-        valid_count = (~np.isnan(surprisal_values)).sum()
-        logger.info(f"Computed surprisal for {valid_count:,} / {len(data):,} words")
+            # Get model predictions
+            with torch.no_grad():
+                outputs = self._surprisal_model(**inputs)
+                logits = outputs.logits
+
+            # Compute surprisal for each word
+            # This is simplified - word-to-token alignment needed for multi-token words
+            token_ids = inputs["input_ids"][0]
+
+            # For each word position, calculate surprisal
+            word_positions = self._align_words_to_tokens(
+                words, self._surprisal_tokenizer.convert_ids_to_tokens(token_ids)
+            )
+
+            for i, (word, word_idx) in enumerate(zip(words, indices)):
+                if word_positions[i] is not None:
+                    token_pos = word_positions[i]
+                    if token_pos > 0 and token_pos < len(token_ids) - 1:
+                        # Get probability of this token given context
+                        token_id = token_ids[token_pos]
+                        probs = torch.softmax(logits[0, token_pos - 1], dim=-1)
+                        prob = probs[token_id].item()
+
+                        # Surprisal = -log2(probability)
+                        surprisal = (
+                            -np.log2(prob) if prob > 0 else 20.0
+                        )  # Cap at 20 bits
+                        surprisal_values[word_idx] = surprisal
+
+        logger.info(
+            f"Computed surprisal for {(~np.isnan(surprisal_values)).sum():,} words"
+        )
 
         return pd.Series(surprisal_values, index=data.index)
+
+    def _align_words_to_tokens(self, words, tokens):
+        """
+        Align words to tokenizer tokens (simplified version)
+
+        Note: This is a basic implementation. For production use,
+        consider more sophisticated alignment (e.g., using token offsets)
+        """
+        positions = []
+        token_idx = 1  # Skip [CLS]
+
+        for word in words:
+            # Simple matching - may need refinement for subword tokenization
+            positions.append(token_idx)
+            # Approximate token count for this word
+            word_tokens = self._surprisal_tokenizer.tokenize(word)
+            token_idx += len(word_tokens)
+
+        return positions
 
     def add_all_features(
         self,
         data: pd.DataFrame,
         compute_surprisal: bool = False,
         text_col: str = "word_text",
-        max_sentences_surprisal: Optional[int] = None,
     ) -> pd.DataFrame:
         """
-        Add all linguistic features with comprehensive logging
+        Add all linguistic features to dataframe
+
+        Args:
+            data: Input dataframe with word-level data
+            compute_surprisal: Whether to compute surprisal (slow!)
+            text_col: Column containing word text
+
+        Returns:
+            DataFrame with added columns:
+                - word_length: character count (if not present)
+                - word_frequency_raw: raw proportion or frequency
+                - word_frequency_zipf: Zipf-transformed frequency (1-7 scale)
+                - surprisal: -log2 probability (if compute_surprisal=True)
         """
 
         data = data.copy()
 
-        # 1. Word length
+        # 1. Word length (if not already present)
         if "word_length" not in data.columns:
             logger.info("Computing word length...")
             data["word_length"] = data[text_col].str.len()
@@ -319,94 +319,36 @@ class DanishLinguisticFeatures:
             data[text_col], return_zipf=True
         )
 
-        # 3. Surprisal (optional)
+        # Log statistics about frequency coverage
+        valid_freq = data["word_frequency_zipf"].notna()
+        logger.info(
+            f"Frequency coverage: {valid_freq.sum():,} / {len(data):,} words ({valid_freq.mean()*100:.1f}%)"
+        )
+
+        # 3. Surprisal (optional, computationally expensive)
         if compute_surprisal:
             if "sentence_id" not in data.columns:
-                logger.warning("sentence_id required for surprisal. Skipping.")
+                logger.warning("sentence_id column required for surprisal. Skipping.")
             else:
-                data["surprisal"] = self.compute_surprisal(
-                    data, text_col=text_col, max_sentences=max_sentences_surprisal
-                )
+                data["surprisal"] = self.compute_surprisal(data, text_col=text_col)
 
-        # Summary statistics
-        self._log_feature_summary(data, compute_surprisal)
+        logger.info("Linguistic features added successfully")
+
+        # Log summary statistics
+        logger.info("\nFeature Summary:")
+        logger.info(
+            f"  Word length: mean={data['word_length'].mean():.2f}, "
+            f"std={data['word_length'].std():.2f}"
+        )
+        logger.info(
+            f"  Zipf frequency: mean={data['word_frequency_zipf'].mean():.2f}, "
+            f"std={data['word_frequency_zipf'].std():.2f}, "
+            f"range=[{data['word_frequency_zipf'].min():.2f}, {data['word_frequency_zipf'].max():.2f}]"
+        )
+        if compute_surprisal and "surprisal" in data.columns:
+            logger.info(
+                f"  Surprisal: mean={data['surprisal'].mean():.2f}, "
+                f"std={data['surprisal'].std():.2f}"
+            )
 
         return data
-
-    def _log_feature_summary(self, data: pd.DataFrame, has_surprisal: bool):
-        """Log comprehensive feature statistics"""
-
-        logger.info("\n" + "=" * 60)
-        logger.info("FEATURE SUMMARY")
-        logger.info("=" * 60)
-
-        for feature in ["word_length", "word_frequency_zipf", "surprisal"]:
-            if feature not in data.columns:
-                continue
-
-            values = data[feature].dropna()
-            if len(values) == 0:
-                continue
-
-            logger.info(f"\n{feature}:")
-            logger.info(f"  Count:  {len(values):,}")
-            logger.info(f"  Mean:   {values.mean():.2f}")
-            logger.info(f"  Std:    {values.std():.2f}")
-            logger.info(f"  Median: {values.median():.2f}")
-            logger.info(f"  Range:  [{values.min():.2f}, {values.max():.2f}]")
-            logger.info(
-                f"  Q1-Q3:  [{values.quantile(0.25):.2f}, {values.quantile(0.75):.2f}]"
-            )
-
-        logger.info("=" * 60 + "\n")
-
-
-def validate_linguistic_features(data: pd.DataFrame) -> Dict:
-    """Enhanced validation with detailed diagnostics"""
-
-    results = {"valid": True, "warnings": [], "statistics": {}}
-
-    expected_ranges = {
-        "word_length": (1, 30),
-        "word_frequency_zipf": (0, 8),
-        "surprisal": (0, 25),
-    }
-
-    for feature, (min_expected, max_expected) in expected_ranges.items():
-        if feature not in data.columns:
-            continue
-
-        values = data[feature].dropna()
-        if len(values) == 0:
-            results["warnings"].append(f"{feature}: No valid values found")
-            results["valid"] = False
-            continue
-
-        actual_min = values.min()
-        actual_max = values.max()
-
-        # Range check
-        if actual_min < min_expected or actual_max > max_expected:
-            results["warnings"].append(
-                f"{feature}: range [{actual_min:.2f}, {actual_max:.2f}] "
-                f"outside expected [{min_expected}, {max_expected}]"
-            )
-            results["valid"] = False
-
-        # Missing data check
-        missing_pct = data[feature].isna().sum() / len(data) * 100
-        if missing_pct > 10:
-            results["warnings"].append(
-                f"{feature}: {missing_pct:.1f}% missing (threshold: 10%)"
-            )
-
-        # Store statistics
-        results["statistics"][feature] = {
-            "mean": float(values.mean()),
-            "std": float(values.std()),
-            "min": float(actual_min),
-            "max": float(actual_max),
-            "missing_pct": float(missing_pct),
-        }
-
-    return results

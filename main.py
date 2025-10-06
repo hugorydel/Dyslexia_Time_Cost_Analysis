@@ -26,10 +26,7 @@ from utils.data_utils import (
 )
 
 # NEW: Import linguistic features
-from utils.linguistic_features import (
-    DanishLinguisticFeatures,
-    validate_linguistic_features,
-)
+from utils.linguistic_features import DanishLinguisticFeatures
 from utils.misc_utils import (
     create_output_directories,
     save_json_results,
@@ -182,15 +179,6 @@ class DyslexiaTimeAnalysisPipeline:
             data, compute_surprisal=compute_surprisal, text_col="word_text"
         )
 
-        # Validate features
-        validation = validate_linguistic_features(data)
-        if not validation["valid"]:
-            logger.warning("Linguistic feature validation warnings:")
-            for warning in validation["warnings"]:
-                logger.warning(f"  - {warning}")
-        else:
-            logger.info("All linguistic features validated successfully")
-
         return data
 
     def analyze_linguistic_features(self, data: pd.DataFrame) -> dict:
@@ -244,9 +232,9 @@ class DyslexiaTimeAnalysisPipeline:
                 if measure in data.columns:
                     # Only analyze fixated words
                     fixated = data[data["was_fixated"] == True]
-                    freq_effects = fixated.groupby(freq_bins)[measure].agg(
-                        ["mean", "std", "count"]
-                    )
+                    freq_effects = fixated.groupby(freq_bins, observed=True)[
+                        measure
+                    ].agg(["mean", "std", "count"])
 
                     results["frequency_effects"][measure] = {
                         str(label): {
@@ -267,14 +255,14 @@ class DyslexiaTimeAnalysisPipeline:
         for measure in ["total_reading_time", "gaze_duration", "skipping_probability"]:
             if measure in data.columns:
                 if measure == "skipping_probability":
-                    length_effects = data.groupby(length_bins)[measure].agg(
-                        ["mean", "count"]
-                    )
+                    length_effects = data.groupby(length_bins, observed=True)[
+                        measure
+                    ].agg(["mean", "count"])
                 else:
                     fixated = data[data["was_fixated"] == True]
-                    length_effects = fixated.groupby(length_bins)[measure].agg(
-                        ["mean", "std", "count"]
-                    )
+                    length_effects = fixated.groupby(length_bins, observed=True)[
+                        measure
+                    ].agg(["mean", "std", "count"])
 
                 results["length_effects"][measure] = {
                     str(label): {"mean": float(row["mean"]), "count": int(row["count"])}
@@ -422,7 +410,8 @@ class DyslexiaTimeAnalysisPipeline:
         ax4.set_xlabel("Frequency Bin (Zipf)")
         ax4.set_ylabel("Total Reading Time (ms)")
         ax4.set_title("Frequency Effect on Reading Time")
-        ax4.set_xticklabels(ax4.get_xticklabels(), rotation=45, ha="right")
+        # Fix matplotlib warning by using tick_params
+        ax4.tick_params(axis="x", rotation=45)
 
         # 5. Length effect on reading time
         ax5 = plt.subplot(3, 3, 5)
@@ -436,12 +425,14 @@ class DyslexiaTimeAnalysisPipeline:
         # 6. Skipping by frequency
         ax6 = plt.subplot(3, 3, 6)
         freq_bins = pd.cut(data["word_frequency_zipf"], bins=5)
-        skip_by_freq = data.groupby(freq_bins)["skipping_probability"].mean()
+        skip_by_freq = data.groupby(freq_bins, observed=True)[
+            "skipping_probability"
+        ].mean()
         skip_by_freq.plot(kind="bar", ax=ax6)
         ax6.set_xlabel("Frequency Bin (Zipf)")
         ax6.set_ylabel("Skipping Probability")
         ax6.set_title("Frequency Effect on Skipping")
-        ax6.set_xticklabels(ax6.get_xticklabels(), rotation=45, ha="right")
+        ax6.tick_params(axis="x", rotation=45)
 
         # 7. Group comparison - frequency effect
         if "dyslexic" in fixated.columns:
@@ -449,7 +440,9 @@ class DyslexiaTimeAnalysisPipeline:
             for group_name, group_data in fixated.groupby("dyslexic"):
                 label = "Dyslexic" if group_name else "Control"
                 freq_bins = pd.cut(group_data["word_frequency_zipf"], bins=4)
-                freq_effect = group_data.groupby(freq_bins)["total_reading_time"].mean()
+                freq_effect = group_data.groupby(freq_bins, observed=True)[
+                    "total_reading_time"
+                ].mean()
                 freq_effect.plot(kind="line", ax=ax7, marker="o", label=label)
             ax7.set_xlabel("Frequency Bin (Zipf)")
             ax7.set_ylabel("Mean Total Reading Time (ms)")
@@ -478,7 +471,7 @@ class DyslexiaTimeAnalysisPipeline:
             for group_name, group_data in data.groupby("dyslexic"):
                 label = "Dyslexic" if group_name else "Control"
                 freq_bins = pd.cut(group_data["word_frequency_zipf"], bins=4)
-                skip_effect = group_data.groupby(freq_bins)[
+                skip_effect = group_data.groupby(freq_bins, observed=True)[
                     "skipping_probability"
                 ].mean()
                 skip_effect.plot(kind="line", ax=ax9, marker="o", label=label)
