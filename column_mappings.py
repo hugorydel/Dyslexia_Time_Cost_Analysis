@@ -5,7 +5,6 @@ Standardizes column names across different data sources
 
 # Mapping from CopCo ExtractedFeatures column names to standardized analysis names
 EXTRACTED_FEATURES_MAPPING = {
-    "part": "participant_id",
     "trialId": "trial_id",
     "speechId": "speech_id",
     "paragraphId": "paragraph_id",
