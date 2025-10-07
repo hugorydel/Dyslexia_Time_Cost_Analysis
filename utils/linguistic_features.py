@@ -3,9 +3,11 @@
 Linguistic Feature Computation for Danish Eye-Tracking Data
 Implements word frequency (Zipf scale) and surprisal computation
 Updated to use Leipzig Corpora frequency data
+Fixed to handle punctuation in eye-tracking data
 """
 
 import logging
+import string
 from pathlib import Path
 from typing import Dict
 
@@ -69,9 +71,21 @@ class DanishLinguisticFeatures:
             encoding="utf-8",
         )
 
+        # Check for duplicates after lowercasing
+        freq_df["word_lower"] = freq_df["word"].str.lower()
+        duplicate_count = len(freq_df) - freq_df["word_lower"].nunique()
+
+        if duplicate_count > 0:
+            logger.warning(
+                f"Found {duplicate_count:,} duplicate words after lowercasing. "
+                f"This suggests the frequency file was not properly standardized. "
+                f"Re-run download_leipzig_danish.py to fix this issue."
+            )
+
         if self.use_proportions:
             # File contains proportions (value between 0 and 1)
-            self.freq_dict = dict(zip(freq_df["word"].str.lower(), freq_df["value"]))
+            # Use word_lower for dictionary keys
+            self.freq_dict = dict(zip(freq_df["word_lower"], freq_df["value"]))
             # For proportions, we don't need total_corpus_tokens
             self.total_corpus_tokens = None
             logger.info(
@@ -79,21 +93,54 @@ class DanishLinguisticFeatures:
             )
         else:
             # File contains raw frequencies
-            self.freq_dict = dict(zip(freq_df["word"].str.lower(), freq_df["value"]))
+            self.freq_dict = dict(zip(freq_df["word_lower"], freq_df["value"]))
             self.total_corpus_tokens = freq_df["value"].sum()
             logger.info(
                 f"Loaded {len(self.freq_dict):,} word frequencies "
                 f"({self.total_corpus_tokens:,} total corpus tokens)"
             )
 
+    def _get_word_frequency(self, word: str) -> float:
+        """
+        Get frequency for a single word with robust handling
+        Strips punctuation and handles edge cases
+
+        Args:
+            word: Word to lookup (may include punctuation)
+
+        Returns:
+            Frequency value (proportion or count), or np.nan if not found
+        """
+        if pd.isna(word):
+            return np.nan
+
+        # Clean the word: lowercase and strip punctuation
+        word_clean = str(word).lower().strip(string.punctuation)
+
+        # Handle empty string after stripping (e.g., pure punctuation tokens)
+        if not word_clean:
+            return np.nan
+
+        # Look up in frequency dictionary
+        freq = self.freq_dict.get(word_clean, None)
+        return freq if freq is not None else np.nan
+
+    @property
+    def min_freq(self) -> float:
+        """Minimum frequency for unknown words"""
+        if self.use_proportions:
+            return 1e-9  # Very small proportion (1 in a billion)
+        else:
+            return 1  # Count of 1
+
     def compute_word_frequency(
         self, words: pd.Series, return_zipf: bool = True
     ) -> pd.Series:
         """
-        Compute word frequency from Danish frequency lists
+        Compute word frequency with robust handling of missing values and punctuation
 
         Args:
-            words: Series of word strings
+            words: Series of word strings (may include punctuation)
             return_zipf: If True, return Zipf-transformed frequencies (recommended)
                         If False, return raw frequencies or proportions
 
@@ -101,29 +148,39 @@ class DanishLinguisticFeatures:
             Series of frequency values (Zipf scale 1-7 or raw values)
         """
 
-        # Match words to frequency dictionary (case-insensitive)
-        frequencies = words.str.lower().map(self.freq_dict)
+        # Look up frequencies (returns np.nan for missing)
+        frequencies = words.apply(self._get_word_frequency)
 
-        # Handle missing frequencies
-        n_missing = frequencies.isna().sum()
+        # Identify truly missing words
+        missing_mask = frequencies.isna()
+        n_missing = missing_mask.sum()
+
         if n_missing > 0:
             pct_missing = (n_missing / len(words)) * 100
             logger.warning(
-                f"{n_missing:,} words ({pct_missing:.1f}%) not found in frequency list. "
-                f"Assigning minimum frequency."
+                f"{n_missing:,} words ({pct_missing:.1f}%) not found in frequency list"
             )
 
-            if self.use_proportions:
-                # For proportions, assign a very small value (1 occurrence per billion words)
-                min_proportion = 1e-9
-                frequencies = frequencies.fillna(min_proportion)
+            # Log sample of missing words
+            missing_words = words[missing_mask].unique()
+            if len(missing_words) <= 50:
+                logger.info(f"Missing words: {sorted(missing_words.tolist())}")
             else:
-                # For raw frequencies, assign frequency of 1
-                frequencies = frequencies.fillna(1)
+                sample = sorted(missing_words[:50].tolist())
+                logger.info(
+                    f"Sample of {len(missing_words)} missing words: {sample}... "
+                    f"({len(missing_words) - 50} more)"
+                )
+
+        # Fill missing values with minimum frequency for computation
+        frequencies = frequencies.fillna(self.min_freq)
 
         if return_zipf:
             # Transform to Zipf scale: log10(freq per billion) + 3
             # This gives interpretable scores from ~1 (rare) to ~7 (very frequent)
+
+            # Ensure no zeros before log
+            frequencies = frequencies.clip(lower=1e-10)
 
             if self.use_proportions:
                 # proportions are already normalized (freq / total_tokens)
@@ -132,9 +189,6 @@ class DanishLinguisticFeatures:
             else:
                 # For raw frequencies: log10((freq / total) * 1e9) + 3
                 zipf_freq = np.log10((frequencies / self.total_corpus_tokens) * 1e9) + 3
-
-            # Handle any -inf values (from log of 0)
-            zipf_freq = zipf_freq.replace([np.inf, -np.inf], np.nan)
 
             return zipf_freq
         else:
@@ -320,9 +374,17 @@ class DanishLinguisticFeatures:
         )
 
         # Log statistics about frequency coverage
-        valid_freq = data["word_frequency_zipf"].notna()
+        # Check how many were found (not assigned min_freq)
+        if self.use_proportions:
+            found_mask = data["word_frequency_raw"] > self.min_freq
+        else:
+            found_mask = data["word_frequency_raw"] > 1
+
+        found_count = found_mask.sum()
+        coverage_pct = (found_count / len(data)) * 100
+
         logger.info(
-            f"Frequency coverage: {valid_freq.sum():,} / {len(data):,} words ({valid_freq.mean()*100:.1f}%)"
+            f"Frequency coverage: {found_count:,} / {len(data):,} words ({coverage_pct:.1f}%)"
         )
 
         # 3. Surprisal (optional, computationally expensive)

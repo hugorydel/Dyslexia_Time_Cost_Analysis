@@ -42,7 +42,7 @@ OUTPUT_DIR = Path("danish_frequencies")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 # Processing parameters
-TOP_N_WORDS = 1000000  # Keep top 1M words
+TOP_N_WORDS = 1500000  # Keep top 1.5M words
 MIN_FREQUENCY = 2  # Minimum frequency threshold
 REMOVE_PUNCT_ONLY = True  # Remove entries that are only punctuation
 ADD_LOG_TRANSFORM = True  # Add log-transformed frequency columns
@@ -138,6 +138,17 @@ def process_frequency_data(df):
     print("\nProcessing frequency data...")
 
     original_count = len(df)
+
+    # STANDARDIZE: Convert all words to lowercase and merge duplicates
+    print("  Standardizing words to lowercase...")
+    before_standardize = len(df)
+    df["word"] = df["word"].str.lower()
+    df = df.groupby("word", as_index=False)["freq"].sum()
+    df = df.sort_values("freq", ascending=False).reset_index(drop=True)
+    after_standardize = len(df)
+    duplicates_merged = before_standardize - after_standardize
+    print(f"  ✓ Standardized and merged {duplicates_merged:,} case-variant duplicates")
+    print(f"    {before_standardize:,} → {after_standardize:,} unique lowercase words")
 
     # Filter by minimum frequency
     if MIN_FREQUENCY > 1:
@@ -254,15 +265,15 @@ def main():
         print("No valid word files loaded. Exiting.")
         return
 
-    # Combine and aggregate
-    print("\nCombining frequencies...")
+    # Combine and aggregate (before standardization)
+    print("\nCombining frequencies from all corpora...")
     freq = pd.concat(dfs).groupby("word", as_index=False)["freq"].sum()
     freq = freq.sort_values("freq", ascending=False).reset_index(drop=True)
 
-    print(f"✓ Combined: {len(freq):,} unique words")
+    print(f"✓ Combined: {len(freq):,} unique words (mixed case)")
     print(f"  Total frequency: {freq['freq'].sum():,}")
 
-    # Process the data
+    # Process the data (includes lowercase standardization and merging)
     freq = process_frequency_data(freq)
 
     # Reorder columns
@@ -309,12 +320,11 @@ def main():
     print("SUCCESS!")
     print("=" * 70)
     print(f"\nTo use with linguistic_features.py:")
-    print(f"1. Copy {output_simple.name} to utils/lemma/")
-    print(f"2. Update initialization:")
+    print(f"1. The file {output_simple.name} is already standardized (all lowercase)")
+    print(f"2. Use in your code:")
     print(f"   DanishLinguisticFeatures(")
-    print(f"       lemma_file='utils/lemma/{output_simple.name}',")
-    print(f"       combine_files=False,")
-    print(f"       use_lemmatization=False")
+    print(f"       lemma_file='danish_frequencies/{output_simple.name}',")
+    print(f"       use_proportions=True")
     print(f"   )")
     print("=" * 70)
 
