@@ -20,7 +20,7 @@ class DanishLinguisticFeatures:
     """
     Compute linguistic features for Danish text:
     - Word frequency (from Leipzig Corpora, Zipf transformed)
-    - Surprisal (using transformer models)
+    - Surprisal (using transformer models in pseudo-autoregressive mode)
     - Word length (character count)
     """
 
@@ -324,105 +324,248 @@ class DanishLinguisticFeatures:
         text_col: str = "word_text",
         sentence_col: str = "sentence_id",
         model_name: str = "Maltehb/danish-bert-botxo",
-        batch_size: int = 32,
+        max_length: int = 512,
+        cache_file: str = None,
+        checkpoint_every: int = 100,  # Checkpoint every N sentences
+        batch_size: int = 8,
     ) -> pd.Series:
         """
-        Compute surprisal for each word using masked language model
-
-        Note: This is computationally expensive. For large datasets,
-        consider computing on a subset or using GPU acceleration.
+        Compute surprisal using BERT in pseudo-autoregressive mode with batched processing
 
         Args:
-            data: DataFrame with words and sentence structure
-            text_col: Column containing word text
-            sentence_col: Column indicating sentence boundaries
-            model_name: HuggingFace model identifier
-            batch_size: Batch size for processing
-
-        Returns:
-            Series of surprisal values (-log probability)
+            batch_size: Number of word positions to process simultaneously (default: 20)
+                       Increase for speed (may hit memory limits around 32-50)
+            checkpoint_every: Save checkpoint every N sentences (default: 10 for testing)
         """
 
         self._load_surprisal_model(model_name)
 
-        logger.info("Computing surprisal values (this may take a while)...")
+        # Setup cache paths
+        surprisal_dir = Path("word_surprisal")
+        surprisal_dir.mkdir(exist_ok=True)
+        if cache_file is None:
+            cache_file = surprisal_dir / f"surprisal_autoregressive_{sentence_col}.pkl"
+        else:
+            cache_file = surprisal_dir / cache_file
+
+        cache_path = Path(cache_file)
+        checkpoint_path = Path(str(cache_path).replace(".pkl", "_checkpoint.pkl"))
+
+        # Try to load cache
+        if cache_path.exists():
+            logger.info(f"Loading cached surprisal values from {cache_path}")
+            try:
+                import pickle
+
+                with open(cache_path, "rb") as f:
+                    cached_surprisal = pickle.load(f)
+                logger.info(f"Loaded {len(cached_surprisal):,} cached surprisal values")
+
+                if len(cached_surprisal) == len(data):
+                    return pd.Series(cached_surprisal, index=data.index)
+                else:
+                    logger.warning(f"Cached data length mismatch. Recomputing...")
+            except Exception as e:
+                logger.warning(f"Failed to load cache: {e}")
+
+        # Load checkpoint
+        processed_sentences = {}
+        if checkpoint_path.exists():
+            logger.info(f"Loading checkpoint from {checkpoint_path}")
+            try:
+                import pickle
+
+                with open(checkpoint_path, "rb") as f:
+                    checkpoint_data = pickle.load(f)
+                    processed_sentences = checkpoint_data["processed_sentences"]
+                logger.info(
+                    f"Resuming from checkpoint: {len(processed_sentences):,} sentences processed"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to load checkpoint: {e}")
+
+        logger.info(
+            f"Computing surprisal with batched processing (batch_size={batch_size})..."
+        )
+        logger.info("Using pseudo-autoregressive BERT (left-context only)")
+
+        import pickle
 
         import torch
         from tqdm import tqdm
 
         surprisal_values = np.full(len(data), np.nan)
 
-        # Group by sentence
-        grouped = data.groupby(sentence_col)
+        # Restore from checkpoint
+        if processed_sentences:
+            for sent_id, sent_surprisals in processed_sentences.items():
+                for idx, val in sent_surprisals.items():
+                    surprisal_values[idx] = val
 
-        for sent_id, sent_data in tqdm(grouped, desc="Processing sentences"):
+        grouped = data.groupby(sentence_col)
+        sentence_list = list(grouped)
+
+        n_failed = 0
+        n_oom_errors = 0  # Track out-of-memory errors
+        sentences_processed = len(processed_sentences)
+
+        for sent_idx, (sent_id, sent_data) in enumerate(
+            tqdm(sentence_list, desc="Processing sentences")
+        ):
+            if sent_id in processed_sentences:
+                continue
+
             words = sent_data[text_col].tolist()
             indices = sent_data.index.tolist()
+            sentence_surprisals = {}
 
-            # Reconstruct sentence
-            sentence = " ".join(words)
+            # Process words in batches for speed
+            for batch_start in range(0, len(words), batch_size):
+                batch_end = min(batch_start + batch_size, len(words))
+                batch_positions = range(batch_start, batch_end)
 
-            # Tokenize
-            inputs = self._surprisal_tokenizer(
-                sentence, return_tensors="pt", add_special_tokens=True
-            )
+                try:
+                    # Create batch of masked sentences
+                    batch_masked_sentences = []
+                    for word_pos in batch_positions:
+                        masked_words = (
+                            words[:word_pos]
+                            + ["[MASK]"]
+                            + ["[MASK]"] * (len(words) - word_pos - 1)
+                        )
+                        batch_masked_sentences.append(" ".join(masked_words))
 
-            if torch.cuda.is_available():
-                inputs = {k: v.cuda() for k, v in inputs.items()}
+                    # Tokenize batch
+                    inputs = self._surprisal_tokenizer(
+                        batch_masked_sentences,
+                        return_tensors="pt",
+                        add_special_tokens=True,
+                        padding=True,  # Pad to same length within batch
+                        truncation=True,
+                        max_length=max_length,
+                    )
 
-            # Get model predictions
-            with torch.no_grad():
-                outputs = self._surprisal_model(**inputs)
-                logits = outputs.logits
+                    if torch.cuda.is_available():
+                        inputs = {k: v.cuda() for k, v in inputs.items()}
 
-            # Compute surprisal for each word
-            # This is simplified - word-to-token alignment needed for multi-token words
-            token_ids = inputs["input_ids"][0]
+                    # Get predictions for entire batch at once
+                    with torch.no_grad():
+                        outputs = self._surprisal_model(**inputs)
+                        logits = outputs.logits  # [batch_size, seq_len, vocab_size]
 
-            # For each word position, calculate surprisal
-            word_positions = self._align_words_to_tokens(
-                words, self._surprisal_tokenizer.convert_ids_to_tokens(token_ids)
-            )
+                    # Extract surprisal for each word in batch
+                    mask_token_id = self._surprisal_tokenizer.mask_token_id
 
-            for i, (word, word_idx) in enumerate(zip(words, indices)):
-                if word_positions[i] is not None:
-                    token_pos = word_positions[i]
-                    if token_pos > 0 and token_pos < len(token_ids) - 1:
-                        # Get probability of this token given context
-                        token_id = token_ids[token_pos]
-                        probs = torch.softmax(logits[0, token_pos - 1], dim=-1)
-                        prob = probs[token_id].item()
+                    for batch_idx, word_pos in enumerate(batch_positions):
+                        word = words[word_pos]
+                        word_idx = indices[word_pos]
 
-                        # Surprisal = -log2(probability)
-                        surprisal = (
-                            -np.log2(prob) if prob > 0 else 20.0
-                        )  # Cap at 20 bits
+                        # Find first [MASK] position
+                        token_ids = inputs["input_ids"][batch_idx]
+                        mask_positions = (token_ids == mask_token_id).nonzero(
+                            as_tuple=True
+                        )[0]
+
+                        if len(mask_positions) == 0:
+                            n_failed += 1
+                            continue
+
+                        mask_pos = mask_positions[0].item()
+
+                        # Get target token ID
+                        target_tokens = self._surprisal_tokenizer.encode(
+                            word, add_special_tokens=False
+                        )
+                        if len(target_tokens) == 0:
+                            n_failed += 1
+                            continue
+
+                        target_token_id = target_tokens[0]
+
+                        # Get probability
+                        probs = torch.softmax(logits[batch_idx, mask_pos], dim=-1)
+                        prob = probs[target_token_id].item()
+
+                        # Compute surprisal
+                        surprisal = -np.log2(prob) if prob > 0 else 20.0
                         surprisal_values[word_idx] = surprisal
+                        sentence_surprisals[word_idx] = surprisal
 
-        logger.info(
-            f"Computed surprisal for {(~np.isnan(surprisal_values)).sum():,} words"
-        )
+                except RuntimeError as e:
+                    if "out of memory" in str(e).lower():
+                        n_oom_errors += 1
+                        logger.warning(
+                            f"Out of memory at batch size {batch_size}. "
+                            f"Consider reducing batch_size."
+                        )
+                        # Clear cache and continue
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                    else:
+                        logger.debug(f"Batch error: {e}")
+                    n_failed += len(batch_positions)
+                except Exception as e:
+                    logger.debug(f"Batch processing error: {e}")
+                    n_failed += len(batch_positions)
+
+            processed_sentences[sent_id] = sentence_surprisals
+            sentences_processed += 1
+
+            # Checkpoint (every 100 sentences for testing)
+            if (sent_idx + 1) % checkpoint_every == 0:
+                try:
+                    checkpoint_data = {
+                        "processed_sentences": processed_sentences,
+                        "n_failed": n_failed,
+                        "n_oom_errors": n_oom_errors,
+                        "batch_size": batch_size,
+                        "sentences_total": len(sentence_list),
+                    }
+                    with open(checkpoint_path, "wb") as f:
+                        pickle.dump(checkpoint_data, f)
+                    logger.info(
+                        f"Checkpoint: {sentences_processed:,}/{len(sentence_list):,} sentences "
+                        f"({(sentences_processed/len(sentence_list)*100):.1f}%)"
+                    )
+                except Exception as e:
+                    logger.warning(f"Checkpoint save failed: {e}")
+
+        # Save final cache
+        logger.info(f"Saving surprisal cache to {cache_path}")
+        try:
+            with open(cache_path, "wb") as f:
+                pickle.dump(surprisal_values, f)
+            logger.info("Cache saved successfully")
+
+            if checkpoint_path.exists():
+                checkpoint_path.unlink()
+                logger.info("Checkpoint file removed (computation complete)")
+        except Exception as e:
+            logger.warning(f"Failed to save cache: {e}")
+
+        # Statistics
+        computed_count = (~np.isnan(surprisal_values)).sum()
+        valid_surprisal = surprisal_values[~np.isnan(surprisal_values)]
+
+        logger.info(f"\nSurprisal Computation Results:")
+        logger.info(f"  Computed: {computed_count:,} / {len(data):,} words")
+
+        if n_failed > 0:
+            logger.warning(f"  Failed: {n_failed:,} words")
+        if n_oom_errors > 0:
+            logger.warning(
+                f"  Out-of-memory errors: {n_oom_errors} (reduce batch_size)"
+            )
+
+        if len(valid_surprisal) > 0:
+            logger.info(f"  Mean: {valid_surprisal.mean():.2f} bits")
+            logger.info(f"  Median: {np.median(valid_surprisal):.2f} bits")
+            logger.info(
+                f"  Range: [{valid_surprisal.min():.2f}, {valid_surprisal.max():.2f}] bits"
+            )
+            logger.info(f"  Std: {valid_surprisal.std():.2f} bits")
 
         return pd.Series(surprisal_values, index=data.index)
-
-    def _align_words_to_tokens(self, words, tokens):
-        """
-        Align words to tokenizer tokens (simplified version)
-
-        Note: This is a basic implementation. For production use,
-        consider more sophisticated alignment (e.g., using token offsets)
-        """
-        positions = []
-        token_idx = 1  # Skip [CLS]
-
-        for word in words:
-            # Simple matching - may need refinement for subword tokenization
-            positions.append(token_idx)
-            # Approximate token count for this word
-            word_tokens = self._surprisal_tokenizer.tokenize(word)
-            token_idx += len(word_tokens)
-
-        return positions
 
     def add_all_features(
         self,

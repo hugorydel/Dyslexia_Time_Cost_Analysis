@@ -403,15 +403,25 @@ class DyslexiaTimeAnalysisPipeline:
         ax3.set_ylabel("Word Frequency (Zipf)")
         ax3.set_title("Frequency vs Length")
 
-        # 4. Frequency effect on reading time
+        # 4. Surprisal distribution
         ax4 = plt.subplot(3, 3, 4)
-        freq_bins = pd.cut(fixated["word_frequency_zipf"], bins=5)
-        sns.boxplot(data=fixated, x=freq_bins, y="total_reading_time", ax=ax4)
-        ax4.set_xlabel("Frequency Bin (Zipf)")
-        ax4.set_ylabel("Total Reading Time (ms)")
-        ax4.set_title("Frequency Effect on Reading Time")
-        # Fix matplotlib warning by using tick_params
-        ax4.tick_params(axis="x", rotation=45)
+        if "surprisal" in data.columns:
+            surprisal_data = data["surprisal"].dropna()
+            sns.histplot(data=surprisal_data, bins=40, ax=ax4, color="purple")
+            ax4.set_xlabel("Surprisal (bits)")
+            ax4.set_ylabel("Count")
+            ax4.set_title("Distribution of Word Surprisal")
+            ax4.axvline(
+                x=surprisal_data.median(),
+                color="red",
+                linestyle="--",
+                alpha=0.7,
+                label=f"Median: {surprisal_data.median():.1f}",
+            )
+            ax4.legend()
+        else:
+            ax4.text(0.5, 0.5, "Surprisal not computed", ha="center", va="center")
+            ax4.set_title("Distribution of Word Surprisal")
 
         # 5. Length effect on reading time
         ax5 = plt.subplot(3, 3, 5)
@@ -422,17 +432,37 @@ class DyslexiaTimeAnalysisPipeline:
         ax5.set_title("Length Effect on Reading Time")
         ax5.grid(True, alpha=0.3)
 
-        # 6. Skipping by frequency
+        # 6. Surprisal effect by group
         ax6 = plt.subplot(3, 3, 6)
-        freq_bins = pd.cut(data["word_frequency_zipf"], bins=5)
-        skip_by_freq = data.groupby(freq_bins, observed=True)[
-            "skipping_probability"
-        ].mean()
-        skip_by_freq.plot(kind="bar", ax=ax6)
-        ax6.set_xlabel("Frequency Bin (Zipf)")
-        ax6.set_ylabel("Skipping Probability")
-        ax6.set_title("Frequency Effect on Skipping")
-        ax6.tick_params(axis="x", rotation=45)
+        if "surprisal" in data.columns and "dyslexic" in fixated.columns:
+            # Bin surprisal into categories
+            fixated_with_surp = fixated[fixated["surprisal"].notna()].copy()
+            surprisal_bins = pd.qcut(
+                fixated_with_surp["surprisal"],
+                q=5,
+                labels=["Very Low", "Low", "Medium", "High", "Very High"],
+                duplicates="drop",
+            )
+            fixated_with_surp["surprisal_bin"] = surprisal_bins
+
+            for group_name, group_data in fixated_with_surp.groupby("dyslexic"):
+                label = "Dyslexic" if group_name else "Control"
+                surp_effect = group_data.groupby("surprisal_bin", observed=True)[
+                    "total_reading_time"
+                ].mean()
+                surp_effect.plot(
+                    kind="line", ax=ax6, marker="o", label=label, linewidth=2
+                )
+
+            ax6.set_xlabel("Surprisal Level")
+            ax6.set_ylabel("Mean Total Reading Time (ms)")
+            ax6.set_title("Surprisal Effect by Group")
+            ax6.legend()
+            ax6.grid(True, alpha=0.3)
+            ax6.tick_params(axis="x", rotation=45)
+        else:
+            ax6.text(0.5, 0.5, "Surprisal not available", ha="center", va="center")
+            ax6.set_title("Surprisal Effect by Group")
 
         # 7. Group comparison - frequency effect
         if "dyslexic" in fixated.columns:
