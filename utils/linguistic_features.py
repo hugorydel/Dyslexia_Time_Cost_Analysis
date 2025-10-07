@@ -3,13 +3,12 @@
 Linguistic Feature Computation for Danish Eye-Tracking Data
 Implements word frequency (Zipf scale) and surprisal computation
 Updated to use Leipzig Corpora frequency data
-Fixed to handle punctuation in eye-tracking data
 """
 
 import logging
-import string
+import unicodedata
 from pathlib import Path
-from typing import Dict
+from typing import Tuple
 
 import numpy as np
 import pandas as pd
@@ -29,6 +28,7 @@ class DanishLinguisticFeatures:
         self,
         lemma_file: str = "danish_frequencies/danish_leipzig_for_analysis.txt",
         use_proportions: bool = True,
+        strip_punctuation: bool = True,
     ):
         """
         Initialize with Danish frequency lists
@@ -38,9 +38,11 @@ class DanishLinguisticFeatures:
                        Default: Leipzig Corpora processed file (word\tproportion format)
             use_proportions: If True, expects file to contain proportions
                            If False, expects raw frequency counts
+            strip_punctuation: If True, strip leading/trailing punctuation before lookup
         """
         self.lemma_file = Path(lemma_file)
         self.use_proportions = use_proportions
+        self.strip_punctuation = strip_punctuation
         self.freq_dict = None
         self.total_corpus_tokens = None
 
@@ -100,99 +102,186 @@ class DanishLinguisticFeatures:
                 f"({self.total_corpus_tokens:,} total corpus tokens)"
             )
 
+    @staticmethod
+    def _clean_word_for_lookup(word: str, strip_punct: bool = True) -> str:
+        """
+        Clean word for frequency lookup
+
+        Args:
+            word: Original word
+            strip_punct: Whether to strip punctuation
+
+        Returns:
+            Cleaned word (lowercase, optionally stripped of punctuation)
+            Returns empty string for words with encoding corruption
+        """
+        if pd.isna(word):
+            return ""
+
+        word = str(word)
+
+        # Normalize Unicode (handle combining characters like é = e + ́)
+        word = unicodedata.normalize("NFKC", word)
+
+        # Convert to lowercase
+        word = word.lower()
+
+        if strip_punct:
+            # Comprehensive punctuation stripping including Unicode variants
+            # Includes: straight quotes, curly quotes, dashes, brackets, etc.
+            punctuation = (
+                '\'"""'
+                "‚„«»‹›[](){}.,;:!?¿¡…–—−-"
+                "\u2018\u2019\u201c\u201d"  # Curly single and double quotes
+                "\u2013\u2014\u2015"  # En dash, em dash, horizontal bar
+                "\u00ab\u00bb"  # Guillemets
+                "\u2026"  # Ellipsis
+            )
+            word = word.strip(punctuation)
+
+            # CRITICAL: Check for internal '?' after stripping trailing punctuation
+            # If '?' remains, it's encoding corruption (e.g., blæredygtige → bl?redygtige)
+            if "?" in word:
+                return ""  # Skip corrupted words
+
+            # Check if what remains is only punctuation or whitespace
+            if not word or not any(c.isalnum() for c in word):
+                return ""
+
+        return word
+
     def _get_word_frequency(self, word: str) -> float:
         """
         Get frequency for a single word with robust handling
-        Strips punctuation and handles edge cases
 
         Args:
-            word: Word to lookup (may include punctuation)
+            word: Word to lookup
 
         Returns:
-            Frequency value (proportion or count), or np.nan if not found
+            Frequency value (proportion or count)
         """
         if pd.isna(word):
-            return np.nan
+            return self.min_freq
 
-        # Clean the word: lowercase and strip punctuation
-        word_clean = str(word).lower().strip(string.punctuation)
+        # Clean word for lookup
+        word_clean = self._clean_word_for_lookup(word, self.strip_punctuation)
 
-        # Handle empty string after stripping (e.g., pure punctuation tokens)
-        if not word_clean:
-            return np.nan
+        if not word_clean:  # Empty after cleaning (was punctuation-only)
+            return self.min_freq
 
-        # Look up in frequency dictionary
-        freq = self.freq_dict.get(word_clean, None)
-        return freq if freq is not None else np.nan
+        return self.freq_dict.get(word_clean, self.min_freq)
 
     @property
     def min_freq(self) -> float:
         """Minimum frequency for unknown words"""
         if self.use_proportions:
-            return 1e-9  # Very small proportion (1 in a billion)
+            return 1e-9  # Very small proportion
         else:
             return 1  # Count of 1
 
     def compute_word_frequency(
-        self, words: pd.Series, return_zipf: bool = True
-    ) -> pd.Series:
+        self, words: pd.Series, log_missing: bool = True
+    ) -> Tuple[pd.Series, pd.Series]:
         """
-        Compute word frequency with robust handling of missing values and punctuation
+        Compute word frequency (both raw and Zipf) with robust handling
 
         Args:
-            words: Series of word strings (may include punctuation)
-            return_zipf: If True, return Zipf-transformed frequencies (recommended)
-                        If False, return raw frequencies or proportions
+            words: Series of words to lookup
+            log_missing: Whether to log missing words statistics
 
         Returns:
-            Series of frequency values (Zipf scale 1-7 or raw values)
+            Tuple of (raw_frequencies, zipf_frequencies)
         """
 
-        # Look up frequencies (returns np.nan for missing)
+        # Use cached lookup for better performance
         frequencies = words.apply(self._get_word_frequency)
 
-        # Identify truly missing words
-        missing_mask = frequencies.isna()
-        n_missing = missing_mask.sum()
+        # Identify missing words (assigned min_freq) - only log once if requested
+        if log_missing:
+            missing_mask = frequencies == self.min_freq
+            n_missing = missing_mask.sum()
 
-        if n_missing > 0:
-            pct_missing = (n_missing / len(words)) * 100
-            logger.warning(
-                f"{n_missing:,} words ({pct_missing:.1f}%) not found in frequency list"
-            )
+            if n_missing > 0:
+                pct_missing = (n_missing / len(words)) * 100
 
-            # Log sample of missing words
-            missing_words = words[missing_mask].unique()
-            if len(missing_words) <= 50:
-                logger.info(f"Missing words: {sorted(missing_words.tolist())}")
-            else:
-                sample = sorted(missing_words[:50].tolist())
-                logger.info(
-                    f"Sample of {len(missing_words)} missing words: {sample}... "
-                    f"({len(missing_words) - 50} more)"
+                # Get unique missing words
+                missing_words_raw = words[missing_mask].unique()
+
+                # Clean them the same way we do for lookup
+                missing_words_cleaned = []
+                corrupted_count = 0
+
+                for w in missing_words_raw:
+                    cleaned = self._clean_word_for_lookup(w, self.strip_punctuation)
+                    if cleaned == "":
+                        # This was either punctuation-only or corrupted (has internal ?)
+                        if "?" in str(w):
+                            corrupted_count += 1
+                        # Don't add to cleaned list
+                    else:
+                        # Only add if it doesn't contain ? (true corruption indicator)
+                        if "?" not in str(w):
+                            missing_words_cleaned.append(cleaned)
+                        else:
+                            corrupted_count += 1
+
+                # Remove duplicates after cleaning
+                missing_words_cleaned = list(set(missing_words_cleaned))
+                n_unique_missing = len(missing_words_cleaned)
+
+                # Count punctuation-only (empty after cleaning, no ?)
+                n_punctuation_only = (
+                    len(missing_words_raw) - n_unique_missing - corrupted_count
                 )
 
-        # Fill missing values with minimum frequency for computation
-        frequencies = frequencies.fillna(self.min_freq)
+                # Log the breakdown
+                if n_punctuation_only > 0:
+                    logger.info(
+                        f"{n_punctuation_only} missing word instances were punctuation-only"
+                    )
 
-        if return_zipf:
-            # Transform to Zipf scale: log10(freq per billion) + 3
-            # This gives interpretable scores from ~1 (rare) to ~7 (very frequent)
+                if corrupted_count > 0:
+                    logger.info(
+                        f"{corrupted_count} missing word instances had encoding corruption (internal '?') and were excluded"
+                    )
 
-            # Ensure no zeros before log
-            frequencies = frequencies.clip(lower=1e-10)
+                if n_unique_missing > 0:
+                    n_valid_missing = n_missing - corrupted_count - n_punctuation_only
+                    logger.warning(
+                        f"{n_valid_missing:,} word instances "
+                        f"({(n_valid_missing/len(words))*100:.1f}%) "
+                        f"not found in frequency list ({n_unique_missing:,} unique valid words)"
+                    )
 
-            if self.use_proportions:
-                # proportions are already normalized (freq / total_tokens)
-                # So we just need: log10(proportion * 1e9) + 3
-                zipf_freq = np.log10(frequencies * 1e9) + 3
-            else:
-                # For raw frequencies: log10((freq / total) * 1e9) + 3
-                zipf_freq = np.log10((frequencies / self.total_corpus_tokens) * 1e9) + 3
+                    # Log sample
+                    if n_unique_missing <= 50:
+                        logger.info(
+                            f"Missing valid words: {sorted(missing_words_cleaned)}"
+                        )
+                    else:
+                        sample = sorted(missing_words_cleaned[:50])
+                        logger.info(
+                            f"Sample of {n_unique_missing} missing valid words: {sample}... "
+                            f"({n_unique_missing - 50} more)"
+                        )
+                elif corrupted_count > 0 or n_punctuation_only > 0:
+                    logger.info(
+                        f"All {n_missing:,} missing word instances were either punctuation-only "
+                        f"or encoding-corrupted (as expected)"
+                    )
 
-            return zipf_freq
+        # Compute Zipf frequencies
+        # Ensure no zeros before log
+        frequencies_clipped = frequencies.clip(lower=1e-10)
+
+        if self.use_proportions:
+            zipf_freq = np.log10(frequencies_clipped * 1e9) + 3
         else:
-            return frequencies
+            zipf_freq = (
+                np.log10((frequencies_clipped / self.total_corpus_tokens) * 1e9) + 3
+            )
+
+        return frequencies, zipf_freq
 
     def _load_surprisal_model(self, model_name: str = "Maltehb/danish-bert-botxo"):
         """
@@ -340,6 +429,7 @@ class DanishLinguisticFeatures:
         data: pd.DataFrame,
         compute_surprisal: bool = False,
         text_col: str = "word_text",
+        exclude_missing_frequencies: bool = True,
     ) -> pd.DataFrame:
         """
         Add all linguistic features to dataframe
@@ -348,6 +438,7 @@ class DanishLinguisticFeatures:
             data: Input dataframe with word-level data
             compute_surprisal: Whether to compute surprisal (slow!)
             text_col: Column containing word text
+            exclude_missing_frequencies: If True, remove words not found in frequency list
 
         Returns:
             DataFrame with added columns:
@@ -364,28 +455,31 @@ class DanishLinguisticFeatures:
             logger.info("Computing word length...")
             data["word_length"] = data[text_col].str.len()
 
-        # 2. Word frequency
+        # 2. Word frequency - compute both raw and zipf together
         logger.info("Computing word frequency...")
-        data["word_frequency_raw"] = self.compute_word_frequency(
-            data[text_col], return_zipf=False
+        if self.strip_punctuation:
+            logger.info("  Stripping punctuation from words before frequency lookup")
+
+        # Compute both frequencies at once to avoid duplicate logging
+        data["word_frequency_raw"], data["word_frequency_zipf"] = (
+            self.compute_word_frequency(data[text_col], log_missing=True)
         )
-        data["word_frequency_zipf"] = self.compute_word_frequency(
-            data[text_col], return_zipf=True
-        )
+
+        # Exclude words with missing frequencies if requested
+        if exclude_missing_frequencies:
+            missing_mask = data["word_frequency_raw"] == self.min_freq
+            n_excluded = missing_mask.sum()
+
+            if n_excluded > 0:
+                logger.info(
+                    f"Excluding {n_excluded:,} word instances ({(n_excluded/len(data))*100:.1f}%) "
+                    f"with missing frequencies from analysis"
+                )
+                data = data[~missing_mask].copy()
+                logger.info(f"Remaining dataset: {len(data):,} words")
 
         # Log statistics about frequency coverage
-        # Check how many were found (not assigned min_freq)
-        if self.use_proportions:
-            found_mask = data["word_frequency_raw"] > self.min_freq
-        else:
-            found_mask = data["word_frequency_raw"] > 1
-
-        found_count = found_mask.sum()
-        coverage_pct = (found_count / len(data)) * 100
-
-        logger.info(
-            f"Frequency coverage: {found_count:,} / {len(data):,} words ({coverage_pct:.1f}%)"
-        )
+        logger.info(f"Final dataset: {len(data):,} words with valid frequencies")
 
         # 3. Surprisal (optional, computationally expensive)
         if compute_surprisal:

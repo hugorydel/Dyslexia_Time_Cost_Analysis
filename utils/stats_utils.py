@@ -263,9 +263,6 @@ def calculate_basic_statistics(
     if "trial_id" in data.columns:
         stats["trials"] = int(data["trial_id"].nunique())
 
-    if "word_text" in data.columns:
-        stats["unique_words"] = int(data["word_text"].str.lower().nunique())
-
     # Group statistics
     if "dyslexic" in data.columns:
         subject_groups = data.groupby("subject_id")["dyslexic"].first()
