@@ -6,12 +6,15 @@ Updated to use Leipzig Corpora frequency data
 """
 
 import logging
+import pickle
 import unicodedata
 from pathlib import Path
 from typing import Tuple
 
 import numpy as np
 import pandas as pd
+import torch
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -80,8 +83,6 @@ class DanishLinguisticFeatures:
         if duplicate_count > 0:
             logger.warning(
                 f"Found {duplicate_count:,} duplicate words after lowercasing. "
-                f"This suggests the frequency file was not properly standardized. "
-                f"Re-run download_leipzig_danish.py to fix this issue."
             )
 
         if self.use_proportions:
@@ -323,28 +324,67 @@ class DanishLinguisticFeatures:
         data: pd.DataFrame,
         text_col: str = "word_text",
         sentence_col: str = "sentence_id",
+        speech_col: str = "speech_id",  # To handle different texts
+        participant_col: str = "subject_id",
+        word_pos_col: str = "word_position",
         model_name: str = "Maltehb/danish-bert-botxo",
         max_length: int = 512,
         cache_file: str = None,
-        checkpoint_every: int = 100,  # Checkpoint every N sentences
-        batch_size: int = 8,
+        checkpoint_every: int = 100,
+        batch_size: int = 20,
     ) -> pd.Series:
         """
-        Compute surprisal using BERT in pseudo-autoregressive mode with batched processing
+        Compute surprisal efficiently by:
+        1. Identifying unique sentence texts (speech_id + sentence_id)
+        2. Computing surprisal once per unique text
+        3. Broadcasting to all participant instances
 
-        Args:
-            batch_size: Number of word positions to process simultaneously (default: 20)
-                       Increase for speed (may hit memory limits around 32-50)
-            checkpoint_every: Save checkpoint every N sentences (default: 10 for testing)
+        Since participants may read different texts, we use (speech_id, sentence_id)
+        as the composite key to identify unique sentences.
         """
 
         self._load_surprisal_model(model_name)
 
-        # Setup cache paths
+        logger.info("Computing surprisal with deduplication optimization...")
+
+        # === STEP 1: Identify unique sentence texts ===
+        # Group by (speech_id, sentence_id) to get unique sentences
+        unique_sentence_groups = data.groupby([speech_col, sentence_col])
+
+        # Count total participant-sentence instances BEFORE deduplication
+        total_participant_sentences = data.groupby(
+            [participant_col, speech_col, sentence_col]
+        ).ngroups
+
+        # For each unique sentence, get the text (from any participant who read it)
+        unique_sentences = {}  # {(speech_id, sentence_id): [word1, word2, ...]}
+
+        for (speech_id, sentence_id), group in unique_sentence_groups:
+            # Get words from first participant (all read same text for this sentence)
+            # Sort by word_position to ensure correct order
+            sent_data = group.sort_values(word_pos_col)
+            # Get one instance (deduplicate by word_position)
+            sent_data_unique = sent_data.drop_duplicates(
+                subset=word_pos_col, keep="first"
+            )
+            words = sent_data_unique.sort_values(word_pos_col)[text_col].tolist()
+            unique_sentences[(speech_id, sentence_id)] = words
+
+        logger.info(f"Dataset statistics:")
+        logger.info(
+            f"  Total participant-sentence instances: {total_participant_sentences:,}"
+        )
+        logger.info(f"  Unique sentence texts: {len(unique_sentences):,}")
+        logger.info(
+            f"  Average participants per sentence: {total_participant_sentences / len(unique_sentences):.1f}"
+        )
+
+        # === STEP 2: Setup cache ===
         surprisal_dir = Path("word_surprisal")
         surprisal_dir.mkdir(exist_ok=True)
+
         if cache_file is None:
-            cache_file = surprisal_dir / f"surprisal_autoregressive_{sentence_col}.pkl"
+            cache_file = surprisal_dir / "surprisal_cache.pkl"
         else:
             cache_file = surprisal_dir / cache_file
 
@@ -352,225 +392,199 @@ class DanishLinguisticFeatures:
         checkpoint_path = Path(str(cache_path).replace(".pkl", "_checkpoint.pkl"))
 
         # Try to load cache
+        sentence_surprisals = {}  # {(speech_id, sentence_id): [surp1, surp2, ...]}
+
         if cache_path.exists():
             logger.info(f"Loading cached surprisal values from {cache_path}")
             try:
-                import pickle
-
                 with open(cache_path, "rb") as f:
-                    cached_surprisal = pickle.load(f)
-                logger.info(f"Loaded {len(cached_surprisal):,} cached surprisal values")
-
-                if len(cached_surprisal) == len(data):
-                    return pd.Series(cached_surprisal, index=data.index)
-                else:
-                    logger.warning(f"Cached data length mismatch. Recomputing...")
+                    sentence_surprisals = pickle.load(f)
+                logger.info(
+                    f"Loaded surprisal for {len(sentence_surprisals):,} unique sentences"
+                )
             except Exception as e:
                 logger.warning(f"Failed to load cache: {e}")
 
-        # Load checkpoint
-        processed_sentences = {}
+        # Try to load checkpoint
         if checkpoint_path.exists():
             logger.info(f"Loading checkpoint from {checkpoint_path}")
             try:
-                import pickle
-
                 with open(checkpoint_path, "rb") as f:
                     checkpoint_data = pickle.load(f)
-                    processed_sentences = checkpoint_data["processed_sentences"]
+                    sentence_surprisals.update(checkpoint_data["sentence_surprisals"])
                 logger.info(
-                    f"Resuming from checkpoint: {len(processed_sentences):,} sentences processed"
+                    f"Loaded checkpoint with {len(sentence_surprisals):,} sentences"
                 )
             except Exception as e:
                 logger.warning(f"Failed to load checkpoint: {e}")
 
-        logger.info(
-            f"Computing surprisal with batched processing (batch_size={batch_size})..."
-        )
-        logger.info("Using pseudo-autoregressive BERT (left-context only)")
+        # === STEP 3: Compute surprisal for uncached sentences ===
+        sentences_to_process = [
+            (key, words)
+            for key, words in unique_sentences.items()
+            if key not in sentence_surprisals
+        ]
 
-        import pickle
+        if sentences_to_process:
+            logger.info(
+                f"Computing surprisal for {len(sentences_to_process):,} new sentences..."
+            )
+            logger.info("Using pseudo-autoregressive BERT (left-context only)")
 
-        import torch
-        from tqdm import tqdm
+            for sent_idx, (sent_key, words) in enumerate(
+                tqdm(sentences_to_process, desc="Processing unique sentences")
+            ):
+                word_surprisals = []
 
-        surprisal_values = np.full(len(data), np.nan)
+                # Process words in batches
+                for batch_start in range(0, len(words), batch_size):
+                    batch_end = min(batch_start + batch_size, len(words))
+                    batch_positions = range(batch_start, batch_end)
 
-        # Restore from checkpoint
-        if processed_sentences:
-            for sent_id, sent_surprisals in processed_sentences.items():
-                for idx, val in sent_surprisals.items():
-                    surprisal_values[idx] = val
+                    try:
+                        # Create batch of masked sentences
+                        batch_masked_sentences = []
+                        for word_pos in batch_positions:
+                            masked_words = (
+                                words[:word_pos]
+                                + ["[MASK]"]
+                                + ["[MASK]"] * (len(words) - word_pos - 1)
+                            )
+                            batch_masked_sentences.append(" ".join(masked_words))
 
-        grouped = data.groupby(sentence_col)
-        sentence_list = list(grouped)
-
-        n_failed = 0
-        n_oom_errors = 0  # Track out-of-memory errors
-        sentences_processed = len(processed_sentences)
-
-        for sent_idx, (sent_id, sent_data) in enumerate(
-            tqdm(sentence_list, desc="Processing sentences")
-        ):
-            if sent_id in processed_sentences:
-                continue
-
-            words = sent_data[text_col].tolist()
-            indices = sent_data.index.tolist()
-            sentence_surprisals = {}
-
-            # Process words in batches for speed
-            for batch_start in range(0, len(words), batch_size):
-                batch_end = min(batch_start + batch_size, len(words))
-                batch_positions = range(batch_start, batch_end)
-
-                try:
-                    # Create batch of masked sentences
-                    batch_masked_sentences = []
-                    for word_pos in batch_positions:
-                        masked_words = (
-                            words[:word_pos]
-                            + ["[MASK]"]
-                            + ["[MASK]"] * (len(words) - word_pos - 1)
+                        # Tokenize batch
+                        inputs = self._surprisal_tokenizer(
+                            batch_masked_sentences,
+                            return_tensors="pt",
+                            add_special_tokens=True,
+                            padding=True,
+                            truncation=True,
+                            max_length=max_length,
                         )
-                        batch_masked_sentences.append(" ".join(masked_words))
 
-                    # Tokenize batch
-                    inputs = self._surprisal_tokenizer(
-                        batch_masked_sentences,
-                        return_tensors="pt",
-                        add_special_tokens=True,
-                        padding=True,  # Pad to same length within batch
-                        truncation=True,
-                        max_length=max_length,
-                    )
-
-                    if torch.cuda.is_available():
-                        inputs = {k: v.cuda() for k, v in inputs.items()}
-
-                    # Get predictions for entire batch at once
-                    with torch.no_grad():
-                        outputs = self._surprisal_model(**inputs)
-                        logits = outputs.logits  # [batch_size, seq_len, vocab_size]
-
-                    # Extract surprisal for each word in batch
-                    mask_token_id = self._surprisal_tokenizer.mask_token_id
-
-                    for batch_idx, word_pos in enumerate(batch_positions):
-                        word = words[word_pos]
-                        word_idx = indices[word_pos]
-
-                        # Find first [MASK] position
-                        token_ids = inputs["input_ids"][batch_idx]
-                        mask_positions = (token_ids == mask_token_id).nonzero(
-                            as_tuple=True
-                        )[0]
-
-                        if len(mask_positions) == 0:
-                            n_failed += 1
-                            continue
-
-                        mask_pos = mask_positions[0].item()
-
-                        # Get target token ID
-                        target_tokens = self._surprisal_tokenizer.encode(
-                            word, add_special_tokens=False
-                        )
-                        if len(target_tokens) == 0:
-                            n_failed += 1
-                            continue
-
-                        target_token_id = target_tokens[0]
-
-                        # Get probability
-                        probs = torch.softmax(logits[batch_idx, mask_pos], dim=-1)
-                        prob = probs[target_token_id].item()
-
-                        # Compute surprisal
-                        surprisal = -np.log2(prob) if prob > 0 else 20.0
-                        surprisal_values[word_idx] = surprisal
-                        sentence_surprisals[word_idx] = surprisal
-
-                except RuntimeError as e:
-                    if "out of memory" in str(e).lower():
-                        n_oom_errors += 1
-                        logger.warning(
-                            f"Out of memory at batch size {batch_size}. "
-                            f"Consider reducing batch_size."
-                        )
-                        # Clear cache and continue
                         if torch.cuda.is_available():
-                            torch.cuda.empty_cache()
-                    else:
+                            inputs = {k: v.cuda() for k, v in inputs.items()}
+
+                        # Get predictions
+                        with torch.no_grad():
+                            outputs = self._surprisal_model(**inputs)
+                            logits = outputs.logits
+
+                        mask_token_id = self._surprisal_tokenizer.mask_token_id
+
+                        for batch_idx, word_pos in enumerate(batch_positions):
+                            word = words[word_pos]
+
+                            # Find first [MASK]
+                            token_ids = inputs["input_ids"][batch_idx]
+                            mask_positions = (token_ids == mask_token_id).nonzero(
+                                as_tuple=True
+                            )[0]
+
+                            if len(mask_positions) == 0:
+                                word_surprisals.append(np.nan)
+                                continue
+
+                            mask_pos = mask_positions[0].item()
+
+                            # Get target token
+                            target_tokens = self._surprisal_tokenizer.encode(
+                                word, add_special_tokens=False
+                            )
+                            if len(target_tokens) == 0:
+                                word_surprisals.append(np.nan)
+                                continue
+
+                            target_token_id = target_tokens[0]
+
+                            # Get probability
+                            probs = torch.softmax(logits[batch_idx, mask_pos], dim=-1)
+                            prob = probs[target_token_id].item()
+
+                            # Compute surprisal
+                            surprisal = -np.log2(prob) if prob > 0 else 20.0
+                            word_surprisals.append(surprisal)
+
+                    except Exception as e:
                         logger.debug(f"Batch error: {e}")
-                    n_failed += len(batch_positions)
-                except Exception as e:
-                    logger.debug(f"Batch processing error: {e}")
-                    n_failed += len(batch_positions)
+                        word_surprisals.extend([np.nan] * len(batch_positions))
 
-            processed_sentences[sent_id] = sentence_surprisals
-            sentences_processed += 1
+                # Store this sentence's surprisal values
+                sentence_surprisals[sent_key] = word_surprisals
 
-            # Checkpoint (every 100 sentences for testing)
-            if (sent_idx + 1) % checkpoint_every == 0:
-                try:
-                    checkpoint_data = {
-                        "processed_sentences": processed_sentences,
-                        "n_failed": n_failed,
-                        "n_oom_errors": n_oom_errors,
-                        "batch_size": batch_size,
-                        "sentences_total": len(sentence_list),
-                    }
-                    with open(checkpoint_path, "wb") as f:
-                        pickle.dump(checkpoint_data, f)
-                    logger.info(
-                        f"Checkpoint: {sentences_processed:,}/{len(sentence_list):,} sentences "
-                        f"({(sentences_processed/len(sentence_list)*100):.1f}%)"
-                    )
-                except Exception as e:
-                    logger.warning(f"Checkpoint save failed: {e}")
+                # Checkpoint periodically
+                if (sent_idx + 1) % checkpoint_every == 0:
+                    try:
+                        checkpoint_data = {
+                            "sentence_surprisals": sentence_surprisals,
+                            "processed": len(sentence_surprisals),
+                            "total": len(unique_sentences),
+                        }
+                        with open(checkpoint_path, "wb") as f:
+                            pickle.dump(checkpoint_data, f)
+                        logger.info(
+                            f"Checkpoint: {len(sentence_surprisals):,} / {len(unique_sentences):,} "
+                            f"unique sentences processed"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Checkpoint failed: {e}")
 
-        # Save final cache
-        logger.info(f"Saving surprisal cache to {cache_path}")
-        try:
-            with open(cache_path, "wb") as f:
-                pickle.dump(surprisal_values, f)
-            logger.info("Cache saved successfully")
+            # Save final cache
+            logger.info(f"Saving surprisal cache to {cache_path}")
+            try:
+                with open(cache_path, "wb") as f:
+                    pickle.dump(sentence_surprisals, f)
+                logger.info("Cache saved successfully")
 
-            if checkpoint_path.exists():
-                checkpoint_path.unlink()
-                logger.info("Checkpoint file removed (computation complete)")
-        except Exception as e:
-            logger.warning(f"Failed to save cache: {e}")
+                if checkpoint_path.exists():
+                    checkpoint_path.unlink()
+                    logger.info("Checkpoint file removed")
+            except Exception as e:
+                logger.warning(f"Failed to save cache: {e}")
 
-        # Statistics
+        # === STEP 4: Broadcast to all participant instances ===
+        logger.info("Broadcasting surprisal values to all participant instances...")
+
+        # Vectorized approach to map surprisal values
+        def map_surprisal(row):
+            """Map surprisal value for a single row"""
+            sent_key = (row[speech_col], row[sentence_col])
+            word_pos = row[word_pos_col]
+
+            if sent_key in sentence_surprisals:
+                sent_surp = sentence_surprisals[sent_key]
+                if 0 <= word_pos < len(sent_surp):  # Bounds check
+                    return sent_surp[word_pos]
+            return np.nan
+
+        # Apply to all rows
+        logger.info("  Mapping surprisal to words...")
+        surprisal_series = data.apply(map_surprisal, axis=1)
+        surprisal_values = surprisal_series.values
+
+        logger.info(f"  Mapped {(~pd.isna(surprisal_series)).sum():,} words")
+
+        # === STEP 5: Statistics ===
         computed_count = (~np.isnan(surprisal_values)).sum()
         valid_surprisal = surprisal_values[~np.isnan(surprisal_values)]
 
         logger.info(f"\nSurprisal Computation Results:")
-        logger.info(f"  Computed: {computed_count:,} / {len(data):,} words")
-
-        if n_failed > 0:
-            logger.warning(f"  Failed: {n_failed:,} words")
-        if n_oom_errors > 0:
-            logger.warning(
-                f"  Out-of-memory errors: {n_oom_errors} (reduce batch_size)"
-            )
+        logger.info(f"  Unique sentences processed: {len(sentence_surprisals):,}")
+        logger.info(f"  Total words with surprisal: {computed_count:,} / {len(data):,}")
 
         if len(valid_surprisal) > 0:
             logger.info(f"  Mean: {valid_surprisal.mean():.2f} bits")
             logger.info(f"  Median: {np.median(valid_surprisal):.2f} bits")
+            logger.info(f"  Std: {valid_surprisal.std():.2f} bits")
             logger.info(
                 f"  Range: [{valid_surprisal.min():.2f}, {valid_surprisal.max():.2f}] bits"
             )
-            logger.info(f"  Std: {valid_surprisal.std():.2f} bits")
 
         return pd.Series(surprisal_values, index=data.index)
 
     def add_all_features(
         self,
         data: pd.DataFrame,
-        compute_surprisal: bool = False,
         text_col: str = "word_text",
         exclude_missing_frequencies: bool = True,
     ) -> pd.DataFrame:
@@ -579,7 +593,6 @@ class DanishLinguisticFeatures:
 
         Args:
             data: Input dataframe with word-level data
-            compute_surprisal: Whether to compute surprisal (slow!)
             text_col: Column containing word text
             exclude_missing_frequencies: If True, remove words not found in frequency list
 
@@ -588,7 +601,7 @@ class DanishLinguisticFeatures:
                 - word_length: character count (if not present)
                 - word_frequency_raw: raw proportion or frequency
                 - word_frequency_zipf: Zipf-transformed frequency (1-7 scale)
-                - surprisal: -log2 probability (if compute_surprisal=True)
+                - surprisal: -log2 probability
         """
 
         data = data.copy()
@@ -624,12 +637,35 @@ class DanishLinguisticFeatures:
         # Log statistics about frequency coverage
         logger.info(f"Final dataset: {len(data):,} words with valid frequencies")
 
-        # 3. Surprisal (optional, computationally expensive)
-        if compute_surprisal:
-            if "sentence_id" not in data.columns:
-                logger.warning("sentence_id column required for surprisal. Skipping.")
-            else:
-                data["surprisal"] = self.compute_surprisal(data, text_col=text_col)
+        # 3. Surprisal
+        if "sentence_id" not in data.columns:
+            logger.warning("sentence_id column required for surprisal. Skipping.")
+        else:
+            data["surprisal"] = self.compute_surprisal(
+                data,
+                text_col="word_text",
+                sentence_col="sentence_id",
+                speech_col="speech_id",
+                participant_col="subject_id",
+                word_pos_col="word_position",
+            )
+
+            # After computing surprisal
+            zero_surprisal = data[data["surprisal"] < 0.01]  # Essentially 0
+            print(f"\nWords with ~0 surprisal: {len(zero_surprisal)}")
+            print(f"Unique words: {zero_surprisal['word_text'].unique()[:20]}")
+            print(f"Average length: {zero_surprisal['word_length'].mean():.1f}")
+            print(
+                f"Average frequency: {zero_surprisal['word_frequency_zipf'].mean():.1f}"
+            )
+
+            # Sample
+            print("\nSample words with 0 surprisal:")
+            print(
+                zero_surprisal[
+                    ["word_text", "word_length", "word_frequency_zipf", "surprisal"]
+                ].head(20)
+            )
 
         logger.info("Linguistic features added successfully")
 
@@ -644,10 +680,9 @@ class DanishLinguisticFeatures:
             f"std={data['word_frequency_zipf'].std():.2f}, "
             f"range=[{data['word_frequency_zipf'].min():.2f}, {data['word_frequency_zipf'].max():.2f}]"
         )
-        if compute_surprisal and "surprisal" in data.columns:
-            logger.info(
-                f"  Surprisal: mean={data['surprisal'].mean():.2f}, "
-                f"std={data['surprisal'].std():.2f}"
-            )
+        logger.info(
+            f"  Surprisal: mean={data['surprisal'].mean():.2f}, "
+            f"std={data['surprisal'].std():.2f}"
+        )
 
         return data

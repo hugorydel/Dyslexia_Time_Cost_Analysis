@@ -147,15 +147,12 @@ class DyslexiaTimeAnalysisPipeline:
 
         return data
 
-    def compute_linguistic_features(
-        self, data: pd.DataFrame, compute_surprisal: bool = False
-    ) -> pd.DataFrame:
+    def compute_linguistic_features(self, data: pd.DataFrame) -> pd.DataFrame:
         """
         Compute linguistic features for the dataset
 
         Args:
             data: Word-level dataframe
-            compute_surprisal: Whether to compute surprisal (computationally expensive!)
 
         Returns:
             DataFrame with added linguistic features:
@@ -175,9 +172,7 @@ class DyslexiaTimeAnalysisPipeline:
             raise
 
         # Add all features
-        data = self.linguistic_features.add_all_features(
-            data, compute_surprisal=compute_surprisal, text_col="word_text"
-        )
+        data = self.linguistic_features.add_all_features(data, text_col="word_text")
 
         return data
 
@@ -296,12 +291,9 @@ class DyslexiaTimeAnalysisPipeline:
         logger.info("Linguistic feature analysis complete")
         return results
 
-    def run_exploratory_analysis(self, compute_surprisal: bool = False) -> dict:
+    def run_exploratory_analysis(self) -> dict:
         """
         Run exploratory analysis on the word-level data
-
-        Args:
-            compute_surprisal: Whether to compute surprisal (slow!)
         """
 
         logger.info("Running exploratory analysis...")
@@ -310,9 +302,7 @@ class DyslexiaTimeAnalysisPipeline:
         data = self.load_copco_data()
 
         # NEW: Compute linguistic features
-        data = self.compute_linguistic_features(
-            data, compute_surprisal=compute_surprisal
-        )
+        data = self.compute_linguistic_features(data)
 
         # Get skipping analysis results if available
         skipping_analysis = getattr(self, "_skipping_analysis", {})
@@ -543,9 +533,7 @@ def main():
 
     try:
         if args.explore:
-            results = pipeline.run_exploratory_analysis(
-                compute_surprisal=args.surprisal
-            )
+            results = pipeline.run_exploratory_analysis()
             print("\nExploratory Analysis Summary:")
             print(f"Data shape: {results['data_shape']}")
             print(f"Subjects: {results['subjects']}")
@@ -566,17 +554,14 @@ def main():
         else:
             print("Dyslexia Time Cost Analysis Pipeline")
             print("=" * 50)
-            print("1. Run exploratory analysis (without surprisal)")
-            print("2. Run exploratory analysis (WITH surprisal - slow!)")
+            print("1. Run exploratory analysis")
+            print("2. Run hypothesis-testing analysis (not implemented)")
             print("3. Exit")
 
             choice = input("\nEnter your choice (1-3): ")
 
             if choice == "1":
-                results = pipeline.run_exploratory_analysis(compute_surprisal=False)
-                print(f"Results saved to: {pipeline.results_dir}")
-            elif choice == "2":
-                results = pipeline.run_exploratory_analysis(compute_surprisal=True)
+                results = pipeline.run_exploratory_analysis()
                 print(f"Results saved to: {pipeline.results_dir}")
             else:
                 print("Exiting...")
