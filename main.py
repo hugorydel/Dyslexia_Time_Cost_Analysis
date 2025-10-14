@@ -11,10 +11,10 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from hypothesis_testing import run_hypothesis_testing
 
 # Import configuration
 import config
+from hypothesis_testing import run_hypothesis_testing
 
 # Import utilities
 from utils.data_utils import (
@@ -343,9 +343,15 @@ class DyslexiaTimeAnalysisPipeline:
 
         return summary
 
-    def run_hypothesis_testing_analysis(self) -> dict:
+    def run_hypothesis_testing_analysis(
+        self, include_skipped: bool = False, compare_both: bool = False
+    ) -> dict:
         """
         Run hypothesis testing analysis on the word-level data
+
+        Args:
+            include_skipped: If True, include skipped words (TRT=0) in analysis
+            compare_both: If True, run both analyses (fixated only vs all words) and compare
         """
         logger.info("Running hypothesis testing analysis...")
 
@@ -356,7 +362,12 @@ class DyslexiaTimeAnalysisPipeline:
         data = self.compute_linguistic_features(data)
 
         # Run hypothesis tests
-        results = run_hypothesis_testing(data, self.results_dir)
+        results = run_hypothesis_testing(
+            data,
+            self.results_dir,
+            include_skipped=include_skipped,
+            compare_both=compare_both,
+        )
 
         logger.info(f"Hypothesis testing complete. Results saved to {self.results_dir}")
 
@@ -385,12 +396,6 @@ class DyslexiaTimeAnalysisPipeline:
         ax1.set_xlabel("Word Frequency (Zipf Scale)")
         ax1.set_ylabel("Count")
         ax1.set_title("Distribution of Word Frequencies")
-        ax1.axvline(
-            x=3, color="r", linestyle="--", alpha=0.5, label="Low freq threshold"
-        )
-        ax1.axvline(
-            x=4, color="g", linestyle="--", alpha=0.5, label="High freq threshold"
-        )
         ax1.legend()
 
         # 2. Length distribution
@@ -540,6 +545,16 @@ def main():
         "--hypothesis", action="store_true", help="Run hypothesis testing only"
     )
     parser.add_argument(
+        "--with-skipped",
+        action="store_true",
+        help="Include skipped words (TRT=0) in hypothesis testing",
+    )
+    parser.add_argument(
+        "--compare",
+        action="store_true",
+        help="Run both analyses (fixated vs all words) and compare",
+    )
+    parser.add_argument(
         "--surprisal",
         action="store_true",
         help="Compute surprisal (slow! requires transformers library)",
@@ -576,7 +591,9 @@ def main():
                     print(f"    Range: [{stats['min']:.2f}, {stats['max']:.2f}]")
 
         elif args.hypothesis:
-            results = pipeline.run_hypothesis_testing_analysis()
+            results = pipeline.run_hypothesis_testing_analysis(
+                include_skipped=args.with_skipped, compare_both=args.compare
+            )
             print(f"Results saved to: {pipeline.results_dir}")
 
         else:
@@ -584,17 +601,27 @@ def main():
             print("Dyslexia Time Cost Analysis Pipeline")
             print("=" * 50)
             print("1. Run exploratory analysis")
-            print("2. Run hypothesis-testing analysis")
-            print("3. Exit")
+            print("2. Run hypothesis testing (fixated words only)")
+            print("3. Run hypothesis testing (ALL words including skipped)")
+            print("4. Compare both analyses (fixated vs all words)")
+            print("5. Exit")
 
-            choice = input("\nEnter your choice (1-3): ")
+            choice = input("\nEnter your choice (1-5): ")
 
             if choice == "1":
                 results = pipeline.run_exploratory_analysis()
                 print(f"\nResults saved to: {pipeline.results_dir}")
 
             elif choice == "2":
-                results = pipeline.run_hypothesis_testing_analysis()
+                results = pipeline.run_hypothesis_testing_analysis(
+                    include_skipped=False
+                )
+
+            elif choice == "3":
+                results = pipeline.run_hypothesis_testing_analysis(include_skipped=True)
+
+            elif choice == "4":
+                results = pipeline.run_hypothesis_testing_analysis(compare_both=True)
 
             else:
                 print("Exiting...")

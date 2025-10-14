@@ -25,7 +25,7 @@ class DyslexiaHypothesisTesting:
     Tests main effects, interactions, and variance decomposition
     """
 
-    def __init__(self, data: pd.DataFrame, results_dir: Path):
+    def __init__(self, data: pd.DataFrame, results_dir: Path, name_suffix: str = ""):
         """
         Initialize hypothesis testing
 
@@ -36,6 +36,7 @@ class DyslexiaHypothesisTesting:
                 - dyslexic (boolean), subject_id, sentence_id
                 - was_fixated (to filter fixated words)
             results_dir: Directory to save results
+            name_suffix: Suffix for output files (e.g., "_with_skipped")
 
         Note on Model Warnings:
             You may see warnings about "singular covariance" or "boundary" from statsmodels.
@@ -46,10 +47,12 @@ class DyslexiaHypothesisTesting:
         self.data = data.copy()
         self.results_dir = Path(results_dir)
         self.results_dir.mkdir(exist_ok=True, parents=True)
+        self.name_suffix = name_suffix
 
-        # Create subdirectories
-        self.tables_dir = self.results_dir / "hypothesis_testing_tables"
-        self.figures_dir = self.results_dir / "hypothesis_testing_figures"
+        # Create subdirectories with suffix
+        suffix_dir = name_suffix if name_suffix else ""
+        self.tables_dir = self.results_dir / f"hypothesis_testing_tables{suffix_dir}"
+        self.figures_dir = self.results_dir / f"hypothesis_testing_figures{suffix_dir}"
         self.tables_dir.mkdir(exist_ok=True)
         self.figures_dir.mkdir(exist_ok=True)
 
@@ -62,17 +65,21 @@ class DyslexiaHypothesisTesting:
             f"Dataset: {len(self.data):,} words from {self.data['subject_id'].nunique()} subjects"
         )
 
-    def prepare_data(self, outcomes: List[str] = None) -> pd.DataFrame:
+    def prepare_data(
+        self, outcomes: List[str] = None, include_skipped: bool = False
+    ) -> pd.DataFrame:
         """
         Prepare data for hypothesis testing
 
         Args:
             outcomes: List of outcome variables to test
+            include_skipped: If True, include skipped words (with TRT=0) in analysis
 
         Returns:
             Prepared DataFrame with centered predictors and complete cases
         """
         logger.info("Preparing data for hypothesis testing...")
+        logger.info(f"Include skipped words: {include_skipped}")
 
         if outcomes is None:
             outcomes = [
@@ -81,9 +88,20 @@ class DyslexiaHypothesisTesting:
                 "gaze_duration",
             ]
 
-        # Start with fixated words only for reading time measures
-        data = self.data[self.data["was_fixated"] == True].copy()
-        logger.info(f"Starting with {len(data):,} fixated words")
+        if include_skipped:
+            # Include ALL words (skipped + fixated)
+            data = self.data.copy()
+
+            # For skipped words, set reading time to 0
+            data.loc[data["was_fixated"] == False, "total_reading_time"] = 0
+
+            logger.info(f"Starting with {len(data):,} words (including skipped)")
+            logger.info(f"  Skipped: {(data['was_fixated'] == False).sum():,}")
+            logger.info(f"  Fixated: {(data['was_fixated'] == True).sum():,}")
+        else:
+            # Original behavior: only fixated words
+            data = self.data[self.data["was_fixated"] == True].copy()
+            logger.info(f"Starting with {len(data):,} fixated words")
 
         # Remove rows with missing linguistic features
         required_cols = [
@@ -92,7 +110,8 @@ class DyslexiaHypothesisTesting:
             "surprisal",
             "subject_id",
         ]
-        required_cols.extend(outcomes)
+        if not include_skipped:
+            required_cols.extend(outcomes)
 
         initial_count = len(data)
         data = data.dropna(subset=required_cols)
@@ -109,7 +128,6 @@ class DyslexiaHypothesisTesting:
         data["group"] = data["dyslexic"].astype(int)
 
         # Center continuous predictors for interpretability
-        # This makes the intercept interpretable as the mean at average predictor values
         logger.info("Centering predictors...")
 
         data["length_c"] = data["word_length"] - data["word_length"].mean()
@@ -118,11 +136,16 @@ class DyslexiaHypothesisTesting:
         )
         data["surprisal_c"] = data["surprisal"] - data["surprisal"].mean()
 
-        # Log-transform reading times to reduce skew (common in RT analysis)
+        # Log-transform reading times
+        # Add 1ms to handle zeros (skipped words)
         for outcome in outcomes:
             if outcome in data.columns:
-                # Add small constant to avoid log(0), then log transform
                 data[f"log_{outcome}"] = np.log(data[outcome] + 1)
+
+                if include_skipped:
+                    # Report on zero values
+                    n_zeros = (data[outcome] == 0).sum()
+                    logger.info(f"  {outcome}: {n_zeros:,} zero values (skipped words)")
 
         # Report centering statistics
         logger.info(f"Predictor means after centering:")
@@ -817,22 +840,29 @@ class DyslexiaHypothesisTesting:
         ]
         return pd.DataFrame(rows)
 
-    def run_all_tests(self, outcome: str = "log_total_reading_time") -> Dict:
+    def run_all_tests(
+        self, outcome: str = "log_total_reading_time", include_skipped: bool = False
+    ) -> Dict:
         """
         Run all three hypothesis tests
 
         Args:
             outcome: Outcome variable to test (default: log-transformed total reading time)
+            include_skipped: If True, include skipped words (TRT=0) in analysis
 
         Returns:
             Dictionary with all results
         """
         logger.info("=" * 70)
         logger.info("RUNNING ALL HYPOTHESIS TESTS")
+        if include_skipped:
+            logger.info("Analysis: ALL WORDS (including skipped)")
+        else:
+            logger.info("Analysis: FIXATED WORDS ONLY")
         logger.info("=" * 70)
 
         # Prepare data
-        self.prepare_data()
+        self.prepare_data(include_skipped=include_skipped)
 
         # Test all hypotheses
         h1_results = self.test_hypothesis_1(outcome)
@@ -848,8 +878,25 @@ class DyslexiaHypothesisTesting:
         # Create summary report
         summary = {
             "outcome_variable": outcome,
+            "include_skipped": include_skipped,
             "n_observations": len(self.prepared_data),
             "n_subjects": self.prepared_data["subject_id"].nunique(),
+            "n_skipped": int(
+                (
+                    self.prepared_data.get(
+                        "was_fixated", pd.Series([True] * len(self.prepared_data))
+                    )
+                    == False
+                ).sum()
+            ),
+            "n_fixated": int(
+                (
+                    self.prepared_data.get(
+                        "was_fixated", pd.Series([True] * len(self.prepared_data))
+                    )
+                    == True
+                ).sum()
+            ),
             "hypothesis_1": h1_results,
             "hypothesis_2": h2_results,
             "hypothesis_3": h3_results,
@@ -858,7 +905,8 @@ class DyslexiaHypothesisTesting:
         # Save summary to JSON
         import json
 
-        output_file = self.results_dir / "hypothesis_testing_summary.json"
+        suffix = "_with_skipped" if include_skipped else "_fixated_only"
+        output_file = self.results_dir / f"hypothesis_testing_summary{suffix}.json"
         with open(output_file, "w") as f:
             json.dump(summary, f, indent=2, default=str)
 
@@ -867,31 +915,176 @@ class DyslexiaHypothesisTesting:
         return summary
 
 
-def run_hypothesis_testing(data: pd.DataFrame, results_dir: Path) -> Dict:
+def run_hypothesis_testing(
+    data: pd.DataFrame,
+    results_dir: Path,
+    include_skipped: bool = False,
+    compare_both: bool = False,
+) -> Dict:
     """
     Main entry point for hypothesis testing
 
     Args:
         data: Prepared word-level data
         results_dir: Directory to save results
+        include_skipped: If True, include skipped words (TRT=0) in analysis
+        compare_both: If True, run both analyses and compare
 
     Returns:
         Dictionary with all test results
     """
-    tester = DyslexiaHypothesisTesting(data, results_dir)
-    results = tester.run_all_tests(outcome="log_total_reading_time")
+    if compare_both:
+        # Run both analyses and compare
+        logger.info("\n" + "=" * 70)
+        logger.info("RUNNING COMPARATIVE ANALYSIS")
+        logger.info("Will test both: (1) Fixated only, (2) All words including skipped")
+        logger.info("=" * 70)
+
+        # Analysis 1: Fixated only
+        logger.info("\n### ANALYSIS 1: FIXATED WORDS ONLY ###")
+        tester_fixated = DyslexiaHypothesisTesting(
+            data, results_dir, name_suffix="_fixated_only"
+        )
+        results_fixated = tester_fixated.run_all_tests(
+            outcome="log_total_reading_time", include_skipped=False
+        )
+
+        # Analysis 2: All words
+        logger.info("\n### ANALYSIS 2: ALL WORDS (INCLUDING SKIPPED) ###")
+        tester_all = DyslexiaHypothesisTesting(
+            data, results_dir, name_suffix="_with_skipped"
+        )
+        results_all = tester_all.run_all_tests(
+            outcome="log_total_reading_time", include_skipped=True
+        )
+
+        # Compare results
+        _print_comparison(results_fixated, results_all)
+
+        return {
+            "fixated_only": results_fixated,
+            "with_skipped": results_all,
+        }
+    else:
+        # Run single analysis
+        suffix = "_with_skipped" if include_skipped else "_fixated_only"
+        tester = DyslexiaHypothesisTesting(data, results_dir, name_suffix=suffix)
+        results = tester.run_all_tests(
+            outcome="log_total_reading_time", include_skipped=include_skipped
+        )
+
+        # Print final summary
+        _print_final_summary(results, results_dir, include_skipped)
+
+        return results
+
+
+def _print_comparison(results_fixated: Dict, results_all: Dict):
+    """Print comparison between fixated-only and all-words analyses"""
+
+    print("\n" + "=" * 70)
+    print("COMPARATIVE RESULTS: FIXATED ONLY vs ALL WORDS")
+    print("=" * 70)
+
+    # Sample sizes
+    print(f"\nSample Sizes:")
+    print(f"  Fixated only: {results_fixated['n_observations']:,} words")
+    print(f"  All words:    {results_all['n_observations']:,} words")
+    print(
+        f"  Difference:   +{results_all['n_observations'] - results_fixated['n_observations']:,} words (+{((results_all['n_observations'] / results_fixated['n_observations']) - 1)*100:.1f}%)"
+    )
+
+    # Hypothesis 2 interactions (most important comparison)
+    print(f"\n{'Hypothesis 2: Group x Predictor Interactions':^70}")
+    print("-" * 70)
+
+    h2_fix = results_fixated["hypothesis_2"]["interactions"]
+    h2_all = results_all["hypothesis_2"]["interactions"]
+
+    print(f"{'Interaction':<20} {'Fixated Only':<25} {'All Words':<25}")
+    print("-" * 70)
+
+    for name in ["length", "frequency", "surprisal"]:
+        fix_beta = h2_fix[name]["beta"]
+        fix_p = h2_fix[name]["p"]
+        fix_sig = (
+            "***"
+            if fix_p < 0.001
+            else "**" if fix_p < 0.01 else "*" if fix_p < 0.05 else "ns"
+        )
+
+        all_beta = h2_all[name]["beta"]
+        all_p = h2_all[name]["p"]
+        all_sig = (
+            "***"
+            if all_p < 0.001
+            else "**" if all_p < 0.01 else "*" if all_p < 0.05 else "ns"
+        )
+
+        print(
+            f"{name.capitalize():<20} b={fix_beta:>7.4f}, p={fix_p:>6.4f} {fix_sig:<3}  b={all_beta:>7.4f}, p={all_p:>6.4f} {all_sig:<3}"
+        )
+
+    # Variance explained
+    print(f"\n{'Hypothesis 3: Variance Explained':^70}")
+    print("-" * 70)
+
+    r2_fix = results_fixated["hypothesis_3"]["model_comparison"]["pseudo_r2"]
+    r2_all = results_all["hypothesis_3"]["model_comparison"]["pseudo_r2"]
+
+    print(f"  Fixated only: {r2_fix:.1%}")
+    print(f"  All words:    {r2_all:.1%}")
+    print(
+        f"  Difference:   {(r2_all - r2_fix):.1%} ({'+' if r2_all > r2_fix else ''}{((r2_all/r2_fix - 1)*100):.1f}% change)"
+    )
+
+    # Key finding
+    print(f"\n{'KEY FINDING':^70}")
+    print("=" * 70)
+
+    surprisal_changed = (
+        h2_fix["surprisal"]["significant"] != h2_all["surprisal"]["significant"]
+    )
+
+    if surprisal_changed:
+        if h2_all["surprisal"]["significant"]:
+            print(
+                "✓ Including skipped words REVEALS significant Group x Surprisal interaction!"
+            )
+            print(
+                "  This suggests surprisal effects ARE present but masked when analyzing"
+            )
+            print("  only fixated words.")
+        else:
+            print(
+                "  Surprisal interaction remains non-significant even with full dataset."
+            )
+    else:
+        print("  Both analyses show consistent results for interaction patterns.")
+
+    print("=" * 70)
+
+
+def _print_final_summary(results: Dict, results_dir: Path, include_skipped: bool):
+    """Print final summary for single analysis"""
+
+    suffix = "_with_skipped" if include_skipped else "_fixated_only"
 
     # Print final summary
     print("\n" + "=" * 70)
     print("HYPOTHESIS TESTING COMPLETE")
+    if include_skipped:
+        print("Analysis: ALL WORDS (including skipped)")
+    else:
+        print("Analysis: FIXATED WORDS ONLY")
     print("=" * 70)
     print(f"\nResults saved to: {results_dir}")
     print(f"\nTables:")
-    print(f"  - {results_dir}/hypothesis_testing_tables/")
+    print(f"  - {results_dir}/hypothesis_testing_tables{suffix}/")
     print(f"\nFigures:")
-    print(f"  - {results_dir}/hypothesis_testing_figures/")
+    print(f"  - {results_dir}/hypothesis_testing_figures{suffix}/")
     print(f"\nSummary:")
-    print(f"  - {results_dir}/hypothesis_testing_summary.json")
+    print(f"  - {results_dir}/hypothesis_testing_summary{suffix}.json")
 
     # Print key findings
     h1 = results["hypothesis_1"]
@@ -938,5 +1131,3 @@ def run_hypothesis_testing(data: pd.DataFrame, results_dir: Path) -> Dict:
     )
 
     print("\n" + "=" * 70)
-
-    return results

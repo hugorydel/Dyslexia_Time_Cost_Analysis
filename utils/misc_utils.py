@@ -65,9 +65,6 @@ def create_output_directories(base_dir: Path) -> dict:
     """
     directories = {
         "results": base_dir,
-        "models": base_dir / "models",
-        "figures": base_dir / "figures",
-        "tables": base_dir / "tables",
     }
 
     for name, dir_path in directories.items():
