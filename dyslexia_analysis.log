@@ -1,0 +1,172 @@
+2025-10-14 14:09:41,512 - utils.misc_utils - WARNING - CopCo data path does not exist: D:\Dyslexia Research\CopCo_Data
+2025-10-14 14:09:41,513 - __main__ - INFO - Dyslexia Time Analysis Pipeline initialized
+2025-10-14 14:09:44,202 - __main__ - INFO - Running exploratory analysis...
+2025-10-14 14:09:44,203 - __main__ - INFO - Loading CopCo dataset...
+2025-10-14 14:09:44,203 - __main__ - ERROR - Pipeline failed: CopCo data not found at D:\Dyslexia Research\CopCo_Data
+2025-10-14 14:10:06,375 - utils.misc_utils - WARNING - CopCo data path does not exist: D:\Dyslexia Research\CopCo_Data
+2025-10-14 14:10:06,376 - __main__ - INFO - Dyslexia Time Analysis Pipeline initialized
+2025-10-14 14:10:09,225 - __main__ - INFO - Running exploratory analysis...
+2025-10-14 14:10:09,225 - __main__ - INFO - Loading CopCo dataset...
+2025-10-14 14:10:09,229 - utils.data_utils - INFO - Loading 57 participant files...
+2025-10-14 14:10:10,726 - utils.data_utils - INFO - Starting with 335,203 total word entries
+2025-10-14 14:10:10,944 - utils.data_utils - INFO - Word fixation patterns:
+2025-10-14 14:10:10,944 - utils.data_utils - INFO -   - Skipped words (0 fixations): 126,302
+2025-10-14 14:10:10,944 - utils.data_utils - INFO -   - Fixated words (1+ fixations): 208,901
+2025-10-14 14:10:10,945 - utils.data_utils - INFO -   - Unknown fixations (NaN): 0
+2025-10-14 14:10:10,983 - utils.data_utils - INFO - Fixated words reading times: median 272ms, 99th percentile 1777ms
+2025-10-14 14:10:10,986 - utils.data_utils - INFO - Removed 14 fixated words with extreme reading times (0 too short, 14 too long)
+2025-10-14 14:10:11,098 - utils.data_utils - INFO - Removed 23 words longer than 30 characters (likely data errors)
+2025-10-14 14:10:11,141 - utils.data_utils - INFO - Final dataset: 126,302 skipped words, 208,864 fixated words
+2025-10-14 14:10:11,141 - utils.data_utils - INFO - Data cleaning complete: 335,166 words retained (100.0% of original)
+2025-10-14 14:10:11,152 - utils.data_utils - INFO - Groups identified: 19 dyslexic, 39 control
+2025-10-14 14:10:11,228 - __main__ - INFO - Calculating skipping probabilities...
+2025-10-14 14:10:11,232 - utils.skipping_utils - INFO - Skipping analysis from ExtractedFeatures:
+2025-10-14 14:10:11,232 - utils.skipping_utils - INFO -   Total words: 335,166
+2025-10-14 14:10:11,232 - utils.skipping_utils - INFO -   Skipped: 126,302 (37.7%)
+2025-10-14 14:10:11,232 - utils.skipping_utils - INFO -   Fixated: 208,864 (62.3%)
+2025-10-14 14:10:11,280 - __main__ - INFO - Skipping analysis: 37.7% overall rate
+2025-10-14 14:10:11,302 - __main__ - INFO - Loaded: 335,166 words from 57 participants
+2025-10-14 14:10:11,302 - __main__ - INFO - ============================================================
+2025-10-14 14:10:11,302 - __main__ - INFO - COMPUTING LINGUISTIC FEATURES
+2025-10-14 14:10:11,302 - __main__ - INFO - ============================================================
+2025-10-14 14:10:11,303 - utils.linguistic_features - INFO - Loading Danish frequency list from danish_frequencies\danish_leipzig_for_analysis.txt
+2025-10-14 14:10:12,869 - utils.linguistic_features - WARNING - Found 2 duplicate words after lowercasing. 
+2025-10-14 14:10:13,298 - utils.linguistic_features - INFO - Loaded 1,499,999 word proportions from Leipzig Corpora
+2025-10-14 14:10:13,396 - utils.linguistic_features - INFO - Computing word frequency...
+2025-10-14 14:10:13,396 - utils.linguistic_features - INFO -   Stripping punctuation from words before frequency lookup
+2025-10-14 14:10:14,044 - utils.linguistic_features - INFO - 13 missing word instances were punctuation-only
+2025-10-14 14:10:14,046 - utils.linguistic_features - WARNING - 4,586 word instances (1.4%) not found in frequency list (197 unique valid words)
+2025-10-14 14:10:14,046 - utils.linguistic_features - INFO - Sample of 197 missing valid words: ['1926-2016', '3.g-underholdning', 'abilifyer', 'abrams efter', 'amokkacino', 'april 1940 på amalienborg', 'awakens (2015', 'blintzes', 'chakri-dynasti', 'demonstrationsland', 'downcycling', 'elevrådsarrangementer', 'forårsbebudning', 'fædrelandssalmen', 'havstrategier', 'havtema', 'heksejagte', 'hetzbølger', 'htx-fag', 'h’erne', 'i græs-familien', 'i star', 'intersex-inkluderende', 'issefjerene', 'kentauerhaven', 'klimatilpasningslov', 'lgbtqi-personer', 'løvmand og', 'med prins', 'midsommeraftner', 'miljøsejr', 'nivaagaard-tradition', 'næstlængste regeringstid af', 'pinsesalmerne', 'på p', 'regnvandsbidrag', 'skywalker også', 'spejder-juniorer', 'spákona', 'statsminister fra', 'terracottafabrik', 'top-omstillingsparate', 'topgræsser', 'tscherning (1817-1890', 'vandmiljøindsatsen', 'vaneslægt', 'vindmølle-testanlægget', 'vindmøllehoveder', 'vk-fællesskabet', 'ættesamfund']... (147 more)
+2025-10-14 14:10:14,053 - utils.linguistic_features - INFO - Excluding 4,599 word instances (1.4%) with missing frequencies from analysis
+2025-10-14 14:10:14,327 - utils.linguistic_features - INFO - Remaining dataset: 330,567 words
+2025-10-14 14:10:14,327 - utils.linguistic_features - INFO - Final dataset: 330,567 words with valid frequencies
+2025-10-14 14:10:19,983 - utils.linguistic_features - INFO - Loading transformer model: Maltehb/danish-bert-botxo
+2025-10-14 14:10:23,265 - utils.linguistic_features - INFO - Transformer model loaded successfully
+2025-10-14 14:10:23,266 - utils.linguistic_features - INFO - Computing surprisal with deduplication optimization...
+2025-10-14 14:10:24,873 - utils.linguistic_features - INFO - Dataset statistics:
+2025-10-14 14:10:24,873 - utils.linguistic_features - INFO -   Total participant-sentence instances: 20,707
+2025-10-14 14:10:24,873 - utils.linguistic_features - INFO -   Unique sentence texts: 1,986
+2025-10-14 14:10:24,874 - utils.linguistic_features - INFO -   Average participants per sentence: 10.4
+2025-10-14 14:10:24,876 - utils.linguistic_features - INFO - Loading cached surprisal values from word_surprisal\surprisal_cache.pkl
+2025-10-14 14:10:24,889 - utils.linguistic_features - INFO - Loaded surprisal for 1,986 unique sentences
+2025-10-14 14:10:24,890 - utils.linguistic_features - INFO - Broadcasting surprisal values to all participant instances...
+2025-10-14 14:10:24,890 - utils.linguistic_features - INFO -   Mapping surprisal to words...
+2025-10-14 14:10:27,971 - utils.linguistic_features - INFO -   Mapped 117,151 words
+2025-10-14 14:10:27,973 - utils.linguistic_features - INFO - 
+Surprisal Computation Results:
+2025-10-14 14:10:27,973 - utils.linguistic_features - INFO -   Unique sentences processed: 1,986
+2025-10-14 14:10:27,974 - utils.linguistic_features - INFO -   Total words with surprisal: 117,151 / 330,567
+2025-10-14 14:10:27,974 - utils.linguistic_features - INFO -   Mean: 13.48 bits
+2025-10-14 14:10:27,976 - utils.linguistic_features - INFO -   Median: 11.15 bits
+2025-10-14 14:10:27,977 - utils.linguistic_features - INFO -   Std: 9.29 bits
+2025-10-14 14:10:27,978 - utils.linguistic_features - INFO -   Range: [0.00, 53.66] bits
+2025-10-14 14:10:27,999 - utils.linguistic_features - INFO - Linguistic features added successfully
+2025-10-14 14:10:27,999 - utils.linguistic_features - INFO - 
+Feature Summary:
+2025-10-14 14:10:28,002 - utils.linguistic_features - INFO -   Word length: mean=4.67, std=3.08
+2025-10-14 14:10:28,007 - utils.linguistic_features - INFO -   Zipf frequency: mean=8.85, std=1.38, range=[3.91, 10.51]
+2025-10-14 14:10:28,015 - utils.linguistic_features - INFO -   Surprisal: mean=13.48, std=9.29
+2025-10-14 14:10:28,130 - utils.stats_utils - INFO - Added enhanced skipping statistics to basic stats
+2025-10-14 14:10:28,131 - utils.stats_utils - INFO - Overall skipping rate: 37.7%
+2025-10-14 14:10:28,568 - __main__ - INFO - Analyzing linguistic feature effects...
+2025-10-14 14:10:28,906 - __main__ - INFO - Linguistic feature analysis complete
+2025-10-14 14:10:28,918 - utils.misc_utils - INFO - Results saved to results\exploratory_summary.json
+2025-10-14 14:10:30,540 - utils.visualization_utils - INFO - Exploratory plots saved to results\exploratory_plots.png
+2025-10-14 14:10:31,953 - utils.visualization_utils - INFO - Group summary plots saved to results\group_summary_plots.png
+2025-10-14 14:10:31,960 - __main__ - INFO - Creating linguistic feature visualizations...
+2025-10-14 14:10:34,262 - __main__ - INFO - Linguistic feature plots saved to results\linguistic_features_plots.png
+2025-10-14 14:10:34,282 - __main__ - INFO - Analysis complete. Results saved to results
+2025-10-14 14:20:36,959 - __main__ - INFO - Dyslexia Time Analysis Pipeline initialized
+2025-10-14 14:22:12,307 - __main__ - INFO - Running exploratory analysis...
+2025-10-14 14:22:12,307 - __main__ - INFO - Loading CopCo dataset...
+2025-10-14 14:22:12,308 - utils.data_utils - INFO - Loading 57 participant files...
+2025-10-14 14:22:14,053 - utils.data_utils - INFO - Starting with 335,203 total word entries
+2025-10-14 14:22:14,240 - utils.data_utils - INFO - Word fixation patterns:
+2025-10-14 14:22:14,240 - utils.data_utils - INFO -   - Skipped words (0 fixations): 126,302
+2025-10-14 14:22:14,240 - utils.data_utils - INFO -   - Fixated words (1+ fixations): 208,901
+2025-10-14 14:22:14,240 - utils.data_utils - INFO -   - Unknown fixations (NaN): 0
+2025-10-14 14:22:14,274 - utils.data_utils - INFO - Fixated words reading times: median 272ms, 99th percentile 1777ms
+2025-10-14 14:22:14,277 - utils.data_utils - INFO - Removed 14 fixated words with extreme reading times (0 too short, 14 too long)
+2025-10-14 14:22:14,372 - utils.data_utils - INFO - Removed 23 words longer than 30 characters (likely data errors)
+2025-10-14 14:22:14,409 - utils.data_utils - INFO - Final dataset: 126,302 skipped words, 208,864 fixated words
+2025-10-14 14:22:14,410 - utils.data_utils - INFO - Data cleaning complete: 335,166 words retained (100.0% of original)
+2025-10-14 14:22:14,418 - utils.data_utils - INFO - Groups identified: 19 dyslexic, 39 control
+2025-10-14 14:22:14,488 - __main__ - INFO - Calculating skipping probabilities...
+2025-10-14 14:22:14,492 - utils.skipping_utils - INFO - Skipping analysis from ExtractedFeatures:
+2025-10-14 14:22:14,493 - utils.skipping_utils - INFO -   Total words: 335,166
+2025-10-14 14:22:14,493 - utils.skipping_utils - INFO -   Skipped: 126,302 (37.7%)
+2025-10-14 14:22:14,493 - utils.skipping_utils - INFO -   Fixated: 208,864 (62.3%)
+2025-10-14 14:22:14,535 - __main__ - INFO - Skipping analysis: 37.7% overall rate
+2025-10-14 14:22:14,552 - __main__ - INFO - Loaded: 335,166 words from 57 participants
+2025-10-14 14:22:14,552 - __main__ - INFO - ============================================================
+2025-10-14 14:22:14,553 - __main__ - INFO - COMPUTING LINGUISTIC FEATURES
+2025-10-14 14:22:14,553 - __main__ - INFO - ============================================================
+2025-10-14 14:22:14,553 - utils.linguistic_features - INFO - Loading Danish frequency list from danish_frequencies\danish_leipzig_for_analysis.txt
+2025-10-14 14:22:15,978 - utils.linguistic_features - WARNING - Found 2 duplicate words after lowercasing. 
+2025-10-14 14:22:16,417 - utils.linguistic_features - INFO - Loaded 1,499,999 word proportions from Leipzig Corpora
+2025-10-14 14:22:16,542 - utils.linguistic_features - INFO - Computing word frequency...
+2025-10-14 14:22:16,543 - utils.linguistic_features - INFO -   Stripping punctuation from words before frequency lookup
+2025-10-14 14:22:17,266 - utils.linguistic_features - INFO - 13 missing word instances were punctuation-only
+2025-10-14 14:22:17,267 - utils.linguistic_features - WARNING - 4,586 word instances (1.4%) not found in frequency list (197 unique valid words)
+2025-10-14 14:22:17,267 - utils.linguistic_features - INFO - Sample of 197 missing valid words: ['2000-direktiverne', '3.g-underholdning', 'abilifyer', 'abrams efter', 'af kong', 'amerikansk science', 'awakens (2015', 'bjergstien', 'dallis', 'drengekammeraterne', 'emancipationskravet', 'en klase med', 'finansudspil', 'forbrugsopgjorte', 'fosforudnyttelsen', 'geografilærers', 'glædesblussene', 'grillparties', 'heksetrold', 'h’er', 'ingrid, danmarks', 'initiativlyst', 'itx-klassen', 'kabeltromlerne', 'klimatilpasningslov', 'klimatilpasningspakke', 'kvantepartiklerne', 'lederun', 'lgbtqi-personer', 'lærerstuderene', 'løvmand og', 'midsommerfælleskabet', 'nyreligiøst', 'på charlottenborg', 'regnvandsbidrag', 'sankthansormen', 'sankthanstraditioner', 'sejdkunst', 'skjortesyerske', 'skraldepigerne', 'som star', 'stress-sygdomme', 'subapikalt', 'svenske velfærdsstat og', 'top-omstillingsparate', 'vaneslægt', 'vindmøllehoveder', 'årshjulets', 'æg-lancetformede', 'ættesamfund']... (147 more)
+2025-10-14 14:22:17,275 - utils.linguistic_features - INFO - Excluding 4,599 word instances (1.4%) with missing frequencies from analysis
+2025-10-14 14:22:17,434 - utils.linguistic_features - INFO - Remaining dataset: 330,567 words
+2025-10-14 14:22:17,434 - utils.linguistic_features - INFO - Final dataset: 330,567 words with valid frequencies
+2025-10-14 14:22:22,487 - utils.linguistic_features - INFO - Loading transformer model: Maltehb/danish-bert-botxo
+2025-10-14 14:22:25,422 - utils.linguistic_features - INFO - Transformer model loaded successfully
+2025-10-14 14:22:25,422 - utils.linguistic_features - INFO - Computing surprisal with deduplication optimization...
+2025-10-14 14:22:26,986 - utils.linguistic_features - INFO - Dataset statistics:
+2025-10-14 14:22:26,986 - utils.linguistic_features - INFO -   Total participant-sentence instances: 20,707
+2025-10-14 14:22:26,987 - utils.linguistic_features - INFO -   Unique sentence texts: 1,986
+2025-10-14 14:22:26,987 - utils.linguistic_features - INFO -   Average participants per sentence: 10.4
+2025-10-14 14:22:26,988 - utils.linguistic_features - INFO - Computing surprisal for 1,986 new sentences...
+2025-10-14 14:22:26,988 - utils.linguistic_features - INFO - Using pseudo-autoregressive BERT (left-context only)
+2025-10-14 14:22:50,721 - utils.linguistic_features - INFO - Checkpoint: 100 / 1,986 unique sentences processed
+2025-10-14 14:23:22,680 - utils.linguistic_features - INFO - Checkpoint: 200 / 1,986 unique sentences processed
+2025-10-14 14:23:48,228 - utils.linguistic_features - INFO - Checkpoint: 300 / 1,986 unique sentences processed
+2025-10-14 14:24:20,835 - utils.linguistic_features - INFO - Checkpoint: 400 / 1,986 unique sentences processed
+2025-10-14 14:24:54,906 - utils.linguistic_features - INFO - Checkpoint: 500 / 1,986 unique sentences processed
+2025-10-14 14:25:25,470 - utils.linguistic_features - INFO - Checkpoint: 600 / 1,986 unique sentences processed
+2025-10-14 14:26:31,997 - utils.linguistic_features - INFO - Checkpoint: 700 / 1,986 unique sentences processed
+2025-10-14 14:27:28,180 - utils.linguistic_features - INFO - Checkpoint: 800 / 1,986 unique sentences processed
+2025-10-14 14:28:02,637 - utils.linguistic_features - INFO - Checkpoint: 900 / 1,986 unique sentences processed
+2025-10-14 14:28:22,934 - utils.linguistic_features - INFO - Checkpoint: 1,000 / 1,986 unique sentences processed
+2025-10-14 14:28:45,087 - utils.linguistic_features - INFO - Checkpoint: 1,100 / 1,986 unique sentences processed
+2025-10-14 14:29:18,300 - utils.linguistic_features - INFO - Checkpoint: 1,200 / 1,986 unique sentences processed
+2025-10-14 14:30:01,981 - utils.linguistic_features - INFO - Checkpoint: 1,300 / 1,986 unique sentences processed
+2025-10-14 14:30:59,446 - utils.linguistic_features - INFO - Checkpoint: 1,400 / 1,986 unique sentences processed
+2025-10-14 14:31:35,067 - utils.linguistic_features - INFO - Checkpoint: 1,500 / 1,986 unique sentences processed
+2025-10-14 14:32:02,646 - utils.linguistic_features - INFO - Checkpoint: 1,600 / 1,986 unique sentences processed
+2025-10-14 14:32:51,233 - utils.linguistic_features - INFO - Checkpoint: 1,700 / 1,986 unique sentences processed
+2025-10-14 14:33:29,608 - utils.linguistic_features - INFO - Checkpoint: 1,800 / 1,986 unique sentences processed
+2025-10-14 14:34:02,112 - utils.linguistic_features - INFO - Checkpoint: 1,900 / 1,986 unique sentences processed
+2025-10-14 14:34:31,218 - utils.linguistic_features - INFO - Saving surprisal cache to word_surprisal\surprisal_cache.pkl
+2025-10-14 14:34:31,293 - utils.linguistic_features - INFO - Cache saved successfully
+2025-10-14 14:34:31,294 - utils.linguistic_features - INFO - Checkpoint file removed
+2025-10-14 14:34:31,294 - utils.linguistic_features - INFO - Broadcasting surprisal values to all participant instances...
+2025-10-14 14:34:31,295 - utils.linguistic_features - INFO -   Mapping surprisal to words...
+2025-10-14 14:34:34,722 - utils.linguistic_features - INFO -   Mapped 326,496 words
+2025-10-14 14:34:34,724 - utils.linguistic_features - INFO - 
+Surprisal Computation Results:
+2025-10-14 14:34:34,724 - utils.linguistic_features - INFO -   Unique sentences processed: 1,986
+2025-10-14 14:34:34,725 - utils.linguistic_features - INFO -   Total words with surprisal: 326,496 / 330,567
+2025-10-14 14:34:34,726 - utils.linguistic_features - INFO -   Mean: 13.39 bits
+2025-10-14 14:34:34,736 - utils.linguistic_features - INFO -   Median: 11.13 bits
+2025-10-14 14:34:34,741 - utils.linguistic_features - INFO -   Std: 9.11 bits
+2025-10-14 14:34:34,741 - utils.linguistic_features - INFO -   Range: [0.00, 61.23] bits
+2025-10-14 14:34:34,794 - utils.linguistic_features - INFO - Linguistic features added successfully
+2025-10-14 14:34:34,794 - utils.linguistic_features - INFO - 
+Feature Summary:
+2025-10-14 14:34:34,804 - utils.linguistic_features - INFO -   Word length: mean=4.67, std=3.08
+2025-10-14 14:34:34,810 - utils.linguistic_features - INFO -   Zipf frequency: mean=8.85, std=1.38, range=[3.91, 10.51]
+2025-10-14 14:34:34,815 - utils.linguistic_features - INFO -   Surprisal: mean=13.39, std=9.11
+2025-10-14 14:34:34,951 - utils.stats_utils - INFO - Added enhanced skipping statistics to basic stats
+2025-10-14 14:34:34,952 - utils.stats_utils - INFO - Overall skipping rate: 37.7%
+2025-10-14 14:34:35,346 - __main__ - INFO - Analyzing linguistic feature effects...
+2025-10-14 14:34:35,716 - __main__ - INFO - Linguistic feature analysis complete
+2025-10-14 14:34:35,733 - utils.misc_utils - INFO - Results saved to results\exploratory_summary.json
+2025-10-14 14:34:37,700 - utils.visualization_utils - INFO - Exploratory plots saved to results\exploratory_plots.png
+2025-10-14 14:34:39,026 - utils.visualization_utils - INFO - Group summary plots saved to results\group_summary_plots.png
+2025-10-14 14:34:39,032 - __main__ - INFO - Creating linguistic feature visualizations...
+2025-10-14 14:34:41,402 - __main__ - INFO - Linguistic feature plots saved to results\linguistic_features_plots.png
+2025-10-14 14:34:41,437 - __main__ - INFO - Analysis complete. Results saved to results

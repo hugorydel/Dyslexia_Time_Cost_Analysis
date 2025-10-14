@@ -324,7 +324,7 @@ class DanishLinguisticFeatures:
         data: pd.DataFrame,
         text_col: str = "word_text",
         sentence_col: str = "sentence_id",
-        speech_col: str = "speech_id",  # To handle different texts
+        speech_col: str = "speech_id",
         participant_col: str = "subject_id",
         word_pos_col: str = "word_position",
         model_name: str = "Maltehb/danish-bert-botxo",
@@ -338,9 +338,6 @@ class DanishLinguisticFeatures:
         1. Identifying unique sentence texts (speech_id + sentence_id)
         2. Computing surprisal once per unique text
         3. Broadcasting to all participant instances
-
-        Since participants may read different texts, we use (speech_id, sentence_id)
-        as the composite key to identify unique sentences.
         """
 
         self._load_surprisal_model(model_name)
@@ -348,27 +345,30 @@ class DanishLinguisticFeatures:
         logger.info("Computing surprisal with deduplication optimization...")
 
         # === STEP 1: Identify unique sentence texts ===
-        # Group by (speech_id, sentence_id) to get unique sentences
         unique_sentence_groups = data.groupby([speech_col, sentence_col])
 
-        # Count total participant-sentence instances BEFORE deduplication
         total_participant_sentences = data.groupby(
             [participant_col, speech_col, sentence_col]
         ).ngroups
 
-        # For each unique sentence, get the text (from any participant who read it)
+        # For each unique sentence, get the text AND the minimum word_position
         unique_sentences = {}  # {(speech_id, sentence_id): [word1, word2, ...]}
+        sentence_start_positions = {}  # {(speech_id, sentence_id): min_word_position}
 
         for (speech_id, sentence_id), group in unique_sentence_groups:
-            # Get words from first participant (all read same text for this sentence)
             # Sort by word_position to ensure correct order
             sent_data = group.sort_values(word_pos_col)
-            # Get one instance (deduplicate by word_position)
             sent_data_unique = sent_data.drop_duplicates(
                 subset=word_pos_col, keep="first"
             )
             words = sent_data_unique.sort_values(word_pos_col)[text_col].tolist()
-            unique_sentences[(speech_id, sentence_id)] = words
+
+            # CRITICAL: Store the starting position of this sentence
+            min_position = sent_data[word_pos_col].min()
+
+            sent_key = (speech_id, sentence_id)
+            unique_sentences[sent_key] = words
+            sentence_start_positions[sent_key] = min_position
 
         logger.info(f"Dataset statistics:")
         logger.info(
@@ -379,7 +379,7 @@ class DanishLinguisticFeatures:
             f"  Average participants per sentence: {total_participant_sentences / len(unique_sentences):.1f}"
         )
 
-        # === STEP 2: Setup cache ===
+        # === STEP 2-3: Cache setup and computation (SAME AS BEFORE) ===
         surprisal_dir = Path("word_surprisal")
         surprisal_dir.mkdir(exist_ok=True)
 
@@ -392,13 +392,31 @@ class DanishLinguisticFeatures:
         checkpoint_path = Path(str(cache_path).replace(".pkl", "_checkpoint.pkl"))
 
         # Try to load cache
-        sentence_surprisals = {}  # {(speech_id, sentence_id): [surp1, surp2, ...]}
+        sentence_surprisals = {}
 
         if cache_path.exists():
             logger.info(f"Loading cached surprisal values from {cache_path}")
             try:
                 with open(cache_path, "rb") as f:
-                    sentence_surprisals = pickle.load(f)
+                    cached_data = pickle.load(f)
+
+                    # Handle both old and new cache formats
+                    if (
+                        isinstance(cached_data, dict)
+                        and "sentence_surprisals" in cached_data
+                    ):
+                        sentence_surprisals = cached_data["sentence_surprisals"]
+                        sentence_start_positions_cached = cached_data.get(
+                            "sentence_start_positions", {}
+                        )
+                        # Merge cached positions
+                        for key, pos in sentence_start_positions_cached.items():
+                            if key not in sentence_start_positions:
+                                sentence_start_positions[key] = pos
+                    else:
+                        # Old format: just the dict
+                        sentence_surprisals = cached_data
+
                 logger.info(
                     f"Loaded surprisal for {len(sentence_surprisals):,} unique sentences"
                 )
@@ -412,6 +430,12 @@ class DanishLinguisticFeatures:
                 with open(checkpoint_path, "rb") as f:
                     checkpoint_data = pickle.load(f)
                     sentence_surprisals.update(checkpoint_data["sentence_surprisals"])
+                    if "sentence_start_positions" in checkpoint_data:
+                        for key, pos in checkpoint_data[
+                            "sentence_start_positions"
+                        ].items():
+                            if key not in sentence_start_positions:
+                                sentence_start_positions[key] = pos
                 logger.info(
                     f"Loaded checkpoint with {len(sentence_surprisals):,} sentences"
                 )
@@ -517,6 +541,7 @@ class DanishLinguisticFeatures:
                     try:
                         checkpoint_data = {
                             "sentence_surprisals": sentence_surprisals,
+                            "sentence_start_positions": sentence_start_positions,
                             "processed": len(sentence_surprisals),
                             "total": len(unique_sentences),
                         }
@@ -529,11 +554,15 @@ class DanishLinguisticFeatures:
                     except Exception as e:
                         logger.warning(f"Checkpoint failed: {e}")
 
-            # Save final cache
+            # Save final cache WITH sentence start positions
             logger.info(f"Saving surprisal cache to {cache_path}")
             try:
+                cache_data = {
+                    "sentence_surprisals": sentence_surprisals,
+                    "sentence_start_positions": sentence_start_positions,
+                }
                 with open(cache_path, "wb") as f:
-                    pickle.dump(sentence_surprisals, f)
+                    pickle.dump(cache_data, f)
                 logger.info("Cache saved successfully")
 
                 if checkpoint_path.exists():
@@ -545,16 +574,20 @@ class DanishLinguisticFeatures:
         # === STEP 4: Broadcast to all participant instances ===
         logger.info("Broadcasting surprisal values to all participant instances...")
 
-        # Vectorized approach to map surprisal values
+        # FIXED: Convert global word_position to sentence-relative position
         def map_surprisal(row):
             """Map surprisal value for a single row"""
             sent_key = (row[speech_col], row[sentence_col])
-            word_pos = row[word_pos_col]
+            global_word_pos = row[word_pos_col]
 
-            if sent_key in sentence_surprisals:
+            if sent_key in sentence_surprisals and sent_key in sentence_start_positions:
+                # Convert global position to sentence-relative position
+                sent_start_pos = sentence_start_positions[sent_key]
+                sentence_relative_pos = global_word_pos - sent_start_pos
+
                 sent_surp = sentence_surprisals[sent_key]
-                if 0 <= word_pos < len(sent_surp):  # Bounds check
-                    return sent_surp[word_pos]
+                if 0 <= sentence_relative_pos < len(sent_surp):
+                    return sent_surp[sentence_relative_pos]
             return np.nan
 
         # Apply to all rows
@@ -649,24 +682,6 @@ class DanishLinguisticFeatures:
                 participant_col="subject_id",
                 word_pos_col="word_position",
             )
-
-            # After computing surprisal
-            zero_surprisal = data[data["surprisal"] < 0.01]  # Essentially 0
-            print(f"\nWords with ~0 surprisal: {len(zero_surprisal)}")
-            print(f"Unique words: {zero_surprisal['word_text'].unique()[:20]}")
-            print(f"Average length: {zero_surprisal['word_length'].mean():.1f}")
-            print(
-                f"Average frequency: {zero_surprisal['word_frequency_zipf'].mean():.1f}"
-            )
-
-            # Sample
-            print("\nSample words with 0 surprisal:")
-            print(
-                zero_surprisal[
-                    ["word_text", "word_length", "word_frequency_zipf", "surprisal"]
-                ].head(20)
-            )
-
         logger.info("Linguistic features added successfully")
 
         # Log summary statistics
