@@ -104,7 +104,7 @@ def validate_config(config) -> None:
     Raises:
         AttributeError: If required configuration is missing
     """
-    required_attrs = ["COPCO_PATH", "RANDOM_STATE"]
+    required_attrs = ["COPCO_PATH"]
 
     for attr in required_attrs:
         if not hasattr(config, attr):
