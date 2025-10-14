@@ -170,3 +170,244 @@ Feature Summary:
 2025-10-14 14:34:39,032 - __main__ - INFO - Creating linguistic feature visualizations...
 2025-10-14 14:34:41,402 - __main__ - INFO - Linguistic feature plots saved to results\linguistic_features_plots.png
 2025-10-14 14:34:41,437 - __main__ - INFO - Analysis complete. Results saved to results
+2025-10-14 14:56:05,597 - __main__ - INFO - Dyslexia Time Analysis Pipeline initialized
+2025-10-14 14:56:09,869 - __main__ - INFO - Running hypothesis testing analysis...
+2025-10-14 14:56:09,870 - __main__ - INFO - Loading CopCo dataset...
+2025-10-14 14:56:09,870 - utils.data_utils - INFO - Loading 57 participant files...
+2025-10-14 14:56:11,713 - utils.data_utils - INFO - Starting with 335,203 total word entries
+2025-10-14 14:56:11,928 - utils.data_utils - INFO - Word fixation patterns:
+2025-10-14 14:56:11,928 - utils.data_utils - INFO -   - Skipped words (0 fixations): 126,302
+2025-10-14 14:56:11,929 - utils.data_utils - INFO -   - Fixated words (1+ fixations): 208,901
+2025-10-14 14:56:11,929 - utils.data_utils - INFO -   - Unknown fixations (NaN): 0
+2025-10-14 14:56:11,961 - utils.data_utils - INFO - Fixated words reading times: median 272ms, 99th percentile 1777ms
+2025-10-14 14:56:11,964 - utils.data_utils - INFO - Removed 14 fixated words with extreme reading times (0 too short, 14 too long)
+2025-10-14 14:56:12,063 - utils.data_utils - INFO - Removed 23 words longer than 30 characters (likely data errors)
+2025-10-14 14:56:12,104 - utils.data_utils - INFO - Final dataset: 126,302 skipped words, 208,864 fixated words
+2025-10-14 14:56:12,105 - utils.data_utils - INFO - Data cleaning complete: 335,166 words retained (100.0% of original)
+2025-10-14 14:56:12,115 - utils.data_utils - INFO - Groups identified: 19 dyslexic, 39 control
+2025-10-14 14:56:12,207 - __main__ - INFO - Calculating skipping probabilities...
+2025-10-14 14:56:12,210 - utils.skipping_utils - INFO - Skipping analysis from ExtractedFeatures:
+2025-10-14 14:56:12,211 - utils.skipping_utils - INFO -   Total words: 335,166
+2025-10-14 14:56:12,211 - utils.skipping_utils - INFO -   Skipped: 126,302 (37.7%)
+2025-10-14 14:56:12,211 - utils.skipping_utils - INFO -   Fixated: 208,864 (62.3%)
+2025-10-14 14:56:12,263 - __main__ - INFO - Skipping analysis: 37.7% overall rate
+2025-10-14 14:56:12,282 - __main__ - INFO - Loaded: 335,166 words from 57 participants
+2025-10-14 14:56:12,282 - __main__ - INFO - ============================================================
+2025-10-14 14:56:12,283 - __main__ - INFO - COMPUTING LINGUISTIC FEATURES
+2025-10-14 14:56:12,283 - __main__ - INFO - ============================================================
+2025-10-14 14:56:12,283 - utils.linguistic_features - INFO - Loading Danish frequency list from danish_frequencies\danish_leipzig_for_analysis.txt
+2025-10-14 14:56:13,686 - utils.linguistic_features - WARNING - Found 2 duplicate words after lowercasing. 
+2025-10-14 14:56:14,123 - utils.linguistic_features - INFO - Loaded 1,499,999 word proportions from Leipzig Corpora
+2025-10-14 14:56:14,211 - utils.linguistic_features - INFO - Computing word frequency...
+2025-10-14 14:56:14,211 - utils.linguistic_features - INFO -   Stripping punctuation from words before frequency lookup
+2025-10-14 14:56:14,857 - utils.linguistic_features - INFO - 13 missing word instances were punctuation-only
+2025-10-14 14:56:14,857 - utils.linguistic_features - WARNING - 4,586 word instances (1.4%) not found in frequency list (197 unique valid words)
+2025-10-14 14:56:14,857 - utils.linguistic_features - INFO - Sample of 197 missing valid words: ['1926-2016', 'adunyadet', 'amerikansk science', 'april 1940 på amalienborg', 'at blomsterstanden er', 'awakens (2015', 'bjergstien', 'drengekammeraterne', 'elevrådsarrangementer', 'er stakbærende', 'finansudspil', 'forårsudstilling i', 'frederiksavn', 'frejakult', 'første krigsminister, a.f', 'græssteppefugl', 'havtema', 'hejre (bromus', 'hetzbølger', 'højskoledanmark', 'initiativlyst', 'istandgøre', 'klimatilpasningspakke', 'kridtrende', 'kusine, christine', 'leartes’s', 'lgbtqi-miljøet', 'lgbtqi-personer', 'live-action-udgaven', 'lærerstuderene', 'midsommerfælleskabet', 'miljøsejr', 'minervafester', 'nabofolkeslag', 'nyreligiøst', 'næstlængste regeringstid af', 'ph.d.-stilling', 'renæssancekongen', 'sankthanstraditioner', 'selvetablerede', 'siden margrethe', 'skraldefester', 'som star', 'spejder-juniorer', 'spákona', 'statsminister fra', 'vandmiljøindsats', 'vandmiljøindsatsen', 'årshjulets', 'ættesamfund']... (147 more)
+2025-10-14 14:56:14,864 - utils.linguistic_features - INFO - Excluding 4,599 word instances (1.4%) with missing frequencies from analysis
+2025-10-14 14:56:14,982 - utils.linguistic_features - INFO - Remaining dataset: 330,567 words
+2025-10-14 14:56:14,982 - utils.linguistic_features - INFO - Final dataset: 330,567 words with valid frequencies
+2025-10-14 14:56:18,963 - utils.linguistic_features - INFO - Loading transformer model: Maltehb/danish-bert-botxo
+2025-10-14 14:56:21,203 - utils.linguistic_features - INFO - Transformer model loaded successfully
+2025-10-14 14:56:21,204 - utils.linguistic_features - INFO - Computing surprisal with deduplication optimization...
+2025-10-14 14:56:22,807 - utils.linguistic_features - INFO - Dataset statistics:
+2025-10-14 14:56:22,807 - utils.linguistic_features - INFO -   Total participant-sentence instances: 20,707
+2025-10-14 14:56:22,807 - utils.linguistic_features - INFO -   Unique sentence texts: 1,986
+2025-10-14 14:56:22,807 - utils.linguistic_features - INFO -   Average participants per sentence: 10.4
+2025-10-14 14:56:22,809 - utils.linguistic_features - INFO - Loading cached surprisal values from word_surprisal\surprisal_cache.pkl
+2025-10-14 14:56:23,086 - utils.linguistic_features - INFO - Loaded surprisal for 1,986 unique sentences
+2025-10-14 14:56:23,087 - utils.linguistic_features - INFO - Broadcasting surprisal values to all participant instances...
+2025-10-14 14:56:23,087 - utils.linguistic_features - INFO -   Mapping surprisal to words...
+2025-10-14 14:56:26,392 - utils.linguistic_features - INFO -   Mapped 326,496 words
+2025-10-14 14:56:26,394 - utils.linguistic_features - INFO - 
+Surprisal Computation Results:
+2025-10-14 14:56:26,394 - utils.linguistic_features - INFO -   Unique sentences processed: 1,986
+2025-10-14 14:56:26,394 - utils.linguistic_features - INFO -   Total words with surprisal: 326,496 / 330,567
+2025-10-14 14:56:26,395 - utils.linguistic_features - INFO -   Mean: 13.39 bits
+2025-10-14 14:56:26,397 - utils.linguistic_features - INFO -   Median: 11.13 bits
+2025-10-14 14:56:26,398 - utils.linguistic_features - INFO -   Std: 9.11 bits
+2025-10-14 14:56:26,399 - utils.linguistic_features - INFO -   Range: [0.00, 61.23] bits
+2025-10-14 14:56:26,417 - utils.linguistic_features - INFO - Linguistic features added successfully
+2025-10-14 14:56:26,418 - utils.linguistic_features - INFO - 
+Feature Summary:
+2025-10-14 14:56:26,421 - utils.linguistic_features - INFO -   Word length: mean=4.67, std=3.08
+2025-10-14 14:56:26,426 - utils.linguistic_features - INFO -   Zipf frequency: mean=8.85, std=1.38, range=[3.91, 10.51]
+2025-10-14 14:56:26,431 - utils.linguistic_features - INFO -   Surprisal: mean=13.39, std=9.11
+2025-10-14 14:56:26,537 - hypothesis_testing - INFO - Hypothesis testing initialized
+2025-10-14 14:56:26,545 - hypothesis_testing - INFO - Dataset: 330,567 words from 57 subjects
+2025-10-14 14:56:26,546 - hypothesis_testing - INFO - ======================================================================
+2025-10-14 14:56:26,546 - hypothesis_testing - INFO - RUNNING ALL HYPOTHESIS TESTS
+2025-10-14 14:56:26,546 - hypothesis_testing - INFO - ======================================================================
+2025-10-14 14:56:26,546 - hypothesis_testing - INFO - Preparing data for hypothesis testing...
+2025-10-14 14:56:26,606 - hypothesis_testing - INFO - Starting with 206,901 fixated words
+2025-10-14 14:56:26,663 - hypothesis_testing - INFO - Removed 2,677 words with missing values
+2025-10-14 14:56:26,663 - hypothesis_testing - INFO - Final sample: 204,224 words (98.7% retention)
+2025-10-14 14:56:26,665 - hypothesis_testing - INFO - Centering predictors...
+2025-10-14 14:56:26,678 - hypothesis_testing - INFO - Predictor means after centering:
+2025-10-14 14:56:26,679 - hypothesis_testing - INFO -   Length: 0.000000 (should be ~0)
+2025-10-14 14:56:26,680 - hypothesis_testing - INFO -   Frequency: -0.000000 (should be ~0)
+2025-10-14 14:56:26,681 - hypothesis_testing - INFO -   Surprisal: 0.000000 (should be ~0)
+2025-10-14 14:56:26,685 - hypothesis_testing - INFO - Group distribution:
+2025-10-14 14:56:26,686 - hypothesis_testing - INFO -   Control (0): 147,715 words
+2025-10-14 14:56:26,686 - hypothesis_testing - INFO -   Dyslexic (1): 56,509 words
+2025-10-14 14:56:26,686 - hypothesis_testing - INFO - ======================================================================
+2025-10-14 14:56:26,687 - hypothesis_testing - INFO - HYPOTHESIS 1: Testing Feature Effects
+2025-10-14 14:56:26,687 - hypothesis_testing - INFO - ======================================================================
+2025-10-14 14:56:26,687 - hypothesis_testing - INFO - Fitting model: log_total_reading_time ~ length_c + frequency_c + surprisal_c
+2025-10-14 14:56:26,687 - hypothesis_testing - INFO - Random effects: (1 | subject_id)
+2025-10-14 14:56:26,949 - hypothesis_testing - INFO - Model converged successfully
+2025-10-14 14:56:26,972 - hypothesis_testing - INFO - 
+Hypothesis 1 Results Summary:
+2025-10-14 14:56:26,982 - hypothesis_testing - INFO - ======================================================================
+2025-10-14 14:56:26,982 - hypothesis_testing - INFO - HYPOTHESIS 2: Testing Dyslexic Amplification
+2025-10-14 14:56:26,982 - hypothesis_testing - INFO - ======================================================================
+2025-10-14 14:56:26,982 - hypothesis_testing - INFO - Fitting model: log_total_reading_time ~ group * (length_c + frequency_c + surprisal_c)
+2025-10-14 14:56:26,982 - hypothesis_testing - INFO - Random effects: (1 | subject_id)
+2025-10-14 14:56:27,301 - hypothesis_testing - INFO - Model converged successfully
+2025-10-14 14:56:27,330 - hypothesis_testing - INFO - 
+Hypothesis 2 Results Summary:
+2025-10-14 14:56:27,334 - hypothesis_testing - INFO - ======================================================================
+2025-10-14 14:56:27,335 - hypothesis_testing - INFO - HYPOTHESIS 3: Variance Decomposition
+2025-10-14 14:56:27,335 - hypothesis_testing - INFO - ======================================================================
+2025-10-14 14:56:27,335 - hypothesis_testing - INFO - Baseline model: log_total_reading_time ~ group
+2025-10-14 14:56:27,733 - hypothesis_testing - INFO - Full model: log_total_reading_time ~ group * (length_c + frequency_c + surprisal_c)
+2025-10-14 14:56:28,231 - hypothesis_testing - INFO - Both models converged
+2025-10-14 14:56:28,260 - hypothesis_testing - INFO - 
+Hypothesis 3 Results Summary:
+2025-10-14 14:56:28,263 - hypothesis_testing - INFO -   Pseudo-R²: 0.1191
+2025-10-14 14:56:28,263 - hypothesis_testing - INFO -   AIC improvement: 25880.08
+2025-10-14 14:56:28,263 - hypothesis_testing - INFO -   Group effect reduction: -5.0%
+2025-10-14 14:56:28,263 - hypothesis_testing - INFO -   Full model preferred: Yes
+2025-10-14 14:56:28,263 - hypothesis_testing - INFO - Creating APA-7 formatted tables...
+2025-10-14 14:56:28,274 - hypothesis_testing - INFO - Saved table: results\hypothesis_testing_tables\hypothesis_1_parameters.csv
+2025-10-14 14:56:28,275 - hypothesis_testing - INFO - Saved table: results\hypothesis_testing_tables\hypothesis_2_parameters.csv
+2025-10-14 14:56:28,277 - hypothesis_testing - INFO - Saved table: results\hypothesis_testing_tables\hypothesis_3_model_comparison.csv
+2025-10-14 14:56:28,283 - hypothesis_testing - INFO - 
+All results saved to: results
+2025-10-14 14:56:28,315 - __main__ - INFO - Hypothesis testing complete. Results saved to results
+2025-10-14 15:04:10,612 - __main__ - INFO - Dyslexia Time Analysis Pipeline initialized
+2025-10-14 15:04:10,612 - __main__ - INFO - Running hypothesis testing analysis...
+2025-10-14 15:04:10,613 - __main__ - INFO - Loading CopCo dataset...
+2025-10-14 15:04:10,613 - utils.data_utils - INFO - Loading 57 participant files...
+2025-10-14 15:04:12,206 - utils.data_utils - INFO - Starting with 335,203 total word entries
+2025-10-14 15:04:12,397 - utils.data_utils - INFO - Word fixation patterns:
+2025-10-14 15:04:12,397 - utils.data_utils - INFO -   - Skipped words (0 fixations): 126,302
+2025-10-14 15:04:12,398 - utils.data_utils - INFO -   - Fixated words (1+ fixations): 208,901
+2025-10-14 15:04:12,398 - utils.data_utils - INFO -   - Unknown fixations (NaN): 0
+2025-10-14 15:04:12,428 - utils.data_utils - INFO - Fixated words reading times: median 272ms, 99th percentile 1777ms
+2025-10-14 15:04:12,431 - utils.data_utils - INFO - Removed 14 fixated words with extreme reading times (0 too short, 14 too long)
+2025-10-14 15:04:12,530 - utils.data_utils - INFO - Removed 23 words longer than 30 characters (likely data errors)
+2025-10-14 15:04:12,567 - utils.data_utils - INFO - Final dataset: 126,302 skipped words, 208,864 fixated words
+2025-10-14 15:04:12,568 - utils.data_utils - INFO - Data cleaning complete: 335,166 words retained (100.0% of original)
+2025-10-14 15:04:12,579 - utils.data_utils - INFO - Groups identified: 19 dyslexic, 39 control
+2025-10-14 15:04:12,653 - __main__ - INFO - Calculating skipping probabilities...
+2025-10-14 15:04:12,660 - utils.skipping_utils - INFO - Skipping analysis from ExtractedFeatures:
+2025-10-14 15:04:12,661 - utils.skipping_utils - INFO -   Total words: 335,166
+2025-10-14 15:04:12,661 - utils.skipping_utils - INFO -   Skipped: 126,302 (37.7%)
+2025-10-14 15:04:12,661 - utils.skipping_utils - INFO -   Fixated: 208,864 (62.3%)
+2025-10-14 15:04:12,707 - __main__ - INFO - Skipping analysis: 37.7% overall rate
+2025-10-14 15:04:12,727 - __main__ - INFO - Loaded: 335,166 words from 57 participants
+2025-10-14 15:04:12,727 - __main__ - INFO - ============================================================
+2025-10-14 15:04:12,727 - __main__ - INFO - COMPUTING LINGUISTIC FEATURES
+2025-10-14 15:04:12,728 - __main__ - INFO - ============================================================
+2025-10-14 15:04:12,728 - utils.linguistic_features - INFO - Loading Danish frequency list from danish_frequencies\danish_leipzig_for_analysis.txt
+2025-10-14 15:04:14,177 - utils.linguistic_features - WARNING - Found 2 duplicate words after lowercasing. 
+2025-10-14 15:04:14,619 - utils.linguistic_features - INFO - Loaded 1,499,999 word proportions from Leipzig Corpora
+2025-10-14 15:04:14,729 - utils.linguistic_features - INFO - Computing word frequency...
+2025-10-14 15:04:14,729 - utils.linguistic_features - INFO -   Stripping punctuation from words before frequency lookup
+2025-10-14 15:04:15,433 - utils.linguistic_features - INFO - 13 missing word instances were punctuation-only
+2025-10-14 15:04:15,434 - utils.linguistic_features - WARNING - 4,586 word instances (1.4%) not found in frequency list (197 unique valid words)
+2025-10-14 15:04:15,434 - utils.linguistic_features - INFO - Sample of 197 missing valid words: ['9. og dronning', 'adspredelsens', 'af christian', 'bjergstien', 'broder-søsterligt', 'by-spildevand', 'by-spildevandet', 'chakri-dynasti', 'forårsbebudning', 'fædrelandssalmen', 'født 16', 'geografilærers', 'glædesblussene', 'heksejagte', 'hetzbølger', 'htx-fag', 'højskoledanmark', 'i star', 'it-mulighederne', 'jedi (2017', 'klimatilpasningspakke', 'lgbtqi-diskrimination', 'lgbtqi-familien', 'lgbtqi-miljøet', 'livsgrøden', 'livsresultat', 'lærerindejob', 'med prins', 'midsommeraftner', 'midsommerfælleskabet', 'miljøsejr', 'nivaagaard-tradition', 'på charlottenborg', 'på p', 'regnvandsbidrag', 'sejdkunst', 'snaksalighed', 'subapikalt', 'superlærer', 'sønnerne kronprins', 'takstfinansiere', 'top-omstillingsparate', 'topgræsser', 'tscherning (1817-1890', 'valborgsnatten', 'vindmøllehoveder', 'vk-ånden', 'åbningsriffet', 'årshjulets', 'æg-lancetformede']... (147 more)
+2025-10-14 15:04:15,449 - utils.linguistic_features - INFO - Excluding 4,599 word instances (1.4%) with missing frequencies from analysis
+2025-10-14 15:04:15,602 - utils.linguistic_features - INFO - Remaining dataset: 330,567 words
+2025-10-14 15:04:15,603 - utils.linguistic_features - INFO - Final dataset: 330,567 words with valid frequencies
+2025-10-14 15:04:19,820 - utils.linguistic_features - INFO - Loading transformer model: Maltehb/danish-bert-botxo
+2025-10-14 15:04:22,555 - utils.linguistic_features - INFO - Transformer model loaded successfully
+2025-10-14 15:04:22,556 - utils.linguistic_features - INFO - Computing surprisal with deduplication optimization...
+2025-10-14 15:04:24,104 - utils.linguistic_features - INFO - Dataset statistics:
+2025-10-14 15:04:24,105 - utils.linguistic_features - INFO -   Total participant-sentence instances: 20,707
+2025-10-14 15:04:24,105 - utils.linguistic_features - INFO -   Unique sentence texts: 1,986
+2025-10-14 15:04:24,105 - utils.linguistic_features - INFO -   Average participants per sentence: 10.4
+2025-10-14 15:04:24,105 - utils.linguistic_features - INFO - Loading cached surprisal values from word_surprisal\surprisal_cache.pkl
+2025-10-14 15:04:24,119 - utils.linguistic_features - INFO - Loaded surprisal for 1,986 unique sentences
+2025-10-14 15:04:24,120 - utils.linguistic_features - INFO - Broadcasting surprisal values to all participant instances...
+2025-10-14 15:04:24,120 - utils.linguistic_features - INFO -   Mapping surprisal to words...
+2025-10-14 15:04:27,791 - utils.linguistic_features - INFO -   Mapped 326,496 words
+2025-10-14 15:04:27,793 - utils.linguistic_features - INFO - 
+Surprisal Computation Results:
+2025-10-14 15:04:27,794 - utils.linguistic_features - INFO -   Unique sentences processed: 1,986
+2025-10-14 15:04:27,794 - utils.linguistic_features - INFO -   Total words with surprisal: 326,496 / 330,567
+2025-10-14 15:04:27,795 - utils.linguistic_features - INFO -   Mean: 13.39 bits
+2025-10-14 15:04:27,799 - utils.linguistic_features - INFO -   Median: 11.13 bits
+2025-10-14 15:04:27,802 - utils.linguistic_features - INFO -   Std: 9.11 bits
+2025-10-14 15:04:27,803 - utils.linguistic_features - INFO -   Range: [0.00, 61.23] bits
+2025-10-14 15:04:27,827 - utils.linguistic_features - INFO - Linguistic features added successfully
+2025-10-14 15:04:27,827 - utils.linguistic_features - INFO - 
+Feature Summary:
+2025-10-14 15:04:27,832 - utils.linguistic_features - INFO -   Word length: mean=4.67, std=3.08
+2025-10-14 15:04:27,838 - utils.linguistic_features - INFO -   Zipf frequency: mean=8.85, std=1.38, range=[3.91, 10.51]
+2025-10-14 15:04:27,843 - utils.linguistic_features - INFO -   Surprisal: mean=13.39, std=9.11
+2025-10-14 15:04:27,925 - hypothesis_testing - INFO - Hypothesis testing initialized
+2025-10-14 15:04:27,936 - hypothesis_testing - INFO - Dataset: 330,567 words from 57 subjects
+2025-10-14 15:04:27,936 - hypothesis_testing - INFO - ======================================================================
+2025-10-14 15:04:27,936 - hypothesis_testing - INFO - RUNNING ALL HYPOTHESIS TESTS
+2025-10-14 15:04:27,936 - hypothesis_testing - INFO - ======================================================================
+2025-10-14 15:04:27,937 - hypothesis_testing - INFO - Preparing data for hypothesis testing...
+2025-10-14 15:04:27,996 - hypothesis_testing - INFO - Starting with 206,901 fixated words
+2025-10-14 15:04:28,049 - hypothesis_testing - INFO - Removed 2,677 words with missing values
+2025-10-14 15:04:28,049 - hypothesis_testing - INFO - Final sample: 204,224 words (98.7% retention)
+2025-10-14 15:04:28,050 - hypothesis_testing - INFO - Centering predictors...
+2025-10-14 15:04:28,065 - hypothesis_testing - INFO - Predictor means after centering:
+2025-10-14 15:04:28,066 - hypothesis_testing - INFO -   Length: 0.000000 (should be ~0)
+2025-10-14 15:04:28,066 - hypothesis_testing - INFO -   Frequency: -0.000000 (should be ~0)
+2025-10-14 15:04:28,067 - hypothesis_testing - INFO -   Surprisal: 0.000000 (should be ~0)
+2025-10-14 15:04:28,072 - hypothesis_testing - INFO - Group distribution:
+2025-10-14 15:04:28,072 - hypothesis_testing - INFO -   Control (0): 147,715 words
+2025-10-14 15:04:28,074 - hypothesis_testing - INFO -   Dyslexic (1): 56,509 words
+2025-10-14 15:04:28,074 - hypothesis_testing - INFO - ======================================================================
+2025-10-14 15:04:28,074 - hypothesis_testing - INFO - HYPOTHESIS 1: Testing Feature Effects
+2025-10-14 15:04:28,074 - hypothesis_testing - INFO - ======================================================================
+2025-10-14 15:04:28,074 - hypothesis_testing - INFO - Fitting model: log_total_reading_time ~ length_c + frequency_c + surprisal_c
+2025-10-14 15:04:28,074 - hypothesis_testing - INFO - Random effects: (1 | subject_id)
+2025-10-14 15:04:28,321 - hypothesis_testing - INFO - Model converged successfully
+2025-10-14 15:04:28,343 - hypothesis_testing - INFO - 
+Hypothesis 1 Results Summary:
+2025-10-14 15:04:28,343 - hypothesis_testing - INFO -   Length effect: b=0.0408, p=0.0000 PASS
+2025-10-14 15:04:28,343 - hypothesis_testing - INFO -   Frequency effect: b=-0.0503, p=0.0000 PASS
+2025-10-14 15:04:28,343 - hypothesis_testing - INFO -   Surprisal effect: b=0.0009, p=0.0000 PASS
+2025-10-14 15:04:28,344 - hypothesis_testing - INFO - ======================================================================
+2025-10-14 15:04:28,344 - hypothesis_testing - INFO - HYPOTHESIS 2: Testing Dyslexic Amplification
+2025-10-14 15:04:28,344 - hypothesis_testing - INFO - ======================================================================
+2025-10-14 15:04:28,344 - hypothesis_testing - INFO - Fitting model: log_total_reading_time ~ group * (length_c + frequency_c + surprisal_c)
+2025-10-14 15:04:28,344 - hypothesis_testing - INFO - Random effects: (1 | subject_id)
+2025-10-14 15:04:28,586 - hypothesis_testing - INFO - Model converged successfully
+2025-10-14 15:04:28,610 - hypothesis_testing - INFO - 
+Hypothesis 2 Results Summary:
+2025-10-14 15:04:28,610 - hypothesis_testing - INFO -   Group x Length: b=0.0028, p=0.0340 PASS
+2025-10-14 15:04:28,610 - hypothesis_testing - INFO -   Group x Frequency: b=-0.0189, p=0.0000 PASS
+2025-10-14 15:04:28,610 - hypothesis_testing - INFO -   Group x Surprisal: b=0.0001, p=0.7370 FAIL
+2025-10-14 15:04:28,611 - hypothesis_testing - INFO - ======================================================================
+2025-10-14 15:04:28,611 - hypothesis_testing - INFO - HYPOTHESIS 3: Variance Decomposition
+2025-10-14 15:04:28,611 - hypothesis_testing - INFO - ======================================================================
+2025-10-14 15:04:28,611 - hypothesis_testing - INFO - Baseline model: log_total_reading_time ~ group
+2025-10-14 15:04:28,995 - hypothesis_testing - INFO - Full model: log_total_reading_time ~ group * (length_c + frequency_c + surprisal_c)
+2025-10-14 15:04:29,486 - hypothesis_testing - INFO - Both models converged
+2025-10-14 15:04:29,514 - hypothesis_testing - INFO - 
+Hypothesis 3 Results Summary:
+2025-10-14 15:04:29,514 - hypothesis_testing - INFO -   Likelihood Ratio Test: X2(6) = 25892.08, p = 0.0000
+2025-10-14 15:04:29,514 - hypothesis_testing - INFO -   Pseudo-R2: 0.1191
+2025-10-14 15:04:29,515 - hypothesis_testing - INFO -   AIC improvement: 25880.08
+2025-10-14 15:04:29,515 - hypothesis_testing - INFO -   Group effect reduction: -5.0%
+2025-10-14 15:04:29,515 - hypothesis_testing - INFO -   Full model preferred: Yes
+2025-10-14 15:04:29,515 - hypothesis_testing - INFO - Creating APA-7 formatted tables...
+2025-10-14 15:04:29,525 - hypothesis_testing - INFO - Saved table: results\hypothesis_testing_tables\hypothesis_1_parameters.csv
+2025-10-14 15:04:29,526 - hypothesis_testing - INFO - Saved table: results\hypothesis_testing_tables\hypothesis_2_parameters.csv
+2025-10-14 15:04:29,528 - hypothesis_testing - INFO - Saved table: results\hypothesis_testing_tables\hypothesis_3_model_comparison.csv
+2025-10-14 15:04:29,528 - hypothesis_testing - INFO - Creating visualizations...
+2025-10-14 15:04:30,057 - hypothesis_testing - INFO - Creating interaction plots...
+2025-10-14 15:04:31,021 - hypothesis_testing - INFO - Saved interaction plots: results\hypothesis_testing_figures\interaction_plots.png
+2025-10-14 15:04:31,022 - hypothesis_testing - INFO - Creating effect size visualization...
+2025-10-14 15:04:31,429 - hypothesis_testing - INFO - Saved effect size plot: results\hypothesis_testing_figures\effect_sizes.png
+2025-10-14 15:04:31,429 - hypothesis_testing - INFO - Visualizations complete
+2025-10-14 15:04:31,436 - hypothesis_testing - INFO - 
+All results saved to: results
+2025-10-14 15:04:31,473 - __main__ - INFO - Hypothesis testing complete. Results saved to results

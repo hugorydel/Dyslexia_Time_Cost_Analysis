@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from hypothesis_testing import run_hypothesis_testing
 
 # Import configuration
 import config
@@ -342,6 +343,25 @@ class DyslexiaTimeAnalysisPipeline:
 
         return summary
 
+    def run_hypothesis_testing_analysis(self) -> dict:
+        """
+        Run hypothesis testing analysis on the word-level data
+        """
+        logger.info("Running hypothesis testing analysis...")
+
+        # Load data
+        data = self.load_copco_data()
+
+        # Compute linguistic features
+        data = self.compute_linguistic_features(data)
+
+        # Run hypothesis tests
+        results = run_hypothesis_testing(data, self.results_dir)
+
+        logger.info(f"Hypothesis testing complete. Results saved to {self.results_dir}")
+
+        return results
+
     def _create_linguistic_feature_plots(self, data: pd.DataFrame):
         """Create visualizations for linguistic features"""
 
@@ -517,6 +537,9 @@ def main():
         "--explore", action="store_true", help="Run exploratory analysis only"
     )
     parser.add_argument(
+        "--hypothesis", action="store_true", help="Run hypothesis testing only"
+    )
+    parser.add_argument(
         "--surprisal",
         action="store_true",
         help="Compute surprisal (slow! requires transformers library)",
@@ -532,6 +555,7 @@ def main():
         sys.exit(1)
 
     try:
+        # Command-line modes
         if args.explore:
             results = pipeline.run_exploratory_analysis()
             print("\nExploratory Analysis Summary:")
@@ -551,18 +575,27 @@ def main():
                     print(f"    Mean: {stats['mean']:.2f}, Std: {stats['std']:.2f}")
                     print(f"    Range: [{stats['min']:.2f}, {stats['max']:.2f}]")
 
+        elif args.hypothesis:
+            results = pipeline.run_hypothesis_testing_analysis()
+            print(f"Results saved to: {pipeline.results_dir}")
+
         else:
+            # Interactive menu
             print("Dyslexia Time Cost Analysis Pipeline")
             print("=" * 50)
             print("1. Run exploratory analysis")
-            print("2. Run hypothesis-testing analysis (not implemented)")
+            print("2. Run hypothesis-testing analysis")
             print("3. Exit")
 
             choice = input("\nEnter your choice (1-3): ")
 
             if choice == "1":
                 results = pipeline.run_exploratory_analysis()
-                print(f"Results saved to: {pipeline.results_dir}")
+                print(f"\nResults saved to: {pipeline.results_dir}")
+
+            elif choice == "2":
+                results = pipeline.run_hypothesis_testing_analysis()
+
             else:
                 print("Exiting...")
 
