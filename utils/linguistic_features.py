@@ -298,7 +298,10 @@ class DanishLinguisticFeatures:
 
             logger.info(f"Loading causal language model: {model_name}")
 
-            self._surprisal_tokenizer = AutoTokenizer.from_pretrained(model_name)
+            # CRITICAL: add_prefix_space=True for GPT-2 with pre-tokenized inputs
+            self._surprisal_tokenizer = AutoTokenizer.from_pretrained(
+                model_name, add_prefix_space=True  # ← Add this parameter!
+            )
             self._surprisal_model = AutoModelForCausalLM.from_pretrained(model_name)
             self._surprisal_model.eval()  # Set to evaluation mode
 
@@ -568,14 +571,22 @@ class DanishLinguisticFeatures:
             words,
             is_split_into_words=True,
             return_tensors="pt",
-            add_special_tokens=False,
+            add_special_tokens=False,  # We'll add BOS manually
             truncation=False,
         )
 
         input_ids = encoding["input_ids"][0]  # Shape: [seq_len]
-
-        # Use word_ids() for direct token→word mapping
         word_ids_mapping = encoding.word_ids(batch_index=0)  # List[Optional[int]]
+
+        # Manually prepend BOS token for GPT-2
+        # GPT-2 uses <|endoftext|> (token 50256) as BOS/EOS
+        bos_token_id = (
+            self._surprisal_tokenizer.eos_token_id
+        )  # GPT-2 uses same token for BOS/EOS
+        input_ids = torch.cat([torch.tensor([bos_token_id]), input_ids])
+
+        # Adjust word_ids_mapping: prepend None for BOS token
+        word_ids_mapping = [None] + word_ids_mapping
 
         # Move to GPU if available
         if torch.cuda.is_available():
@@ -621,7 +632,7 @@ class DanishLinguisticFeatures:
         word_nlls = [[] for _ in range(len(words))]
 
         for token_idx, word_idx in enumerate(word_ids_mapping):
-            # word_idx is None for special tokens (shouldn't happen with add_special_tokens=False)
+            # Skip BOS token (word_idx=None at position 0)
             if word_idx is not None and token_idx < len(token_nlls):
                 nll = token_nlls[token_idx]
                 if not np.isnan(nll):
@@ -635,10 +646,7 @@ class DanishLinguisticFeatures:
                 surprisal_bits = total_nll / np.log(2)  # Convert nats to bits
                 word_surprisals.append(surprisal_bits)
             else:
-                # No tokens for this word (shouldn't happen, but handle gracefully)
-                logger.warning(
-                    f"No tokens found for word {word_idx}: '{words[word_idx]}'"
-                )
+                # No tokens for this word - set to NaN
                 word_surprisals.append(np.nan)
 
         return word_surprisals
