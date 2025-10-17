@@ -14,7 +14,6 @@ import pandas as pd
 
 # Import configuration
 import config
-from hypothesis_testing import run_hypothesis_testing
 
 # Import utilities
 from utils.data_utils import (
@@ -26,7 +25,7 @@ from utils.data_utils import (
     merge_with_participant_stats,
 )
 
-# NEW: Import linguistic features
+# Import linguistic features
 from utils.linguistic_features import DanishLinguisticFeatures
 from utils.misc_utils import (
     create_output_directories,
@@ -123,10 +122,10 @@ class DyslexiaTimeAnalysisPipeline:
             self._dyslexic_subjects = subject_lists["dyslexic"]
             self._control_subjects = subject_lists["control"]
 
-        # Create additional measures for analysis (includes simple skipping)
+        # Create additional measures for analysis (includes skipping probability)
         data = create_additional_measures(data)
 
-        # Simple skipping analysis using n_fixations directly
+        # Calculate skipping probabilities
         logger.info("Calculating skipping probabilities...")
         try:
             from utils.skipping_utils import calculate_skipping_from_extracted_features
@@ -159,7 +158,7 @@ class DyslexiaTimeAnalysisPipeline:
             DataFrame with added linguistic features:
                 - word_length
                 - word_frequency_zipf (Zipf scale 1-7)
-                - surprisal (if requested)
+                - surprisal
         """
         logger.info("=" * 60)
         logger.info("COMPUTING LINGUISTIC FEATURES")
@@ -211,9 +210,8 @@ class DyslexiaTimeAnalysisPipeline:
                 "missing_pct": float(data[col].isna().sum() / len(data) * 100),
             }
 
-        # Frequency effects (by Zipf bins)
+        # Frequency effects (by Zipf bins) - only for fixated words
         if "word_frequency_zipf" in data.columns:
-            # Bin into frequency categories
             freq_bins = pd.cut(
                 data["word_frequency_zipf"],
                 bins=[0, 4, 5, 6, 10],
@@ -226,7 +224,6 @@ class DyslexiaTimeAnalysisPipeline:
                 "first_fixation_duration",
             ]:
                 if measure in data.columns:
-                    # Only analyze fixated words
                     fixated = data[data["was_fixated"] == True]
                     freq_effects = fixated.groupby(freq_bins, observed=True)[
                         measure
@@ -265,26 +262,73 @@ class DyslexiaTimeAnalysisPipeline:
                     for label, row in length_effects.iterrows()
                 }
 
+        # Surprisal effects (by surprisal bins) - only for fixated words
+        if "surprisal" in data.columns:
+            # Filter to fixated words with valid surprisal
+            fixated = data[data["was_fixated"] == True]
+            fixated_with_surprisal = fixated[fixated["surprisal"].notna()].copy()
+
+            if len(fixated_with_surprisal) > 0:
+                # Create bins ONCE on the fixated data
+                fixated_with_surprisal["surprisal_bin"] = pd.qcut(
+                    fixated_with_surprisal["surprisal"],
+                    q=5,
+                    labels=["Very Low", "Low", "Medium", "High", "Very High"],
+                    duplicates="drop",
+                )
+
+                # Now compute effects for each measure using the same bins
+                for measure in [
+                    "total_reading_time",
+                    "gaze_duration",
+                    "first_fixation_duration",
+                ]:
+                    if measure in fixated_with_surprisal.columns:
+                        surp_effects = fixated_with_surprisal.groupby(
+                            "surprisal_bin", observed=True
+                        )[measure].agg(["mean", "std", "count"])
+
+                        results["surprisal_effects"][measure] = {
+                            str(label): {
+                                "mean": float(row["mean"]),
+                                "std": float(row["std"]),
+                                "count": int(row["count"]),
+                            }
+                            for label, row in surp_effects.iterrows()
+                        }
+
         # Group differences in linguistic feature effects
         if "dyslexic" in data.columns:
             results["group_differences"] = {}
 
-            # Frequency effects by group
             for group_name, group_data in data.groupby("dyslexic"):
                 group_label = "dyslexic" if group_name else "control"
                 results["group_differences"][group_label] = {}
 
                 fixated = group_data[group_data["was_fixated"] == True]
 
-                for feature in ["word_frequency_zipf", "word_length"]:
+                for feature in ["word_frequency_zipf", "word_length", "surprisal"]:
                     if (
                         feature in fixated.columns
                         and "total_reading_time" in fixated.columns
                     ):
-                        # Correlation with reading time
-                        corr = (
-                            fixated[[feature, "total_reading_time"]].corr().iloc[0, 1]
-                        )
+                        # For surprisal, drop NaN values before correlation
+                        if feature == "surprisal":
+                            valid_data = fixated[
+                                [feature, "total_reading_time"]
+                            ].dropna()
+                            if len(valid_data) > 0:
+                                corr = valid_data.corr().iloc[0, 1]
+                            else:
+                                corr = np.nan
+                        else:
+                            # Correlation with reading time
+                            corr = (
+                                fixated[[feature, "total_reading_time"]]
+                                .corr()
+                                .iloc[0, 1]
+                            )
+
                         results["group_differences"][group_label][
                             f"{feature}_correlation"
                         ] = float(corr)
@@ -302,13 +346,15 @@ class DyslexiaTimeAnalysisPipeline:
         # Load data
         data = self.load_copco_data()
 
-        # NEW: Compute linguistic features
+        # Compute linguistic features
         data = self.compute_linguistic_features(data)
+
+        self.save_processed_data(data, "processed_data_full.csv")
 
         # Get skipping analysis results if available
         skipping_analysis = getattr(self, "_skipping_analysis", {})
 
-        # Calculate basic statistics (now includes skipping stats)
+        # Calculate basic statistics
         summary = calculate_basic_statistics(data, skipping_analysis)
 
         # Add participant group details to summary
@@ -323,55 +369,25 @@ class DyslexiaTimeAnalysisPipeline:
             group_stats = calculate_group_summary_stats(data, skipping_analysis)
             summary.update(group_stats)
 
-        # NEW: Analyze linguistic features
+        # Analyze linguistic features
         linguistic_analysis = self.analyze_linguistic_features(data)
         summary["linguistic_features"] = linguistic_analysis
 
         # Save results
         save_json_results(summary, self.results_dir / "exploratory_summary.json")
 
-        # Create plots using abstracted visualization functions
+        # Create plots
         create_exploratory_plots(data, self.results_dir / "exploratory_plots.png")
         create_group_summary_plots(
             data, self.results_dir / "group_summary_plots.png", skipping_analysis
         )
 
-        # NEW: Create linguistic feature plots
+        # Create linguistic feature plots
         self._create_linguistic_feature_plots(data)
 
         logger.info(f"Analysis complete. Results saved to {self.results_dir}")
 
         return summary
-
-    def run_hypothesis_testing_analysis(
-        self, include_skipped: bool = False, compare_both: bool = False
-    ) -> dict:
-        """
-        Run hypothesis testing analysis on the word-level data
-
-        Args:
-            include_skipped: If True, include skipped words (TRT=0) in analysis
-            compare_both: If True, run both analyses (fixated only vs all words) and compare
-        """
-        logger.info("Running hypothesis testing analysis...")
-
-        # Load data
-        data = self.load_copco_data()
-
-        # Compute linguistic features
-        data = self.compute_linguistic_features(data)
-
-        # Run hypothesis tests
-        results = run_hypothesis_testing(
-            data,
-            self.results_dir,
-            include_skipped=include_skipped,
-            compare_both=compare_both,
-        )
-
-        logger.info(f"Hypothesis testing complete. Results saved to {self.results_dir}")
-
-        return results
 
     def _create_linguistic_feature_plots(self, data: pd.DataFrame):
         """Create visualizations for linguistic features"""
@@ -450,7 +466,6 @@ class DyslexiaTimeAnalysisPipeline:
         # 6. Surprisal effect by group
         ax6 = plt.subplot(3, 3, 6)
         if "surprisal" in data.columns and "dyslexic" in fixated.columns:
-            # Bin surprisal into categories
             fixated_with_surp = fixated[fixated["surprisal"].notna()].copy()
             surprisal_bins = pd.qcut(
                 fixated_with_surp["surprisal"],
@@ -533,6 +548,120 @@ class DyslexiaTimeAnalysisPipeline:
 
         logger.info(f"Linguistic feature plots saved to {output_path}")
 
+    def save_processed_data(
+        self, data: pd.DataFrame, filename: str = "processed_data.csv"
+    ) -> None:
+        """
+        Save the fully processed dataset to CSV
+
+        Args:
+            data: Processed DataFrame with all features
+            filename: Output filename
+        """
+        output_path = self.results_dir / filename
+
+        logger.info(f"Saving processed data to {output_path}")
+        logger.info(f"  Shape: {data.shape}")
+        logger.info(f"  Columns: {len(data.columns)}")
+
+        # Save to CSV
+        data.to_csv(output_path, index=False, encoding="utf-8")
+
+        logger.info(f"Processed data saved successfully")
+
+        # Also save a data dictionary
+        self._save_data_dictionary(data, output_path.with_suffix(".txt"))
+
+    def _save_data_dictionary(self, data: pd.DataFrame, filepath: Path) -> None:
+        """Save a data dictionary describing all columns"""
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write("=" * 80 + "\n")
+            f.write("DATA DICTIONARY - Processed Dyslexia Dataset\n")
+            f.write("=" * 80 + "\n\n")
+
+            f.write(
+                f"Dataset Shape: {data.shape[0]:,} rows × {data.shape[1]} columns\n"
+            )
+            f.write(
+                f"Date Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            )
+
+            f.write("COLUMN DESCRIPTIONS:\n")
+            f.write("-" * 80 + "\n\n")
+
+            # Column descriptions
+            column_info = {
+                "subject_id": "Participant identifier (P01-P58)",
+                "trial_id": "Trial number",
+                "speech_id": "Speech/text identifier",
+                "paragraph_id": "Paragraph number within speech",
+                "sentence_id": "Sentence number within speech",
+                "word_position": "Word position in text (global)",
+                "word_text": "The actual word text",
+                "word_length": "Word length in characters",
+                # Eye tracking measures
+                "n_fixations": "Number of fixations on word (0 = skipped)",
+                "first_fixation_duration": "Duration of first fixation (ms)",
+                "gaze_duration": "Sum of all first-pass fixations (ms)",
+                "word_go_past_time": "Go-past time / regression path duration (ms)",
+                "total_reading_time": "Total time spent on word across all passes (ms)",
+                "landing_position": "Landing position of first fixation",
+                # Derived eye measures
+                "skipped": "Boolean: word was skipped (n_fixations == 0)",
+                "was_fixated": "Boolean: word was fixated (n_fixations > 0)",
+                "skipping_probability": "Probability word was skipped (0 or 1)",
+                "regression_probability": "Estimated regression probability",
+                # Linguistic features
+                "word_frequency_raw": "Raw word frequency/proportion from corpus",
+                "word_frequency_zipf": "Zipf-transformed frequency (1-7 scale, higher = more frequent)",
+                "surprisal": "Word surprisal in bits (from Danish BERT)",
+                # Participant info
+                "dyslexic": "Boolean: participant has dyslexia",
+                "age": "Participant age",
+                "sex": "Participant sex",
+                "comprehension_accuracy": "Reading comprehension score",
+                "words_per_minute": "Reading speed (words/minute)",
+            }
+
+            for col in data.columns:
+                dtype = str(data[col].dtype)
+                n_missing = data[col].isna().sum()
+                pct_missing = (n_missing / len(data)) * 100
+
+                description = column_info.get(col, "")
+
+                f.write(f"{col}\n")
+                f.write(f"  Type: {dtype}\n")
+                if description:
+                    f.write(f"  Description: {description}\n")
+                f.write(f"  Missing: {n_missing:,} ({pct_missing:.2f}%)\n")
+
+                # Add sample values for key columns
+                if col in ["word_text", "subject_id"]:
+                    sample = data[col].dropna().unique()[:5]
+                    f.write(f"  Sample values: {', '.join(map(str, sample))}\n")
+                elif data[col].dtype in ["float64", "int64"]:
+                    f.write(
+                        f"  Range: [{data[col].min():.2f}, {data[col].max():.2f}]\n"
+                    )
+                    f.write(
+                        f"  Mean: {data[col].mean():.2f}, Median: {data[col].median():.2f}\n"
+                    )
+
+                f.write("\n")
+
+            f.write("\n" + "=" * 80 + "\n")
+            f.write("GROUP INFORMATION:\n")
+            f.write("-" * 80 + "\n")
+            f.write(f"Total participants: {data['subject_id'].nunique()}\n")
+            if "dyslexic" in data.columns:
+                dyslexic_counts = data.groupby("dyslexic")["subject_id"].nunique()
+                f.write(f"  Control: {dyslexic_counts.get(False, 0)}\n")
+                f.write(f"  Dyslexic: {dyslexic_counts.get(True, 0)}\n")
+
+        logger.info(f"Data dictionary saved to {filepath}")
+
 
 def main():
     """Main entry point for analysis"""
@@ -543,21 +672,6 @@ def main():
     )
     parser.add_argument(
         "--hypothesis", action="store_true", help="Run hypothesis testing only"
-    )
-    parser.add_argument(
-        "--with-skipped",
-        action="store_true",
-        help="Include skipped words (TRT=0) in hypothesis testing",
-    )
-    parser.add_argument(
-        "--compare",
-        action="store_true",
-        help="Run both analyses (fixated vs all words) and compare",
-    )
-    parser.add_argument(
-        "--surprisal",
-        action="store_true",
-        help="Compute surprisal (slow! requires transformers library)",
     )
 
     args = parser.parse_args()
@@ -589,39 +703,21 @@ def main():
                     print(f"  {feature}:")
                     print(f"    Mean: {stats['mean']:.2f}, Std: {stats['std']:.2f}")
                     print(f"    Range: [{stats['min']:.2f}, {stats['max']:.2f}]")
-
-        elif args.hypothesis:
-            results = pipeline.run_hypothesis_testing_analysis(
-                include_skipped=args.with_skipped, compare_both=args.compare
-            )
-            print(f"Results saved to: {pipeline.results_dir}")
-
         else:
             # Interactive menu
             print("Dyslexia Time Cost Analysis Pipeline")
             print("=" * 50)
             print("1. Run exploratory analysis")
-            print("2. Run hypothesis testing (fixated words only)")
-            print("3. Run hypothesis testing (ALL words including skipped)")
-            print("4. Compare both analyses (fixated vs all words)")
-            print("5. Exit")
+            print("2. Exit")
 
-            choice = input("\nEnter your choice (1-5): ")
+            choice = input("\nEnter your choice (1-3): ")
 
             if choice == "1":
                 results = pipeline.run_exploratory_analysis()
                 print(f"\nResults saved to: {pipeline.results_dir}")
 
-            elif choice == "2":
-                results = pipeline.run_hypothesis_testing_analysis(
-                    include_skipped=False
-                )
-
-            elif choice == "3":
-                results = pipeline.run_hypothesis_testing_analysis(include_skipped=True)
-
-            elif choice == "4":
-                results = pipeline.run_hypothesis_testing_analysis(compare_both=True)
+            # elif choice == "2":
+            #     results = pipeline.run_hypothesis_testing_analysis()
 
             else:
                 print("Exiting...")

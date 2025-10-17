@@ -271,47 +271,45 @@ class DanishLinguisticFeatures:
                         f"or encoding-corrupted (as expected)"
                     )
 
-        # Compute Zipf frequencies
+        # Compute Zipf frequencies per billion
         # Ensure no zeros before log
         frequencies_clipped = frequencies.clip(lower=1e-10)
 
         if self.use_proportions:
-            zipf_freq = np.log10(frequencies_clipped * 1e9) + 3
+            zipf_freq = np.log10(frequencies_clipped * 1e9)
         else:
-            zipf_freq = (
-                np.log10((frequencies_clipped / self.total_corpus_tokens) * 1e9) + 3
-            )
+            zipf_freq = np.log10((frequencies_clipped / self.total_corpus_tokens) * 1e9)
 
         return frequencies, zipf_freq
 
-    def _load_surprisal_model(self, model_name: str = "Maltehb/danish-bert-botxo"):
+    def _load_surprisal_model(self, model_name: str = "KennethTM/gpt2-medium-danish"):
         """
         Lazy load transformer model for surprisal computation
 
         Args:
             model_name: HuggingFace model identifier
-                       Default: Danish BERT (best for Danish)
-                       Alternative: "bert-base-multilingual-cased" (mBERT)
         """
         if self._surprisal_model is not None:
             return  # Already loaded
 
         try:
             import torch
-            from transformers import AutoModelForMaskedLM, AutoTokenizer
+            from transformers import AutoModelForCausalLM, AutoTokenizer
 
-            logger.info(f"Loading transformer model: {model_name}")
+            logger.info(f"Loading causal language model: {model_name}")
 
             self._surprisal_tokenizer = AutoTokenizer.from_pretrained(model_name)
-            self._surprisal_model = AutoModelForMaskedLM.from_pretrained(model_name)
+            self._surprisal_model = AutoModelForCausalLM.from_pretrained(model_name)
             self._surprisal_model.eval()  # Set to evaluation mode
 
             # Move to GPU if available
             if torch.cuda.is_available():
                 self._surprisal_model = self._surprisal_model.cuda()
                 logger.info("Using GPU for surprisal computation")
+            else:
+                logger.info("Using CPU for surprisal computation")
 
-            logger.info("Transformer model loaded successfully")
+            logger.info("Causal language model loaded successfully")
 
         except ImportError:
             raise ImportError(
@@ -327,22 +325,35 @@ class DanishLinguisticFeatures:
         speech_col: str = "speech_id",
         participant_col: str = "subject_id",
         word_pos_col: str = "word_position",
-        model_name: str = "Maltehb/danish-bert-botxo",
-        max_length: int = 512,
+        model_name: str = "KennethTM/gpt2-medium-danish",
+        max_length: int = 1024,
+        stride: int = 512,
         cache_file: str = None,
         checkpoint_every: int = 100,
-        batch_size: int = 20,
     ) -> pd.Series:
         """
-        Compute surprisal efficiently by:
-        1. Identifying unique sentence texts (speech_id + sentence_id)
-        2. Computing surprisal once per unique text
-        3. Broadcasting to all participant instances
+        Compute surprisal using causal GPT-2 with proper left-to-right scoring
+
+        Args:
+            data: DataFrame with word-level data
+            text_col: Column containing word text
+            sentence_col: Column with sentence IDs
+            speech_col: Column with speech IDs
+            participant_col: Column with participant IDs
+            word_pos_col: Column with word positions
+            model_name: HuggingFace model (GPT-2 for Danish)
+            max_length: Maximum context window
+            stride: Stride for sliding window
+            cache_file: Cache file path
+            checkpoint_every: Save checkpoint frequency
+
+        Returns:
+            Series of surprisal values (in bits)
         """
 
         self._load_surprisal_model(model_name)
 
-        logger.info("Computing surprisal with deduplication optimization...")
+        logger.info("Computing surprisal with causal GPT-2 (left-to-right)...")
 
         # === STEP 1: Identify unique sentence texts ===
         unique_sentence_groups = data.groupby([speech_col, sentence_col])
@@ -351,19 +362,15 @@ class DanishLinguisticFeatures:
             [participant_col, speech_col, sentence_col]
         ).ngroups
 
-        # For each unique sentence, get the text AND the minimum word_position
         unique_sentences = {}  # {(speech_id, sentence_id): [word1, word2, ...]}
         sentence_start_positions = {}  # {(speech_id, sentence_id): min_word_position}
 
         for (speech_id, sentence_id), group in unique_sentence_groups:
-            # Sort by word_position to ensure correct order
             sent_data = group.sort_values(word_pos_col)
             sent_data_unique = sent_data.drop_duplicates(
                 subset=word_pos_col, keep="first"
             )
             words = sent_data_unique.sort_values(word_pos_col)[text_col].tolist()
-
-            # CRITICAL: Store the starting position of this sentence
             min_position = sent_data[word_pos_col].min()
 
             sent_key = (speech_id, sentence_id)
@@ -379,19 +386,18 @@ class DanishLinguisticFeatures:
             f"  Average participants per sentence: {total_participant_sentences / len(unique_sentences):.1f}"
         )
 
-        # === STEP 2-3: Cache setup and computation (SAME AS BEFORE) ===
+        # === STEP 2: Cache setup ===
         surprisal_dir = Path("word_surprisal")
         surprisal_dir.mkdir(exist_ok=True)
 
         if cache_file is None:
-            cache_file = surprisal_dir / "surprisal_cache.pkl"
+            cache_file = surprisal_dir / "surprisal_cache_gpt2.pkl"
         else:
             cache_file = surprisal_dir / cache_file
 
         cache_path = Path(cache_file)
         checkpoint_path = Path(str(cache_path).replace(".pkl", "_checkpoint.pkl"))
 
-        # Try to load cache
         sentence_surprisals = {}
 
         if cache_path.exists():
@@ -399,8 +405,6 @@ class DanishLinguisticFeatures:
             try:
                 with open(cache_path, "rb") as f:
                     cached_data = pickle.load(f)
-
-                    # Handle both old and new cache formats
                     if (
                         isinstance(cached_data, dict)
                         and "sentence_surprisals" in cached_data
@@ -409,21 +413,17 @@ class DanishLinguisticFeatures:
                         sentence_start_positions_cached = cached_data.get(
                             "sentence_start_positions", {}
                         )
-                        # Merge cached positions
                         for key, pos in sentence_start_positions_cached.items():
                             if key not in sentence_start_positions:
                                 sentence_start_positions[key] = pos
                     else:
-                        # Old format: just the dict
                         sentence_surprisals = cached_data
-
                 logger.info(
                     f"Loaded surprisal for {len(sentence_surprisals):,} unique sentences"
                 )
             except Exception as e:
                 logger.warning(f"Failed to load cache: {e}")
 
-        # Try to load checkpoint
         if checkpoint_path.exists():
             logger.info(f"Loading checkpoint from {checkpoint_path}")
             try:
@@ -453,88 +453,23 @@ class DanishLinguisticFeatures:
             logger.info(
                 f"Computing surprisal for {len(sentences_to_process):,} new sentences..."
             )
-            logger.info("Using pseudo-autoregressive BERT (left-context only)")
+            logger.info(
+                "Using causal GPT-2 with sliding window (left-to-right, no future leakage)"
+            )
 
             for sent_idx, (sent_key, words) in enumerate(
                 tqdm(sentences_to_process, desc="Processing unique sentences")
             ):
-                word_surprisals = []
-
-                # Process words in batches
-                for batch_start in range(0, len(words), batch_size):
-                    batch_end = min(batch_start + batch_size, len(words))
-                    batch_positions = range(batch_start, batch_end)
-
-                    try:
-                        # Create batch of masked sentences
-                        batch_masked_sentences = []
-                        for word_pos in batch_positions:
-                            masked_words = (
-                                words[:word_pos]
-                                + ["[MASK]"]
-                                + ["[MASK]"] * (len(words) - word_pos - 1)
-                            )
-                            batch_masked_sentences.append(" ".join(masked_words))
-
-                        # Tokenize batch
-                        inputs = self._surprisal_tokenizer(
-                            batch_masked_sentences,
-                            return_tensors="pt",
-                            add_special_tokens=True,
-                            padding=True,
-                            truncation=True,
-                            max_length=max_length,
-                        )
-
-                        if torch.cuda.is_available():
-                            inputs = {k: v.cuda() for k, v in inputs.items()}
-
-                        # Get predictions
-                        with torch.no_grad():
-                            outputs = self._surprisal_model(**inputs)
-                            logits = outputs.logits
-
-                        mask_token_id = self._surprisal_tokenizer.mask_token_id
-
-                        for batch_idx, word_pos in enumerate(batch_positions):
-                            word = words[word_pos]
-
-                            # Find first [MASK]
-                            token_ids = inputs["input_ids"][batch_idx]
-                            mask_positions = (token_ids == mask_token_id).nonzero(
-                                as_tuple=True
-                            )[0]
-
-                            if len(mask_positions) == 0:
-                                word_surprisals.append(np.nan)
-                                continue
-
-                            mask_pos = mask_positions[0].item()
-
-                            # Get target token
-                            target_tokens = self._surprisal_tokenizer.encode(
-                                word, add_special_tokens=False
-                            )
-                            if len(target_tokens) == 0:
-                                word_surprisals.append(np.nan)
-                                continue
-
-                            target_token_id = target_tokens[0]
-
-                            # Get probability
-                            probs = torch.softmax(logits[batch_idx, mask_pos], dim=-1)
-                            prob = probs[target_token_id].item()
-
-                            # Compute surprisal
-                            surprisal = -np.log2(prob) if prob > 0 else 20.0
-                            word_surprisals.append(surprisal)
-
-                    except Exception as e:
-                        logger.debug(f"Batch error: {e}")
-                        word_surprisals.extend([np.nan] * len(batch_positions))
-
-                # Store this sentence's surprisal values
-                sentence_surprisals[sent_key] = word_surprisals
+                try:
+                    word_surprisals = self._compute_sentence_surprisal_gpt2(
+                        words, max_length, stride
+                    )
+                    sentence_surprisals[sent_key] = word_surprisals
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to compute surprisal for sentence {sent_key}: {e}"
+                    )
+                    sentence_surprisals[sent_key] = [np.nan] * len(words)
 
                 # Checkpoint periodically
                 if (sent_idx + 1) % checkpoint_every == 0:
@@ -548,13 +483,12 @@ class DanishLinguisticFeatures:
                         with open(checkpoint_path, "wb") as f:
                             pickle.dump(checkpoint_data, f)
                         logger.info(
-                            f"Checkpoint: {len(sentence_surprisals):,} / {len(unique_sentences):,} "
-                            f"unique sentences processed"
+                            f"Checkpoint: {len(sentence_surprisals):,} / {len(unique_sentences):,} unique sentences processed"
                         )
                     except Exception as e:
                         logger.warning(f"Checkpoint failed: {e}")
 
-            # Save final cache WITH sentence start positions
+            # Save final cache
             logger.info(f"Saving surprisal cache to {cache_path}")
             try:
                 cache_data = {
@@ -574,14 +508,12 @@ class DanishLinguisticFeatures:
         # === STEP 4: Broadcast to all participant instances ===
         logger.info("Broadcasting surprisal values to all participant instances...")
 
-        # FIXED: Convert global word_position to sentence-relative position
         def map_surprisal(row):
             """Map surprisal value for a single row"""
             sent_key = (row[speech_col], row[sentence_col])
             global_word_pos = row[word_pos_col]
 
             if sent_key in sentence_surprisals and sent_key in sentence_start_positions:
-                # Convert global position to sentence-relative position
                 sent_start_pos = sentence_start_positions[sent_key]
                 sentence_relative_pos = global_word_pos - sent_start_pos
 
@@ -590,7 +522,6 @@ class DanishLinguisticFeatures:
                     return sent_surp[sentence_relative_pos]
             return np.nan
 
-        # Apply to all rows
         logger.info("  Mapping surprisal to words...")
         surprisal_series = data.apply(map_surprisal, axis=1)
         surprisal_values = surprisal_series.values
@@ -614,6 +545,158 @@ class DanishLinguisticFeatures:
             )
 
         return pd.Series(surprisal_values, index=data.index)
+
+    def _compute_sentence_surprisal_gpt2(
+        self, words: list, max_length: int = 1024, stride: int = 512
+    ) -> list:
+        """
+        Compute word-level surprisal for a sentence using causal GPT-2
+
+        Args:
+            words: List of words in sentence
+            max_length: Maximum context window
+            stride: Stride for sliding window
+
+        Returns:
+            List of surprisal values (one per word, in bits)
+        """
+        import torch
+        import torch.nn.functional as F
+        from torch.nn import CrossEntropyLoss
+
+        # Join words with spaces (preserve original casing)
+        sentence_text = " ".join(words)
+
+        # Tokenize
+        encoding = self._surprisal_tokenizer(
+            sentence_text,
+            return_tensors="pt",
+            add_special_tokens=True,  # Add BOS token
+            truncation=False,  # We'll handle long sequences with sliding window
+            return_offsets_mapping=True,
+        )
+
+        input_ids = encoding["input_ids"][0]  # Shape: [seq_len]
+        offset_mapping = encoding["offset_mapping"][0]  # Character offsets
+
+        # Move to GPU if available
+        if torch.cuda.is_available():
+            input_ids = input_ids.cuda()
+
+        # === Handle long sequences with sliding window ===
+        seq_len = len(input_ids)
+
+        if seq_len <= max_length:
+            # Short sequence: single forward pass
+            token_nlls = self._compute_token_nlls(input_ids.unsqueeze(0))
+        else:
+            # Long sequence: sliding window with overlap
+            token_nlls = torch.full((seq_len,), float("nan"))
+
+            # Process windows
+            for start_idx in range(0, seq_len, stride):
+                end_idx = min(start_idx + max_length, seq_len)
+                window_ids = input_ids[start_idx:end_idx].unsqueeze(0)
+
+                # Compute NLLs for this window
+                window_nlls = self._compute_token_nlls(window_ids)
+
+                # Decide which tokens to keep from this window
+                # Skip first `overlap` tokens to avoid using truncated context
+                overlap = stride if start_idx > 0 else 0
+                keep_start = overlap
+                keep_end = len(window_nlls)
+
+                # Store NLLs (only if not already filled from previous window)
+                for i in range(keep_start, keep_end):
+                    global_idx = start_idx + i
+                    if global_idx < seq_len and torch.isnan(token_nlls[global_idx]):
+                        token_nlls[global_idx] = window_nlls[i]
+
+                if end_idx >= seq_len:
+                    break
+
+        # === Map token-level NLLs to word-level surprisal ===
+        token_nlls = token_nlls.cpu().numpy()
+
+        # Build mapping from character positions to words
+        char_to_word = {}
+        char_pos = 0
+        for word_idx, word in enumerate(words):
+            word_len = len(word)
+            for i in range(word_len):
+                char_to_word[char_pos + i] = word_idx
+            char_pos += word_len + 1  # +1 for space
+
+        # Aggregate token NLLs to word surprisal
+        word_nlls = [[] for _ in range(len(words))]
+
+        for token_idx, (start_char, end_char) in enumerate(offset_mapping):
+            # Skip special tokens (BOS, EOS, PAD)
+            if start_char == 0 and end_char == 0:
+                continue
+
+            # Find which word this token belongs to
+            mid_char = (start_char + end_char) // 2
+            word_idx = char_to_word.get(mid_char)
+
+            if word_idx is not None and token_idx < len(token_nlls):
+                nll = token_nlls[token_idx]
+                if not np.isnan(nll):
+                    word_nlls[word_idx].append(nll)
+
+        # Sum NLLs per word and convert to bits
+        word_surprisals = []
+        for word_idx, nlls in enumerate(word_nlls):
+            if len(nlls) > 0:
+                total_nll = np.sum(nlls)
+                surprisal_bits = total_nll / np.log(2)  # Convert nats to bits
+                word_surprisals.append(surprisal_bits)
+            else:
+                # No tokens matched this word (shouldn't happen, but handle gracefully)
+                word_surprisals.append(np.nan)
+
+        return word_surprisals
+
+    def _compute_token_nlls(self, input_ids: torch.Tensor) -> torch.Tensor:
+        """
+        Compute per-token negative log-likelihoods (NLLs) using causal language model
+
+        Args:
+            input_ids: Token IDs [batch_size, seq_len]
+
+        Returns:
+            NLLs for each token [seq_len] (position i = NLL of token i given tokens < i)
+        """
+        import torch
+        from torch.nn import CrossEntropyLoss
+
+        # Forward pass
+        with torch.no_grad():
+            outputs = self._surprisal_model(input_ids)
+            logits = outputs.logits  # [batch_size, seq_len, vocab_size]
+
+        # Compute cross-entropy loss per position
+        # Shift: predict token i from tokens < i
+        shift_logits = logits[:, :-1, :].contiguous()  # [batch, seq_len-1, vocab]
+        shift_labels = input_ids[:, 1:].contiguous()  # [batch, seq_len-1]
+
+        # Per-token NLL
+        loss_fct = CrossEntropyLoss(reduction="none")
+        token_nlls = loss_fct(
+            shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1)
+        )
+
+        # Reshape and add NaN for first token (no NLL for BOS)
+        token_nlls = token_nlls.view(input_ids.size(0), -1)  # [batch, seq_len-1]
+
+        # Prepend NaN for first token (BOS has no predecessor)
+        first_token_nll = torch.full(
+            (input_ids.size(0), 1), float("nan"), device=token_nlls.device
+        )
+        token_nlls = torch.cat([first_token_nll, token_nlls], dim=1)  # [batch, seq_len]
+
+        return token_nlls[0]  # Return single sequence [seq_len]
 
     def add_all_features(
         self,
