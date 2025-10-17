@@ -167,7 +167,7 @@ def fit_duration_model(data: pd.DataFrame) -> dict:
             groups=fixated_clean["subject_id"],
             re_formula="1",
         )
-        result = model.fit(method="lbfgs", disp=False)
+        result = model.fit(method="powell", disp=False)
 
         # Compute smearing correction factor
         residuals = result.resid
@@ -257,62 +257,72 @@ def extract_slope_ratios(skip_model: dict, duration_model: dict) -> dict:
     return slope_ratios
 
 
-def bootstrap_slope_ratios(data: pd.DataFrame, n_boot: int = 100) -> dict:
+def bootstrap_slope_ratios(data: pd.DataFrame, n_boot: int = 1000) -> dict:
     """
-    Bootstrap confidence intervals for slope ratios (cluster by subject)
+    Bootstrap confidence intervals for slope ratios (faster participant-level approach)
     """
     logger.info(f"  Computing bootstrap CIs ({n_boot} iterations)...")
 
-    subjects = data["subject_id"].unique()
+    # First, compute participant-level slopes
+    from scipy.stats import linregress
+    from tqdm import tqdm
 
+    participant_slopes = []
+    for subject in data["subject_id"].unique():
+        subj_data = data[data["subject_id"] == subject]
+        dyslexic = subj_data["dyslexic"].iloc[0]
+
+        # Only use fixated words
+        fixated = subj_data[subj_data["was_fixated"] == True]
+
+        if len(fixated) > 10:  # Need enough data points
+            for feature, name in [
+                ("word_length_scaled", "Length"),
+                ("word_frequency_zipf_scaled", "Frequency"),
+                ("surprisal_scaled", "Surprisal"),
+            ]:
+
+                clean = fixated[[feature, "total_reading_time"]].dropna()
+                if len(clean) > 10:
+                    slope, _, _, _, _ = linregress(
+                        clean[feature], clean["total_reading_time"]
+                    )
+                    participant_slopes.append(
+                        {
+                            "subject_id": subject,
+                            "dyslexic": dyslexic,
+                            "feature": name,
+                            "slope": slope,
+                        }
+                    )
+
+    slopes_df = pd.DataFrame(participant_slopes)
+
+    # Bootstrap slope ratios
     boot_srs = {"Length": [], "Frequency": [], "Surprisal": []}
+    subjects = slopes_df["subject_id"].unique()
 
     for i in tqdm(range(n_boot), desc="  Bootstrap slope ratios", leave=False):
-        if i % 20 == 0:
-            logger.info(f"    Bootstrap iteration {i}/{n_boot}")
-
-        # Resample subjects
         boot_subjects = resample(subjects, replace=True, random_state=i)
-        boot_data = data[data["subject_id"].isin(boot_subjects)]
+        boot_data = slopes_df[slopes_df["subject_id"].isin(boot_subjects)]
 
-        try:
-            # Refit duration model only (faster)
-            duration_boot = fit_duration_model(boot_data)
+        for feature in ["Length", "Frequency", "Surprisal"]:
+            feat_data = boot_data[boot_data["feature"] == feature]
 
-            if duration_boot:
-                # Extract slope ratios
-                duration_results = duration_boot.get("results")
-                if duration_results is not None:
-                    features = [
-                        "word_length_scaled",
-                        "word_frequency_zipf_scaled",
-                        "surprisal_scaled",
-                    ]
-                    feature_names = ["Length", "Frequency", "Surprisal"]
+            control_slope = feat_data[~feat_data["dyslexic"]]["slope"].mean()
+            dyslexic_slope = feat_data[feat_data["dyslexic"]]["slope"].mean()
 
-                    for feat, name in zip(features, feature_names):
-                        try:
-                            main = duration_results.loc[feat, "Estimate"]
-                            inter = duration_results.loc[
-                                f"dyslexic_int:{feat}", "Estimate"
-                            ]
-                            sr = (main + inter) / main if main != 0 else np.nan
-                            if not np.isnan(sr):
-                                boot_srs[name].append(sr)
-                        except:
-                            continue
-        except:
-            continue
+            if control_slope != 0:
+                sr = dyslexic_slope / control_slope
+                boot_srs[feature].append(sr)
 
     # Compute CIs
     cis = {}
     for feat, values in boot_srs.items():
-        if len(values) > 10:  # Need at least some successful iterations
+        if len(values) > 0:
             ci_low, ci_high = np.percentile(values, [2.5, 97.5])
             cis[feat] = {"ci_low": float(ci_low), "ci_high": float(ci_high)}
             logger.info(f"  {feat}: 95% CI = [{ci_low:.3f}, {ci_high:.3f}]")
-        else:
-            logger.warning(f"  {feat}: Insufficient bootstrap samples ({len(values)})")
 
     return cis
 

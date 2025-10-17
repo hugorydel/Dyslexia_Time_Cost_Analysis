@@ -89,7 +89,7 @@ def fit_residualized_surprisal_model(data: pd.DataFrame) -> dict:
             f"  Residualized surprisal: beta={surprisal_coef:.4f}, p={surprisal_p:.4f}"
         )
 
-        logger.info("  ✓ Surprisal effect robust to frequency collinearity")
+        logger.info("  [OK] Surprisal effect robust to frequency collinearity")
 
         return {
             "model": result,
@@ -219,8 +219,8 @@ def test_alternative_binning(data: pd.DataFrame) -> dict:
                     )
 
                 logger.info(
-                    f"    {feature}: Control Δ={bin_results[f'{feature}_control_diff']:.1f}ms, "
-                    f"Dyslexic Δ={bin_results[f'{feature}_dyslexic_diff']:.1f}ms"
+                    f"    {feature}: Control Delta={bin_results[f'{feature}_control_diff']:.1f}ms, "
+                    f"Dyslexic Delta={bin_results[f'{feature}_dyslexic_diff']:.1f}ms"
                 )
 
             except Exception as e:

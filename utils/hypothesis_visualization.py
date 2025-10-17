@@ -426,14 +426,14 @@ def plot_model_comparison(gap_results: dict, output_path: Path) -> None:
                 ),
             )
 
-    # Compute and show ΔR²
+    # Compute and show DeltaR²
     for i in range(1, len(models)):
         if not np.isnan(r2s[i]) and not np.isnan(r2s[i - 1]):
             delta_r2 = r2s[i] - r2s[i - 1]
             mid_x = i - 0.5
             mid_y = (r2s[i] + r2s[i - 1]) / 2
             ax.annotate(
-                f"ΔR²={delta_r2:.4f}",
+                f"DeltaR²={delta_r2:.4f}",
                 xy=(mid_x, mid_y),
                 xytext=(mid_x, mid_y - 0.03),
                 ha="center",

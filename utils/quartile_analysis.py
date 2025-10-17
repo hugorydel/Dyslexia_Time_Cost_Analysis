@@ -150,46 +150,58 @@ def bootstrap_quartile_effects(
     data: pd.DataFrame, feature: str, n_boot: int = 1000
 ) -> dict:
     """
-    Bootstrap confidence intervals for quartile effects (cluster by subject)
+    Bootstrap confidence intervals using participant-level resampling
+    Much faster than refitting mixed models
     """
     logger.info(f"  Computing bootstrap CIs ({n_boot} iterations)...")
 
+    from tqdm import tqdm
+
     quartile_col = f"{feature}_quartile"
-    q_data = data[data[quartile_col].isin(["Q1", "Q4"])].copy()
-    q_data["bin"] = (q_data[quartile_col] == "Q4").astype(int)
-    q_data["dyslexic_int"] = q_data["dyslexic"].astype(int)
 
-    subjects = q_data["subject_id"].unique()
+    # Get participant-level Q3-Q1 differences
+    participant_diffs = []
+    for subject in data["subject_id"].unique():
+        subj_data = data[data["subject_id"] == subject]
+        dyslexic = subj_data["dyslexic"].iloc[0]
 
-    boot_coefs = []
+        q1_data = subj_data[subj_data[quartile_col] == "Q1"]
+        q3_data = subj_data[subj_data[quartile_col] == "Q4"]
 
-    for i in tqdm(range(n_boot), desc=f"  Bootstrap {feature}", leave=False):
+        if len(q1_data) > 0 and len(q3_data) > 0:
+            participant_diffs.append(
+                {
+                    "subject_id": subject,
+                    "dyslexic": dyslexic,
+                    "Q3_minus_Q1": q3_data["ERT"].mean() - q1_data["ERT"].mean(),
+                }
+            )
+
+    diff_df = pd.DataFrame(participant_diffs)
+
+    # Bootstrap the interaction effect (difference of differences)
+    boot_interactions = []
+    subjects = diff_df["subject_id"].unique()
+
+    for i in tqdm(range(n_boot), desc=f"  {feature} bootstrap", leave=False):
         # Resample subjects with replacement
         boot_subjects = resample(subjects, replace=True, random_state=i)
-        boot_data = q_data[q_data["subject_id"].isin(boot_subjects)]
+        boot_data = diff_df[diff_df["subject_id"].isin(boot_subjects)]
 
-        try:
-            import statsmodels.formula.api as smf
+        # Compute group means
+        control_mean = boot_data[~boot_data["dyslexic"]]["Q3_minus_Q1"].mean()
+        dyslexic_mean = boot_data[boot_data["dyslexic"]]["Q3_minus_Q1"].mean()
 
-            boot_model = smf.mixedlm(
-                "ERT ~ dyslexic_int * bin",
-                data=boot_data,
-                groups=boot_data["subject_id"],
-                re_formula="1",
-            )
-            boot_result = boot_model.fit(method="bfgs", disp=False)
+        # Interaction = difference of differences
+        interaction = dyslexic_mean - control_mean
+        boot_interactions.append(interaction)
 
-            boot_coefs.append(
-                {"interaction": boot_result.params.get("dyslexic_int:bin", np.nan)}
-            )
-        except:
-            continue
-
-    boot_df = pd.DataFrame(boot_coefs)
+    # Compute CI
+    ci_low, ci_high = np.percentile(boot_interactions, [2.5, 97.5])
 
     ci = {
-        "interaction_ci_low": float(boot_df["interaction"].quantile(0.025)),
-        "interaction_ci_high": float(boot_df["interaction"].quantile(0.975)),
+        "interaction_ci_low": float(ci_low),
+        "interaction_ci_high": float(ci_high),
     }
 
     logger.info(

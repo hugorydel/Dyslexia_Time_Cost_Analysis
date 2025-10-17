@@ -53,11 +53,11 @@ def run_gap_decomposition(data: pd.DataFrame) -> dict:
     logger.info("\nGAP DECOMPOSITION SUMMARY:")
     logger.info(f"  Baseline gap (M0): {gaps['M0']:.2f}ms")
     for i in range(1, 4):
-        gap = gaps[f"M{i}"]
-        pct = pct_explained[f"M{i}"]
+        gap = gaps.get(f"M{i}", np.nan)
+        pct = pct_explained.get(f"M{i}", np.nan)
         delta_r2 = r2_values[f"M{i}"] - r2_values[f"M{i-1}"]
         logger.info(
-            f"  M{i}: Gap={gap:.2f}ms, Explained={pct:.1f}%, ΔR²={delta_r2:.4f}"
+            f"  M{i}: Gap={gap:.2f}ms, Explained={pct:.1f}%, DeltaR2={delta_r2:.4f}"
         )
 
     return results
@@ -65,7 +65,8 @@ def run_gap_decomposition(data: pd.DataFrame) -> dict:
 
 def fit_hierarchical_models(data: pd.DataFrame) -> dict:
     """
-    Fit hierarchical sequence of models using statsmodels
+    Fit hierarchical sequence of OLS models with clustered standard errors
+    (NOT mixed models - we need the full fixed group effect for gap decomposition)
     """
     try:
         import statsmodels.formula.api as smf
@@ -90,7 +91,7 @@ def fit_hierarchical_models(data: pd.DataFrame) -> dict:
         logger.info(f"  Formula: {formula}")
 
         try:
-            # Clean data
+            # Define required columns
             if name == "M0":
                 required = ["ERT", "dyslexic_int", "subject_id"]
             elif name == "M1":
@@ -115,18 +116,21 @@ def fit_hierarchical_models(data: pd.DataFrame) -> dict:
 
             data_clean = data_copy.dropna(subset=required)
 
-            # Fit mixed model
-            model = smf.mixedlm(
-                formula,
-                data=data_clean,
-                groups=data_clean["subject_id"],
-                re_formula="1",
+            # Fit OLS model (not mixed model)
+            model = smf.ols(formula, data=data_clean)
+            result = model.fit(
+                cov_type="cluster", cov_kwds={"groups": data_clean["subject_id"]}
             )
-            result = model.fit(method="lbfgs", disp=False)
 
-            models[name] = {"model": result, "results": result, "formula": formula}
+            # Store model, results, and cleaned data
+            models[name] = {
+                "model": result,
+                "results": result,
+                "formula": formula,
+                "data_clean": data_clean,
+            }
 
-            logger.info(f"  {name} fitted successfully")
+            logger.info(f"  {name} fitted successfully (OLS with clustered SEs)")
 
         except Exception as e:
             logger.error(f"  {name} fitting failed: {e}")
@@ -137,33 +141,30 @@ def fit_hierarchical_models(data: pd.DataFrame) -> dict:
 
 def compute_gaps_for_all_models(data: pd.DataFrame, models: dict) -> dict:
     """
-    Compute counterfactual group gap for each model
+    Compute counterfactual group gap for each OLS model
     Gap = E[ERT | Group=Dyslexic] - E[ERT | Group=Control]
     """
     logger.info("\nComputing counterfactual gaps...")
 
     gaps = {}
 
-    data_copy = data.copy()
-
     for name, model_dict in models.items():
         if model_dict is None:
             continue
 
         model = model_dict["model"]
+        data_clean = model_dict["data_clean"]
 
         try:
-            # Predict with Group=Control
-            data_ctrl = data_copy.copy()
+            # Predict with Group=Control (dyslexic_int=0)
+            data_ctrl = data_clean.copy()
             data_ctrl["dyslexic_int"] = 0
-            pred_ctrl = model.predict(
-                data_ctrl, use_rfx=False, verify_predictions=False
-            )
+            pred_ctrl = model.predict(data_ctrl)
 
-            # Predict with Group=Dyslexic
-            data_dys = data_copy.copy()
+            # Predict with Group=Dyslexic (dyslexic_int=1)
+            data_dys = data_clean.copy()
             data_dys["dyslexic_int"] = 1
-            pred_dys = model.predict(data_dys, use_rfx=False, verify_predictions=False)
+            pred_dys = model.predict(data_dys)
 
             # Compute gap
             gap = pred_dys.mean() - pred_ctrl.mean()
@@ -180,9 +181,9 @@ def compute_gaps_for_all_models(data: pd.DataFrame, models: dict) -> dict:
 
 def compute_marginal_r2(data: pd.DataFrame, models: dict) -> dict:
     """
-    Compute marginal R² (fixed effects only) for each model
+    Compute R² for OLS models
     """
-    logger.info("\nComputing marginal R²...")
+    logger.info("\nComputing R²...")
 
     r2_values = {}
 
@@ -191,13 +192,12 @@ def compute_marginal_r2(data: pd.DataFrame, models: dict) -> dict:
             continue
 
         model = model_dict["model"]
+        data_clean = model_dict["data_clean"]
 
         try:
-            # Predict with fixed effects only
-            pred = model.predict(data, use_rfx=False, verify_predictions=False)
-
-            # R²
-            r2 = r2_score(data["ERT"], pred)
+            # For OLS, just use the fitted values
+            pred = model.fittedvalues
+            r2 = r2_score(data_clean["ERT"], pred)
             r2_values[name] = float(r2)
 
             logger.info(f"  {name}: R² = {r2:.4f}")
