@@ -23,7 +23,7 @@ class DanishLinguisticFeatures:
     """
     Compute linguistic features for Danish text:
     - Word frequency (from Leipzig Corpora, Zipf transformed)
-    - Surprisal (using transformer models in pseudo-autoregressive mode)
+    - Surprisal (using transformer models in causal (autoregressive) mode)
     - Word length (character count)
     """
 
@@ -561,23 +561,21 @@ class DanishLinguisticFeatures:
             List of surprisal values (one per word, in bits)
         """
         import torch
-        import torch.nn.functional as F
         from torch.nn import CrossEntropyLoss
 
-        # Join words with spaces (preserve original casing)
-        sentence_text = " ".join(words)
-
-        # Tokenize
+        # Tokenize with word-level mapping
         encoding = self._surprisal_tokenizer(
-            sentence_text,
+            words,
+            is_split_into_words=True,
             return_tensors="pt",
-            add_special_tokens=True,  # Add BOS token
-            truncation=False,  # We'll handle long sequences with sliding window
-            return_offsets_mapping=True,
+            add_special_tokens=False,
+            truncation=False,
         )
 
         input_ids = encoding["input_ids"][0]  # Shape: [seq_len]
-        offset_mapping = encoding["offset_mapping"][0]  # Character offsets
+
+        # Use word_ids() for direct token→word mapping
+        word_ids_mapping = encoding.word_ids(batch_index=0)  # List[Optional[int]]
 
         # Move to GPU if available
         if torch.cuda.is_available():
@@ -602,7 +600,7 @@ class DanishLinguisticFeatures:
                 window_nlls = self._compute_token_nlls(window_ids)
 
                 # Decide which tokens to keep from this window
-                # Skip first `overlap` tokens to avoid using truncated context
+                # Skip first `stride` tokens to ensure full left context
                 overlap = stride if start_idx > 0 else 0
                 keep_start = overlap
                 keep_end = len(window_nlls)
@@ -619,27 +617,11 @@ class DanishLinguisticFeatures:
         # === Map token-level NLLs to word-level surprisal ===
         token_nlls = token_nlls.cpu().numpy()
 
-        # Build mapping from character positions to words
-        char_to_word = {}
-        char_pos = 0
-        for word_idx, word in enumerate(words):
-            word_len = len(word)
-            for i in range(word_len):
-                char_to_word[char_pos + i] = word_idx
-            char_pos += word_len + 1  # +1 for space
-
-        # Aggregate token NLLs to word surprisal
+        # Aggregate token NLLs by word
         word_nlls = [[] for _ in range(len(words))]
 
-        for token_idx, (start_char, end_char) in enumerate(offset_mapping):
-            # Skip special tokens (BOS, EOS, PAD)
-            if start_char == 0 and end_char == 0:
-                continue
-
-            # Find which word this token belongs to
-            mid_char = (start_char + end_char) // 2
-            word_idx = char_to_word.get(mid_char)
-
+        for token_idx, word_idx in enumerate(word_ids_mapping):
+            # word_idx is None for special tokens (shouldn't happen with add_special_tokens=False)
             if word_idx is not None and token_idx < len(token_nlls):
                 nll = token_nlls[token_idx]
                 if not np.isnan(nll):
@@ -653,7 +635,10 @@ class DanishLinguisticFeatures:
                 surprisal_bits = total_nll / np.log(2)  # Convert nats to bits
                 word_surprisals.append(surprisal_bits)
             else:
-                # No tokens matched this word (shouldn't happen, but handle gracefully)
+                # No tokens for this word (shouldn't happen, but handle gracefully)
+                logger.warning(
+                    f"No tokens found for word {word_idx}: '{words[word_idx]}'"
+                )
                 word_surprisals.append(np.nan)
 
         return word_surprisals
@@ -687,10 +672,10 @@ class DanishLinguisticFeatures:
             shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1)
         )
 
-        # Reshape and add NaN for first token (no NLL for BOS)
+        # Reshape and add NaN for first token (no NLL for position 0)
         token_nlls = token_nlls.view(input_ids.size(0), -1)  # [batch, seq_len-1]
 
-        # Prepend NaN for first token (BOS has no predecessor)
+        # Prepend NaN for first token (no context for position 0)
         first_token_nll = torch.full(
             (input_ids.size(0), 1), float("nan"), device=token_nlls.device
         )
