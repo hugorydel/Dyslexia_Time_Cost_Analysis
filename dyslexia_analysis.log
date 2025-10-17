@@ -4022,3 +4022,100 @@ Feature Summary:
 2025-10-17 15:42:33,463 - __main__ - INFO - Creating linguistic feature visualizations...
 2025-10-17 15:42:36,050 - __main__ - INFO - Linguistic feature plots saved to results\linguistic_features_plots.png
 2025-10-17 15:42:36,072 - __main__ - INFO - Analysis complete. Results saved to results
+2025-10-17 19:29:26,329 - __main__ - INFO - Dyslexia Time Analysis Pipeline initialized
+2025-10-17 19:29:26,329 - __main__ - INFO - Dyslexia Time Analysis Pipeline initialized
+2025-10-17 19:29:28,616 - __main__ - INFO - Running hypothesis testing analysis...
+2025-10-17 19:29:28,616 - __main__ - INFO - ================================================================================
+2025-10-17 19:29:28,617 - __main__ - INFO - HYPOTHESIS TESTING ANALYSIS
+2025-10-17 19:29:28,617 - __main__ - INFO - ================================================================================
+2025-10-17 19:29:28,617 - __main__ - INFO - Loading CopCo dataset...
+2025-10-17 19:29:28,623 - utils.data_utils - INFO - Loading 57 participant files...
+2025-10-17 19:29:30,553 - utils.data_utils - INFO - Starting with 335,203 total word entries
+2025-10-17 19:29:30,778 - utils.data_utils - INFO - Word fixation patterns:
+2025-10-17 19:29:30,778 - utils.data_utils - INFO -   - Skipped words (0 fixations): 126,302
+2025-10-17 19:29:30,779 - utils.data_utils - INFO -   - Fixated words (1+ fixations): 208,901
+2025-10-17 19:29:30,779 - utils.data_utils - INFO -   - Unknown fixations (NaN): 0
+2025-10-17 19:29:30,815 - utils.data_utils - INFO - Fixated words reading times: median 272ms, 99th percentile 1777ms
+2025-10-17 19:29:30,819 - utils.data_utils - INFO - Removed 14 fixated words with extreme reading times (0 too short, 14 too long)
+2025-10-17 19:29:30,924 - utils.data_utils - INFO - Removed 23 words longer than 30 characters (likely data errors)
+2025-10-17 19:29:30,966 - utils.data_utils - INFO - Final dataset: 126,302 skipped words, 208,864 fixated words
+2025-10-17 19:29:30,967 - utils.data_utils - INFO - Data cleaning complete: 335,166 words retained (100.0% of original)
+2025-10-17 19:29:30,977 - utils.data_utils - INFO - Groups identified: 19 dyslexic, 39 control
+2025-10-17 19:29:31,058 - __main__ - INFO - Calculating skipping probabilities...
+2025-10-17 19:29:31,062 - utils.skipping_utils - INFO - Skipping analysis from ExtractedFeatures:
+2025-10-17 19:29:31,062 - utils.skipping_utils - INFO -   Total words: 335,166
+2025-10-17 19:29:31,062 - utils.skipping_utils - INFO -   Skipped: 126,302 (37.7%)
+2025-10-17 19:29:31,062 - utils.skipping_utils - INFO -   Fixated: 208,864 (62.3%)
+2025-10-17 19:29:31,122 - __main__ - INFO - Skipping analysis: 37.7% overall rate
+2025-10-17 19:29:31,150 - __main__ - INFO - Loaded: 335,166 words from 57 participants
+2025-10-17 19:29:31,150 - __main__ - INFO - ============================================================
+2025-10-17 19:29:31,150 - __main__ - INFO - COMPUTING LINGUISTIC FEATURES
+2025-10-17 19:29:31,150 - __main__ - INFO - ============================================================
+2025-10-17 19:29:31,151 - utils.linguistic_features - INFO - Loading Danish frequency list from danish_frequencies\danish_leipzig_for_analysis.txt
+2025-10-17 19:29:32,636 - utils.linguistic_features - WARNING - Found 2 duplicate words after lowercasing. 
+2025-10-17 19:29:33,135 - utils.linguistic_features - INFO - Loaded 1,499,999 word proportions from Leipzig Corpora
+2025-10-17 19:29:33,246 - utils.linguistic_features - INFO - Computing word frequency...
+2025-10-17 19:29:33,246 - utils.linguistic_features - INFO -   Stripping punctuation from words before frequency lookup
+2025-10-17 19:29:33,973 - utils.linguistic_features - INFO - 13 missing word instances were punctuation-only
+2025-10-17 19:29:33,974 - utils.linguistic_features - WARNING - 4,586 word instances (1.4%) not found in frequency list (197 unique valid words)
+2025-10-17 19:29:33,974 - utils.linguistic_features - INFO - Sample of 197 missing valid words: ['1926-2016', 'abilifyer', 'abrams efter', 'af christian', 'af imperialismen', 'at blomsterstanden er', 'bjergstien', 'bliniopskrifter', 'broder-søsterligt', 'by-spildevand', 'by-spildevandet', 'chakri-dynasti', 'cochallenge', 'coconference', 'cybermind', 'drengekammeraterne', 'ecodesign-direktivet', 'efter star', 'elevrådsarrangementer', 'fosforressourcer', 'første krigsminister, a.f', 'go-to-ting', 'hejre (bromus', 'heksetrold', 'hetzbølger', 'h’erne', 'kabeltromlerne', 'klimatilpasningslov', 'klimatilpasningspakke', 'lgbtqi-diskrimination', 'lysfester', 'morgensamlingsudvalget', 'nabofolkeslag', 'naturlovgivning', 'nyreligiøst', 'næstlængste regeringstid af', 'pinsesalmerne', 'sankthansormen', 'sankthanstraditioner', 'sejdkunst', 'selvetablerede', 'skjortesyerske', 'slomo', 'som star', 'spákona', 'stress-sygdomme', 'sønnerne kronprins', 'til landskabsmaleri', 'tscherning (1817-1890', 'wadup']... (147 more)
+2025-10-17 19:29:33,981 - utils.linguistic_features - INFO - Excluding 4,599 word instances (1.4%) with missing frequencies from analysis
+2025-10-17 19:29:34,198 - utils.linguistic_features - INFO - Remaining dataset: 330,567 words
+2025-10-17 19:29:34,198 - utils.linguistic_features - INFO - Final dataset: 330,567 words with valid frequencies
+2025-10-17 19:29:39,181 - utils.linguistic_features - INFO - Loading causal language model: KennethTM/gpt2-medium-danish
+2025-10-17 19:29:40,900 - utils.linguistic_features - INFO - Using CPU for surprisal computation
+2025-10-17 19:29:40,901 - utils.linguistic_features - INFO - Causal language model loaded successfully
+2025-10-17 19:29:40,901 - utils.linguistic_features - INFO - Computing surprisal with causal GPT-2 (left-to-right)...
+2025-10-17 19:29:42,345 - utils.linguistic_features - INFO - Dataset statistics:
+2025-10-17 19:29:42,345 - utils.linguistic_features - INFO -   Total participant-sentence instances: 20,707
+2025-10-17 19:29:42,346 - utils.linguistic_features - INFO -   Unique sentence texts: 1,986
+2025-10-17 19:29:42,346 - utils.linguistic_features - INFO -   Average participants per sentence: 10.4
+2025-10-17 19:29:42,347 - utils.linguistic_features - INFO - Loading cached surprisal values from word_surprisal\surprisal_cache_gpt2.pkl
+2025-10-17 19:29:42,372 - utils.linguistic_features - INFO - Loaded surprisal for 1,986 unique sentences
+2025-10-17 19:29:42,373 - utils.linguistic_features - INFO - Broadcasting surprisal values to all participant instances...
+2025-10-17 19:29:42,373 - utils.linguistic_features - INFO -   Mapping surprisal to words...
+2025-10-17 19:29:46,491 - utils.linguistic_features - INFO -   Mapped 326,496 words
+2025-10-17 19:29:46,492 - utils.linguistic_features - INFO - 
+Surprisal Computation Results:
+2025-10-17 19:29:46,493 - utils.linguistic_features - INFO -   Unique sentences processed: 1,986
+2025-10-17 19:29:46,493 - utils.linguistic_features - INFO -   Total words with surprisal: 326,496 / 330,567
+2025-10-17 19:29:46,494 - utils.linguistic_features - INFO -   Mean: 6.93 bits
+2025-10-17 19:29:46,500 - utils.linguistic_features - INFO -   Median: 5.69 bits
+2025-10-17 19:29:46,503 - utils.linguistic_features - INFO -   Std: 5.55 bits
+2025-10-17 19:29:46,504 - utils.linguistic_features - INFO -   Range: [0.00, 59.34] bits
+2025-10-17 19:29:46,536 - utils.linguistic_features - INFO - Linguistic features added successfully
+2025-10-17 19:29:46,536 - utils.linguistic_features - INFO - 
+Feature Summary:
+2025-10-17 19:29:46,539 - utils.linguistic_features - INFO -   Word length: mean=4.67, std=3.08
+2025-10-17 19:29:46,542 - utils.linguistic_features - INFO -   Zipf frequency: mean=5.85, std=1.38, range=[0.91, 7.51]
+2025-10-17 19:29:46,545 - utils.linguistic_features - INFO -   Surprisal: mean=6.93, std=5.55
+2025-10-17 19:29:46,574 - utils.hypothesis_testing_utils - INFO - Preparing data for hypothesis testing...
+2025-10-17 19:29:46,625 - utils.hypothesis_testing_utils - INFO - Creating ERT variable...
+2025-10-17 19:29:46,629 - utils.hypothesis_testing_utils - INFO -   ERT created: 123,666 skipped (0ms), 206,901 fixated
+2025-10-17 19:29:46,629 - utils.hypothesis_testing_utils - INFO - Centering and scaling predictors...
+2025-10-17 19:29:46,652 - utils.hypothesis_testing_utils - INFO -   word_length: mean=4.67, scale=3.08
+2025-10-17 19:29:46,670 - utils.hypothesis_testing_utils - INFO -   word_frequency_zipf: mean=5.85, scale=1.38
+2025-10-17 19:29:46,687 - utils.hypothesis_testing_utils - INFO -   surprisal: mean=6.93, scale=5.55
+2025-10-17 19:29:46,688 - utils.hypothesis_testing_utils - INFO - Checking collinearity (VIF)...
+2025-10-17 19:29:46,936 - utils.hypothesis_testing_utils - INFO - VIF Results:
+2025-10-17 19:29:46,936 - utils.hypothesis_testing_utils - INFO -   Length: 2.82 (OK)
+2025-10-17 19:29:46,937 - utils.hypothesis_testing_utils - INFO -   Frequency: 3.18 (OK)
+2025-10-17 19:29:46,937 - utils.hypothesis_testing_utils - INFO -   Surprisal: 1.41 (OK)
+2025-10-17 19:29:46,938 - utils.hypothesis_testing_utils - INFO - Creating residualized surprisal...
+2025-10-17 19:29:46,962 - utils.hypothesis_testing_utils - INFO -   Correlation (Frequency-Surprisal): r=-0.539
+2025-10-17 19:29:46,962 - utils.hypothesis_testing_utils - INFO -   Residualized surprisal created
+2025-10-17 19:29:46,963 - utils.hypothesis_testing_utils - INFO - Defining pooled quartiles...
+2025-10-17 19:29:46,982 - utils.hypothesis_testing_utils - INFO -   word_length: Q1=2.00, Q3=6.00
+2025-10-17 19:29:46,997 - utils.hypothesis_testing_utils - INFO -   word_frequency_zipf: Q1=4.91, Q3=7.10
+2025-10-17 19:29:47,011 - utils.hypothesis_testing_utils - INFO -   surprisal: Q1=2.76, Q3=9.97
+2025-10-17 19:29:47,012 - utils.hypothesis_testing_utils - INFO - Data preparation complete: 330,567 words ready for analysis
+2025-10-17 19:29:47,029 - utils.quartile_analysis - INFO - ============================================================
+2025-10-17 19:29:47,030 - utils.quartile_analysis - INFO - PART A: QUARTILE ANALYSIS (Q1 vs Q3)
+2025-10-17 19:29:47,030 - utils.quartile_analysis - INFO - ============================================================
+2025-10-17 19:29:47,030 - utils.quartile_analysis - INFO - 
+Analyzing word_length...
+2025-10-17 19:29:47,911 - utils.quartile_analysis - INFO -   Computed means for 57 participants
+2025-10-17 19:29:47,912 - utils.quartile_analysis - INFO -     Control Q3-Q1: 259.7ms
+2025-10-17 19:29:47,912 - utils.quartile_analysis - INFO -     Dyslexic Q3-Q1: 442.6ms
+2025-10-17 19:29:47,977 - utils.quartile_analysis - INFO -   Fitting mixed model on 152,465 words...
+2025-10-17 19:29:48,672 - utils.quartile_analysis - INFO -   Computing bootstrap CIs (1000 iterations)...

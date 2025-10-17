@@ -4,7 +4,7 @@ Main Analysis Orchestrator for Dyslexia Time Cost Analysis
 Uses ExtractedFeatures as primary data source
 """
 
-import argparse
+import io
 import logging
 import sys
 from pathlib import Path
@@ -13,6 +13,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
 
 # Import configuration
 import config

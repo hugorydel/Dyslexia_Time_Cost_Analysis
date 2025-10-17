@@ -5,11 +5,14 @@ Part A of hypothesis testing
 """
 
 import logging
+import warnings
 
 import numpy as np
 import pandas as pd
 from sklearn.utils import resample
+from tqdm import tqdm
 
+warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
 
 
@@ -133,7 +136,7 @@ def fit_quartile_mixed_model(data: pd.DataFrame, feature: str) -> dict:
         }
 
         logger.info(
-            f"  Group×Bin interaction: β={coefs['interaction']:.2f}, p={pvals['interaction_p']:.4f}"
+            f"  Group×Bin interaction: beta={coefs['interaction']:.2f}, p={pvals['interaction_p']:.4f}"
         )
 
         return {"coefficients": coefs, "pvalues": pvals, "summary": result.summary()}
@@ -160,7 +163,7 @@ def bootstrap_quartile_effects(
 
     boot_coefs = []
 
-    for i in range(n_boot):
+    for i in tqdm(range(n_boot), desc=f"  Bootstrap {feature}", leave=False):
         # Resample subjects with replacement
         boot_subjects = resample(subjects, replace=True, random_state=i)
         boot_data = q_data[q_data["subject_id"].isin(boot_subjects)]

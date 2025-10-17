@@ -10,6 +10,10 @@ import warnings
 import numpy as np
 import pandas as pd
 from sklearn.utils import resample
+from statsmodels.tools.sm_exceptions import ConvergenceWarning
+from tqdm import tqdm
+
+warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
 warnings.filterwarnings("ignore")
 
@@ -111,7 +115,7 @@ def fit_skipping_model(data: pd.DataFrame) -> dict:
             if term in params.index:
                 est = params[term]
                 p = pvalues[term]
-                logger.info(f"    {term}: β={est:.4f}, p={p:.4f}")
+                logger.info(f"    {term}: beta={est:.4f}, p={p:.4f}")
 
         # Create results DataFrame in expected format
         results_df = pd.DataFrame({"Estimate": params, "P-val": pvalues})
@@ -187,7 +191,7 @@ def fit_duration_model(data: pd.DataFrame) -> dict:
             if term in params.index:
                 est = params[term]
                 p = pvalues[term]
-                logger.info(f"    {term}: β={est:.4f}, p={p:.4f}")
+                logger.info(f"    {term}: beta={est:.4f}, p={p:.4f}")
 
         # Create results DataFrame
         results_df = pd.DataFrame({"Estimate": params, "P-val": pvalues})
@@ -263,7 +267,7 @@ def bootstrap_slope_ratios(data: pd.DataFrame, n_boot: int = 100) -> dict:
 
     boot_srs = {"Length": [], "Frequency": [], "Surprisal": []}
 
-    for i in range(n_boot):
+    for i in tqdm(range(n_boot), desc="  Bootstrap slope ratios", leave=False):
         if i % 20 == 0:
             logger.info(f"    Bootstrap iteration {i}/{n_boot}")
 

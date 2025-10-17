@@ -147,7 +147,7 @@ def test_hypothesis_1(continuous_results: dict) -> dict:
                 all_significant = False
 
             logger.info(
-                f"  {name}: β={coef:.4f}, p={p_val:.4f} - {results[name]['status']}"
+                f"  {name}: beta={coef:.4f}, p={p_val:.4f} - {results[name]['status']}"
             )
 
     overall_status = "CONFIRMED" if all_significant else "PARTIALLY CONFIRMED"

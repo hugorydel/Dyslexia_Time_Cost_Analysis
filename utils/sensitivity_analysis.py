@@ -4,13 +4,16 @@ Sensitivity analyses for robustness checks
 """
 
 import logging
+import warnings
 
 import numpy as np
 import pandas as pd
 import statsmodels.formula.api as smf
 from sklearn.metrics import r2_score
 from sklearn.model_selection import LeaveOneGroupOut
+from statsmodels.tools.sm_exceptions import ConvergenceWarning
 
+warnings.filterwarnings("ignore", category=ConvergenceWarning)
 logger = logging.getLogger(__name__)
 
 
@@ -83,8 +86,9 @@ def fit_residualized_surprisal_model(data: pd.DataFrame) -> dict:
         surprisal_p = result.pvalues.get("surprisal_resid", np.nan)
 
         logger.info(
-            f"  Residualized surprisal: β={surprisal_coef:.4f}, p={surprisal_p:.4f}"
+            f"  Residualized surprisal: beta={surprisal_coef:.4f}, p={surprisal_p:.4f}"
         )
+
         logger.info("  ✓ Surprisal effect robust to frequency collinearity")
 
         return {
@@ -103,85 +107,6 @@ def subject_wise_cross_validation(data: pd.DataFrame, n_folds: int = 10) -> dict
     """
     Leave-one-subject-out cross-validation (limited to n_folds for speed)
     """
-
-    logger.info(f"  Running {n_folds}-fold subject-wise CV...")
-
-    data_copy = data.copy()
-    data_copy["dyslexic_int"] = data_copy["dyslexic"].astype(int)
-
-    formula = "ERT ~ dyslexic_int * (word_length_scaled + word_frequency_zipf_scaled + surprisal_scaled)"
-
-    logo = LeaveOneGroupOut()
-    subjects = data_copy["subject_id"].values
-
-    cv_scores = []
-
-    for fold_idx, (train_idx, test_idx) in enumerate(
-        logo.split(data_copy, groups=subjects)
-    ):
-        if fold_idx >= n_folds:
-            break
-
-        logger.info(f"    Fold {fold_idx+1}/{n_folds}")
-
-        train_data = data_copy.iloc[train_idx]
-        test_data = data_copy.iloc[test_idx]
-
-        try:
-            # Clean data
-            required = [
-                "ERT",
-                "dyslexic_int",
-                "word_length_scaled",
-                "word_frequency_zipf_scaled",
-                "surprisal_scaled",
-                "subject_id",
-            ]
-            train_clean = train_data.dropna(subset=required)
-            test_clean = test_data.dropna(subset=required)
-
-            # Fit on train
-            model = smf.mixedlm(
-                formula,
-                data=train_clean,
-                groups=train_clean["subject_id"],
-                re_formula="1",
-            )
-            result = model.fit(method="lbfgs", disp=False)
-
-            # Predict on test
-            pred = result.predict(test_clean)
-
-            # Compute R²
-            r2 = r2_score(test_clean["ERT"], pred)
-            cv_scores.append(r2)
-
-        except Exception as e:
-            logger.warning(f"    Fold {fold_idx+1} failed: {e}")
-            continue
-
-    mean_r2 = np.mean(cv_scores) if cv_scores else np.nan
-    std_r2 = np.std(cv_scores) if cv_scores else np.nan
-
-    logger.info(f"  Cross-validation R²: {mean_r2:.4f} ± {std_r2:.4f}")
-    logger.info(f"  Based on {len(cv_scores)} successful folds")
-
-    return {
-        "mean_r2": float(mean_r2),
-        "std_r2": float(std_r2),
-        "n_folds": len(cv_scores),
-        "all_scores": [float(s) for s in cv_scores],
-    }
-
-
-def subject_wise_cross_validation(data: pd.DataFrame, n_folds: int = 10) -> dict:
-    """
-    Leave-one-subject-out cross-validation (limited to n_folds for speed)
-    """
-    try:
-        import statsmodels.formula.api as smf
-    except ImportError:
-        return {}
 
     logger.info(f"  Running {n_folds}-fold subject-wise CV...")
 

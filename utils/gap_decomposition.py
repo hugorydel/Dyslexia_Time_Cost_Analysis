@@ -5,11 +5,14 @@ Part C of hypothesis testing
 """
 
 import logging
+import warnings
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import r2_score
+from statsmodels.tools.sm_exceptions import ConvergenceWarning
 
+warnings.filterwarnings("ignore", category=ConvergenceWarning)
 logger = logging.getLogger(__name__)
 
 
