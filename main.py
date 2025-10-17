@@ -9,11 +9,14 @@ import logging
 import sys
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 
 # Import configuration
 import config
+from utils.continuous_models import run_continuous_models
 
 # Import utilities
 from utils.data_utils import (
@@ -24,6 +27,9 @@ from utils.data_utils import (
     load_participant_stats,
     merge_with_participant_stats,
 )
+from utils.gap_decomposition import run_gap_decomposition
+from utils.hypothesis_testing_utils import prepare_hypothesis_testing_data
+from utils.hypothesis_visualization import create_hypothesis_testing_visualizations
 
 # Import linguistic features
 from utils.linguistic_features import DanishLinguisticFeatures
@@ -33,6 +39,9 @@ from utils.misc_utils import (
     setup_logging,
     validate_config,
 )
+from utils.quartile_analysis import run_quartile_analysis
+from utils.results_reporting import generate_hypothesis_testing_report
+from utils.sensitivity_analysis import run_sensitivity_analyses
 from utils.stats_utils import calculate_basic_statistics, calculate_group_summary_stats
 from utils.visualization_utils import (
     create_exploratory_plots,
@@ -389,11 +398,61 @@ class DyslexiaTimeAnalysisPipeline:
 
         return summary
 
+    def run_hypothesis_testing_analysis(self) -> dict:
+        """
+        Run comprehensive hypothesis testing analysis
+        Tests all three hypotheses with rigorous statistical methods
+        """
+        logger.info("=" * 80)
+        logger.info("HYPOTHESIS TESTING ANALYSIS")
+        logger.info("=" * 80)
+
+        # Load data
+        data = self.load_copco_data()
+        data = self.compute_linguistic_features(data)
+
+        # PHASE 1: Data Preparation
+        data, quartiles, scalers, vif = prepare_hypothesis_testing_data(data)
+
+        # PHASE 2: Part A - Quartile Analysis
+        quartile_results = run_quartile_analysis(data)
+
+        # PHASE 3: Part B - Continuous Models
+        continuous_results = run_continuous_models(data)
+
+        # PHASE 4: Part C - Gap Decomposition
+        gap_results = run_gap_decomposition(data)
+
+        # PHASE 5: Sensitivity Analyses
+        sensitivity_results = run_sensitivity_analyses(data)
+
+        # PHASE 6: Visualizations
+        create_hypothesis_testing_visualizations(
+            data, quartile_results, continuous_results, gap_results, self.results_dir
+        )
+
+        # PHASE 7: Generate Report
+        report = generate_hypothesis_testing_report(
+            quartile_results,
+            continuous_results,
+            gap_results,
+            sensitivity_results,
+            quartiles,
+            scalers,
+            vif,
+        )
+
+        # Save comprehensive results
+        save_json_results(report, self.results_dir / "hypothesis_testing_results.json")
+
+        logger.info(
+            f"\nHypothesis testing complete! Results saved to {self.results_dir}"
+        )
+
+        return report
+
     def _create_linguistic_feature_plots(self, data: pd.DataFrame):
         """Create visualizations for linguistic features"""
-
-        import matplotlib.pyplot as plt
-        import seaborn as sns
 
         logger.info("Creating linguistic feature visualizations...")
 
@@ -663,71 +722,46 @@ class DyslexiaTimeAnalysisPipeline:
         logger.info(f"Data dictionary saved to {filepath}")
 
 
+def display_menu() -> str:
+    """Display analysis menu and get user choice"""
+    print("\nDyslexia Time Cost Analysis Pipeline")
+    print("=" * 50)
+    print("1. Run exploratory analysis")
+    print("2. Run hypothesis testing analysis")  # NEW
+    print("3. Exit")
+
+    while True:
+        choice = input("\nEnter your choice (1-3): ").strip()
+        if choice in ["1", "2", "3"]:
+            return choice
+        print("Invalid choice. Please enter 1, 2, or 3.")
+
+
 def main():
-    """Main entry point for analysis"""
-
-    parser = argparse.ArgumentParser(description="Dyslexia Time Cost Analysis")
-    parser.add_argument(
-        "--explore", action="store_true", help="Run exploratory analysis only"
-    )
-    parser.add_argument(
-        "--hypothesis", action="store_true", help="Run hypothesis testing only"
-    )
-
-    args = parser.parse_args()
-
-    # Initialize pipeline
+    """Main entry point"""
     try:
+        # Initialize pipeline
         pipeline = DyslexiaTimeAnalysisPipeline()
-    except Exception as e:
-        logger.error(f"Failed to initialize pipeline: {e}")
-        sys.exit(1)
+        logger.info("Dyslexia Time Analysis Pipeline initialized")
 
-    try:
-        # Command-line modes
-        if args.explore:
-            results = pipeline.run_exploratory_analysis()
-            print("\nExploratory Analysis Summary:")
-            print(f"Data shape: {results['data_shape']}")
-            print(f"Subjects: {results['subjects']}")
-            if "dyslexic_subjects" in results:
-                print(f"Dyslexic subjects: {results['dyslexic_subjects']}")
-                print(f"Control subjects: {results['control_subjects']}")
-
-            # Print linguistic feature summary
-            if "linguistic_features" in results:
-                print("\nLinguistic Features Summary:")
-                for feature, stats in results["linguistic_features"][
-                    "linguistic_features_summary"
-                ].items():
-                    print(f"  {feature}:")
-                    print(f"    Mean: {stats['mean']:.2f}, Std: {stats['std']:.2f}")
-                    print(f"    Range: [{stats['min']:.2f}, {stats['max']:.2f}]")
-        else:
-            # Interactive menu
-            print("Dyslexia Time Cost Analysis Pipeline")
-            print("=" * 50)
-            print("1. Run exploratory analysis")
-            print("2. Exit")
-
-            choice = input("\nEnter your choice (1-3): ")
+        while True:
+            choice = display_menu()
 
             if choice == "1":
-                results = pipeline.run_exploratory_analysis()
-                print(f"\nResults saved to: {pipeline.results_dir}")
+                logger.info("Running exploratory analysis...")
+                pipeline.run_exploratory_analysis()
+            elif choice == "2":
+                logger.info("Running hypothesis testing analysis...")
+                pipeline.run_hypothesis_testing_analysis()  # NEW
+            elif choice == "3":
+                logger.info("Exiting...")
+                break
 
-            # elif choice == "2":
-            #     results = pipeline.run_hypothesis_testing_analysis()
-
-            else:
-                print("Exiting...")
+        logger.info("Analysis complete!")
 
     except Exception as e:
-        logger.error(f"Pipeline failed: {e}")
-        import traceback
-
-        traceback.print_exc()
-        sys.exit(1)
+        logger.error(f"Pipeline failed: {e}", exc_info=True)
+        raise
 
 
 if __name__ == "__main__":
