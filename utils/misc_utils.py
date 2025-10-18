@@ -55,27 +55,6 @@ def save_json_results(results: dict, filepath: Path) -> None:
         logger.error(f"Failed to save results to {filepath}: {e}")
 
 
-def create_output_directories(base_dir: Path) -> dict:
-    """
-    Create necessary output directories
-
-    Args:
-        base_dir: Base directory for outputs
-
-    Returns:
-        Dictionary with created directory paths
-    """
-    directories = {
-        "results": base_dir,
-    }
-
-    for name, dir_path in directories.items():
-        dir_path.mkdir(exist_ok=True, parents=True)
-        logger.debug(f"Created directory: {dir_path}")
-
-    return directories
-
-
 def setup_logging(log_file: str = "dyslexia_analysis.log") -> None:
     """
     Setup logging configuration with UTF-8 encoding

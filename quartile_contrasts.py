@@ -17,11 +17,13 @@ Outputs:
 """
 
 from __future__ import annotations
+
 import argparse
-from pathlib import Path
 import sys
-import pandas as pd
+from pathlib import Path
+
 import numpy as np
+import pandas as pd
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 
@@ -32,7 +34,9 @@ def _to_bool(series: pd.Series) -> pd.Series:
     if s.dtype == bool:
         return s
     s = s.astype(str).str.strip().str.lower()
-    return s.map({"true": True, "false": False, "1": True, "0": False, "yes": True, "no": False}).fillna(False)
+    return s.map(
+        {"true": True, "false": False, "1": True, "0": False, "yes": True, "no": False}
+    ).fillna(False)
 
 
 def load_data(csv_path: Path) -> pd.DataFrame:
@@ -47,14 +51,20 @@ def load_data(csv_path: Path) -> pd.DataFrame:
     if "subject_id" not in df.columns:
         raise ValueError("Column 'subject_id' not found in CSV.")
     # Prefer 'dyslexic'; fallback to 'dyslexia'
-    group_col = "dyslexic" if "dyslexic" in df.columns else ("dyslexia" if "dyslexia" in df.columns else None)
+    group_col = (
+        "dyslexic"
+        if "dyslexic" in df.columns
+        else ("dyslexia" if "dyslexia" in df.columns else None)
+    )
     if group_col is None:
         raise ValueError("Neither 'dyslexic' nor 'dyslexia' columns found in CSV.")
     df = df.copy()
     df["Group"] = _to_bool(df[group_col]).astype(int)  # 1=dyslexic, 0=control
     df["skipped_bool"] = _to_bool(df["skipped"])
     # ERT: 0 if skipped, else TRT (fill NA with 0 to be safe)
-    df["ERT"] = np.where(df["skipped_bool"], 0.0, df["total_reading_time"].astype(float).fillna(0.0))
+    df["ERT"] = np.where(
+        df["skipped_bool"], 0.0, df["total_reading_time"].astype(float).fillna(0.0)
+    )
     # Ensure subject_id is a string for clustering
     df["subject_id"] = df["subject_id"].astype(str)
     return df
@@ -66,7 +76,9 @@ def pooled_q1_q4(series: pd.Series) -> tuple[float, float]:
     return float(s.quantile(0.25)), float(s.quantile(0.75))
 
 
-def fit_ols_bin_group(sub: pd.DataFrame) -> sm.regression.linear_model.RegressionResultsWrapper:
+def fit_ols_bin_group(
+    sub: pd.DataFrame,
+) -> sm.regression.linear_model.RegressionResultsWrapper:
     """
     OLS with cluster-robust SEs (by subject):
         ERT ~ Bin + Group + Bin:Group
@@ -104,34 +116,52 @@ def analyze(csv_path: Path, features: list[str]) -> pd.DataFrame:
             p_inter = model.pvalues.get("Bin:Group", np.nan)
 
             # Also collect simple means (useful context)
-            means = sub.groupby(["Group", "Bin"])["ERT"].mean().rename("mean_ERT").reset_index()
+            means = (
+                sub.groupby(["Group", "Bin"])["ERT"]
+                .mean()
+                .rename("mean_ERT")
+                .reset_index()
+            )
             # Wide layout for quick glance
-            mean_q1_ctrl = float(means.query("Group==0 and Bin==0")["mean_ERT"].iloc[0]) if not means.query("Group==0 and Bin==0").empty else np.nan
-            mean_q4_ctrl = float(means.query("Group==0 and Bin==1")["mean_ERT"].iloc[0]) if not means.query("Group==0 and Bin==1").empty else np.nan
-            mean_q1_dys  = float(means.query("Group==1 and Bin==0")["mean_ERT"].iloc[0]) if not means.query("Group==1 and Bin==0").empty else np.nan
-            mean_q4_dys  = float(means.query("Group==1 and Bin==1")["mean_ERT"].iloc[0]) if not means.query("Group==1 and Bin==1").empty else np.nan
+            mean_q1_ctrl = (
+                float(means.query("Group==0 and Bin==0")["mean_ERT"].iloc[0])
+                if not means.query("Group==0 and Bin==0").empty
+                else np.nan
+            )
+            mean_q4_ctrl = (
+                float(means.query("Group==0 and Bin==1")["mean_ERT"].iloc[0])
+                if not means.query("Group==0 and Bin==1").empty
+                else np.nan
+            )
+            mean_q1_dys = (
+                float(means.query("Group==1 and Bin==0")["mean_ERT"].iloc[0])
+                if not means.query("Group==1 and Bin==0").empty
+                else np.nan
+            )
+            mean_q4_dys = (
+                float(means.query("Group==1 and Bin==1")["mean_ERT"].iloc[0])
+                if not means.query("Group==1 and Bin==1").empty
+                else np.nan
+            )
 
-            rows.append({
-                "feature": feat,
-                "q1_cut": q1,
-                "q4_cut": q3,
-                "n_q1": int((sub["Bin"]==0).sum()),
-                "n_q4": int((sub["Bin"]==1).sum()),
-                "p_main_bin(Q4_vs_Q1)": p_bin,
-                "p_main_group(Dys_vs_Ctrl)": p_group,
-                "p_interaction(Bin×Group)": p_inter,
-                "mean_q1_ctrl_ms": mean_q1_ctrl,
-                "mean_q4_ctrl_ms": mean_q4_ctrl,
-                "mean_q1_dys_ms":  mean_q1_dys,
-                "mean_q4_dys_ms":  mean_q4_dys,
-            })
+            rows.append(
+                {
+                    "feature": feat,
+                    "q1_cut": q1,
+                    "q4_cut": q3,
+                    "n_q1": int((sub["Bin"] == 0).sum()),
+                    "n_q4": int((sub["Bin"] == 1).sum()),
+                    "p_main_bin(Q4_vs_Q1)": p_bin,
+                    "p_main_group(Dys_vs_Ctrl)": p_group,
+                    "p_interaction(Bin×Group)": p_inter,
+                    "mean_q1_ctrl_ms": mean_q1_ctrl,
+                    "mean_q4_ctrl_ms": mean_q4_ctrl,
+                    "mean_q1_dys_ms": mean_q1_dys,
+                    "mean_q4_dys_ms": mean_q4_dys,
+                }
+            )
         except Exception as e:
-            rows.append({
-                "feature": feat,
-                "q1_cut": q1,
-                "q4_cut": q3,
-                "error": str(e)
-            })
+            rows.append({"feature": feat, "q1_cut": q1, "q4_cut": q3, "error": str(e)})
 
     out = pd.DataFrame(rows)
     out_path = csv_path.parent / "quartile_contrasts_stats.csv"
@@ -143,11 +173,22 @@ def analyze(csv_path: Path, features: list[str]) -> pd.DataFrame:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Quartile contrasts (Q1 vs Q4) with group interaction")
-    parser.add_argument("--csv", type=str, default=str(Path("results") / "processed_data_full.csv"),
-                        help="Path to processed_data_full.csv")
-    parser.add_argument("--features", type=str, nargs="*", default=["word_length", "word_frequency_zipf", "surprisal"],
-                        help="Feature columns to analyze")
+    parser = argparse.ArgumentParser(
+        description="Quartile contrasts (Q1 vs Q4) with group interaction"
+    )
+    parser.add_argument(
+        "--csv",
+        type=str,
+        default=str(Path("preprocessing_results") / "processed_data_full.csv"),
+        help="Path to processed_data_full.csv",
+    )
+    parser.add_argument(
+        "--features",
+        type=str,
+        nargs="*",
+        default=["word_length", "word_frequency_zipf", "surprisal"],
+        help="Feature columns to analyze",
+    )
     args = parser.parse_args()
 
     csv_path = Path(args.csv)

@@ -20,7 +20,6 @@ if sys.platform == "win32":
 
 # Import configuration
 import config
-from utils.continuous_models import run_continuous_models
 
 # Import utilities
 from utils.data_utils import (
@@ -31,21 +30,11 @@ from utils.data_utils import (
     load_participant_stats,
     merge_with_participant_stats,
 )
-from utils.gap_decomposition import run_gap_decomposition
-from utils.hypothesis_testing_utils import prepare_hypothesis_testing_data
-from utils.hypothesis_visualization import create_hypothesis_testing_visualizations
 
 # Import linguistic features
 from utils.linguistic_features import DanishLinguisticFeatures
-from utils.misc_utils import (
-    create_output_directories,
-    save_json_results,
-    setup_logging,
-    validate_config,
-)
+from utils.misc_utils import save_json_results, setup_logging, validate_config
 from utils.quartile_analysis import run_quartile_analysis
-from utils.results_reporting import generate_hypothesis_testing_report
-from utils.sensitivity_analysis import run_sensitivity_analyses
 from utils.stats_utils import calculate_basic_statistics, calculate_group_summary_stats
 from utils.visualization_utils import (
     create_exploratory_plots,
@@ -68,9 +57,10 @@ class DyslexiaTimeAnalysisPipeline:
         # Validate configuration
         validate_config(self.config)
 
-        # Create output directories
-        self.results_dir = Path("results")
-        self.directories = create_output_directories(self.results_dir)
+        # Create output directory
+        self.results_dir = Path("preprocessing_results")
+        self.results_dir.mkdir(exist_ok=True, parents=True)
+        logger.debug(f"Created directory: {self.results_dir}")
 
         # Initialize linguistic features processor
         self.linguistic_features = None
@@ -402,59 +392,6 @@ class DyslexiaTimeAnalysisPipeline:
 
         return summary
 
-    def run_hypothesis_testing_analysis(self) -> dict:
-        """
-        Run comprehensive hypothesis testing analysis
-        Tests all three hypotheses with rigorous statistical methods
-        """
-        logger.info("=" * 80)
-        logger.info("HYPOTHESIS TESTING ANALYSIS")
-        logger.info("=" * 80)
-
-        # Load data
-        data = self.load_copco_data()
-        data = self.compute_linguistic_features(data)
-
-        # PHASE 1: Data Preparation
-        data, quartiles, scalers, vif = prepare_hypothesis_testing_data(data)
-
-        # PHASE 2: Part A - Quartile Analysis
-        quartile_results = run_quartile_analysis(data)
-
-        # PHASE 3: Part B - Continuous Models
-        continuous_results = run_continuous_models(data)
-
-        # PHASE 4: Part C - Gap Decomposition
-        gap_results = run_gap_decomposition(continuous_results["predictions"])
-
-        # PHASE 5: Sensitivity Analyses
-        sensitivity_results = run_sensitivity_analyses(data)
-
-        # PHASE 6: Visualizations
-        create_hypothesis_testing_visualizations(
-            data, quartile_results, continuous_results, gap_results, self.results_dir
-        )
-
-        # PHASE 7: Generate Report
-        report = generate_hypothesis_testing_report(
-            quartile_results,
-            continuous_results,
-            gap_results,
-            sensitivity_results,
-            quartiles,
-            scalers,
-            vif,
-        )
-
-        # Save comprehensive results
-        save_json_results(report, self.results_dir / "hypothesis_testing_results.json")
-
-        logger.info(
-            f"\nHypothesis testing complete! Results saved to {self.results_dir}"
-        )
-
-        return report
-
     def _create_linguistic_feature_plots(self, data: pd.DataFrame):
         """Create visualizations for linguistic features"""
 
@@ -726,40 +663,14 @@ class DyslexiaTimeAnalysisPipeline:
         logger.info(f"Data dictionary saved to {filepath}")
 
 
-def display_menu() -> str:
-    """Display analysis menu and get user choice"""
-    print("\nDyslexia Time Cost Analysis Pipeline")
-    print("=" * 50)
-    print("1. Run exploratory analysis")
-    print("2. Run hypothesis testing analysis")  # NEW
-    print("3. Exit")
-
-    while True:
-        choice = input("\nEnter your choice (1-3): ").strip()
-        if choice in ["1", "2", "3"]:
-            return choice
-        print("Invalid choice. Please enter 1, 2, or 3.")
-
-
 def main():
-    """Main entry point"""
+    """Main data pre-processing (and exploratory statistics) entry point"""
     try:
         # Initialize pipeline
         pipeline = DyslexiaTimeAnalysisPipeline()
-        logger.info("Dyslexia Time Analysis Pipeline initialized")
 
-        while True:
-            choice = display_menu()
-
-            if choice == "1":
-                logger.info("Running exploratory analysis...")
-                pipeline.run_exploratory_analysis()
-            elif choice == "2":
-                logger.info("Running hypothesis testing analysis...")
-                pipeline.run_hypothesis_testing_analysis()  # NEW
-            elif choice == "3":
-                logger.info("Exiting...")
-                break
+        logger.info("Running pre-processing steps...")
+        pipeline.run_exploratory_analysis()
 
         logger.info("Analysis complete!")
 

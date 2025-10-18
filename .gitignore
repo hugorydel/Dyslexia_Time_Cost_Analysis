@@ -8,4 +8,5 @@ danish_frequencies/danish_leipzig_for_analysis.txt
 danish_frequencies/danish_leipzig_processed.csv
 *.py[cod]
 results/
+preprocessing_results/
 

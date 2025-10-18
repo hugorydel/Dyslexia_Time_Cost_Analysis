@@ -1,0 +1,336 @@
+2025-10-18 17:54:46,579 - __main__ - INFO - Dyslexia GAM Analysis Pipeline initialized
+2025-10-18 17:54:46,579 - __main__ - INFO - ================================================================================
+2025-10-18 17:54:46,579 - __main__ - INFO - DYSLEXIA GAM ANALYSIS - COMPLETE PIPELINE
+2025-10-18 17:54:46,579 - __main__ - INFO - ================================================================================
+2025-10-18 17:54:46,579 - __main__ - INFO - ================================================================================
+2025-10-18 17:54:46,580 - __main__ - INFO - LOADING AND PREPARING DATA
+2025-10-18 17:54:46,580 - __main__ - INFO - ================================================================================
+2025-10-18 17:54:46,581 - __main__ - ERROR - Analysis failed: [Errno 2] No such file or directory: '../preprocessing_results/processed_data.csv'
+Traceback (most recent call last):
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 246, in run_complete_analysis
+    train_data, test_data, metadata = self.load_and_prepare_data(data_path)
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 61, in load_and_prepare_data
+    data = pd.read_csv(data_path)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\common.py", line 873, in get_handle
+    handle = open(
+FileNotFoundError: [Errno 2] No such file or directory: '../preprocessing_results/processed_data.csv'
+2025-10-18 17:54:46,585 - __main__ - ERROR - Analysis failed: [Errno 2] No such file or directory: '../preprocessing_results/processed_data.csv'
+Traceback (most recent call last):
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 355, in main
+    pipeline.run_complete_analysis(args.data)
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 246, in run_complete_analysis
+    train_data, test_data, metadata = self.load_and_prepare_data(data_path)
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 61, in load_and_prepare_data
+    data = pd.read_csv(data_path)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\common.py", line 873, in get_handle
+    handle = open(
+FileNotFoundError: [Errno 2] No such file or directory: '../preprocessing_results/processed_data.csv'
+2025-10-18 17:54:58,196 - __main__ - INFO - Dyslexia GAM Analysis Pipeline initialized
+2025-10-18 17:54:58,196 - __main__ - INFO - ================================================================================
+2025-10-18 17:54:58,197 - __main__ - INFO - DYSLEXIA GAM ANALYSIS - COMPLETE PIPELINE
+2025-10-18 17:54:58,197 - __main__ - INFO - ================================================================================
+2025-10-18 17:54:58,197 - __main__ - INFO - ================================================================================
+2025-10-18 17:54:58,197 - __main__ - INFO - LOADING AND PREPARING DATA
+2025-10-18 17:54:58,197 - __main__ - INFO - ================================================================================
+2025-10-18 17:54:58,198 - __main__ - ERROR - Analysis failed: [Errno 2] No such file or directory: '/preprocessing_results/processed_data.csv'
+Traceback (most recent call last):
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 246, in run_complete_analysis
+    train_data, test_data, metadata = self.load_and_prepare_data(data_path)
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 61, in load_and_prepare_data
+    data = pd.read_csv(data_path)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\common.py", line 873, in get_handle
+    handle = open(
+FileNotFoundError: [Errno 2] No such file or directory: '/preprocessing_results/processed_data.csv'
+2025-10-18 17:54:58,200 - __main__ - ERROR - Analysis failed: [Errno 2] No such file or directory: '/preprocessing_results/processed_data.csv'
+Traceback (most recent call last):
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 355, in main
+    pipeline.run_complete_analysis(args.data)
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 246, in run_complete_analysis
+    train_data, test_data, metadata = self.load_and_prepare_data(data_path)
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 61, in load_and_prepare_data
+    data = pd.read_csv(data_path)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\common.py", line 873, in get_handle
+    handle = open(
+FileNotFoundError: [Errno 2] No such file or directory: '/preprocessing_results/processed_data.csv'
+2025-10-18 17:55:58,853 - __main__ - INFO - Dyslexia GAM Analysis Pipeline initialized
+2025-10-18 17:55:58,854 - __main__ - INFO - ================================================================================
+2025-10-18 17:55:58,854 - __main__ - INFO - DYSLEXIA GAM ANALYSIS - COMPLETE PIPELINE
+2025-10-18 17:55:58,854 - __main__ - INFO - ================================================================================
+2025-10-18 17:55:58,854 - __main__ - INFO - ================================================================================
+2025-10-18 17:55:58,854 - __main__ - INFO - LOADING AND PREPARING DATA
+2025-10-18 17:55:58,854 - __main__ - INFO - ================================================================================
+2025-10-18 17:55:58,855 - __main__ - ERROR - Analysis failed: [Errno 2] No such file or directory: 'preprocessing_results/processed_data.csv'
+Traceback (most recent call last):
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 246, in run_complete_analysis
+    train_data, test_data, metadata = self.load_and_prepare_data(data_path)
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 61, in load_and_prepare_data
+    data = pd.read_csv(data_path)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\common.py", line 873, in get_handle
+    handle = open(
+FileNotFoundError: [Errno 2] No such file or directory: 'preprocessing_results/processed_data.csv'
+2025-10-18 17:55:58,857 - __main__ - ERROR - Analysis failed: [Errno 2] No such file or directory: 'preprocessing_results/processed_data.csv'
+Traceback (most recent call last):
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 355, in main
+    pipeline.run_complete_analysis(args.data)
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 246, in run_complete_analysis
+    train_data, test_data, metadata = self.load_and_prepare_data(data_path)
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 61, in load_and_prepare_data
+    data = pd.read_csv(data_path)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\common.py", line 873, in get_handle
+    handle = open(
+FileNotFoundError: [Errno 2] No such file or directory: 'preprocessing_results/processed_data.csv'
+2025-10-18 17:57:49,775 - __main__ - INFO - Dyslexia GAM Analysis Pipeline initialized
+2025-10-18 17:57:49,776 - __main__ - INFO - ================================================================================
+2025-10-18 17:57:49,776 - __main__ - INFO - DYSLEXIA GAM ANALYSIS - COMPLETE PIPELINE
+2025-10-18 17:57:49,776 - __main__ - INFO - ================================================================================
+2025-10-18 17:57:49,776 - __main__ - INFO - ================================================================================
+2025-10-18 17:57:49,776 - __main__ - INFO - LOADING AND PREPARING DATA
+2025-10-18 17:57:49,776 - __main__ - INFO - ================================================================================
+2025-10-18 17:57:49,778 - __main__ - ERROR - Analysis failed: [Errno 2] No such file or directory: 'preprocessing_results/processed_data_full.csv'
+Traceback (most recent call last):
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 248, in run_complete_analysis
+    train_data, test_data, metadata = self.load_and_prepare_data(data_path)
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 61, in load_and_prepare_data
+    data = pd.read_csv(data_path)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\common.py", line 873, in get_handle
+    handle = open(
+FileNotFoundError: [Errno 2] No such file or directory: 'preprocessing_results/processed_data_full.csv'
+2025-10-18 17:57:49,780 - __main__ - ERROR - Analysis failed: [Errno 2] No such file or directory: 'preprocessing_results/processed_data_full.csv'
+Traceback (most recent call last):
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 351, in main
+    pipeline.run_complete_analysis()
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 248, in run_complete_analysis
+    train_data, test_data, metadata = self.load_and_prepare_data(data_path)
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 61, in load_and_prepare_data
+    data = pd.read_csv(data_path)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\common.py", line 873, in get_handle
+    handle = open(
+FileNotFoundError: [Errno 2] No such file or directory: 'preprocessing_results/processed_data_full.csv'
+2025-10-18 17:58:56,298 - __main__ - INFO - Dyslexia GAM Analysis Pipeline initialized
+2025-10-18 17:58:56,298 - __main__ - INFO - ================================================================================
+2025-10-18 17:58:56,298 - __main__ - INFO - DYSLEXIA GAM ANALYSIS - COMPLETE PIPELINE
+2025-10-18 17:58:56,298 - __main__ - INFO - ================================================================================
+2025-10-18 17:58:56,299 - __main__ - INFO - ================================================================================
+2025-10-18 17:58:56,299 - __main__ - INFO - LOADING AND PREPARING DATA
+2025-10-18 17:58:56,299 - __main__ - INFO - ================================================================================
+2025-10-18 17:58:56,300 - __main__ - ERROR - Analysis failed: [Errno 2] No such file or directory: 'C:\\Users\\hugos\\Desktop\\Dyslexia_Time_Paper\\Dyslexia_Time_Cost_Analysis\\dyslexia_gam_analysis\\preprocessing_results\\processed_data_full.csv'
+Traceback (most recent call last):
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 251, in run_complete_analysis
+    train_data, test_data, metadata = self.load_and_prepare_data(data_path)
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 61, in load_and_prepare_data
+    data = pd.read_csv(data_path)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\common.py", line 873, in get_handle
+    handle = open(
+FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\hugos\\Desktop\\Dyslexia_Time_Paper\\Dyslexia_Time_Cost_Analysis\\dyslexia_gam_analysis\\preprocessing_results\\processed_data_full.csv'
+2025-10-18 17:58:56,302 - __main__ - ERROR - Analysis failed: [Errno 2] No such file or directory: 'C:\\Users\\hugos\\Desktop\\Dyslexia_Time_Paper\\Dyslexia_Time_Cost_Analysis\\dyslexia_gam_analysis\\preprocessing_results\\processed_data_full.csv'
+Traceback (most recent call last):
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 354, in main
+    pipeline.run_complete_analysis()
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 251, in run_complete_analysis
+    train_data, test_data, metadata = self.load_and_prepare_data(data_path)
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 61, in load_and_prepare_data
+    data = pd.read_csv(data_path)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\parsers\readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\site-packages\pandas\io\common.py", line 873, in get_handle
+    handle = open(
+FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\hugos\\Desktop\\Dyslexia_Time_Paper\\Dyslexia_Time_Cost_Analysis\\dyslexia_gam_analysis\\preprocessing_results\\processed_data_full.csv'
+2025-10-18 17:59:37,035 - __main__ - INFO - Dyslexia GAM Analysis Pipeline initialized
+2025-10-18 17:59:37,035 - __main__ - INFO - ================================================================================
+2025-10-18 17:59:37,035 - __main__ - INFO - DYSLEXIA GAM ANALYSIS - COMPLETE PIPELINE
+2025-10-18 17:59:37,036 - __main__ - INFO - ================================================================================
+2025-10-18 17:59:37,037 - __main__ - INFO - ================================================================================
+2025-10-18 17:59:37,037 - __main__ - INFO - LOADING AND PREPARING DATA
+2025-10-18 17:59:37,037 - __main__ - INFO - ================================================================================
+2025-10-18 17:59:37,985 - __main__ - INFO - Loaded 330,567 observations
+2025-10-18 17:59:37,986 - data_preparation - INFO - ============================================================
+2025-10-18 17:59:37,986 - data_preparation - INFO - PREPARING DATA FOR GAM ANALYSIS
+2025-10-18 17:59:37,986 - data_preparation - INFO - ============================================================
+2025-10-18 17:59:38,139 - data_preparation - INFO - Dropped 4,071 rows with missing features
+2025-10-18 17:59:38,234 - data_preparation - INFO - Removed 3,720 extreme TRT outliers (>3 SD)
+2025-10-18 17:59:40,332 - data_preparation - INFO - 
+Prepared data summary:
+2025-10-18 17:59:40,333 - data_preparation - INFO -   Total observations: 322,776
+2025-10-18 17:59:40,334 - data_preparation - INFO -   Fixated words: 200,504
+2025-10-18 17:59:40,335 - data_preparation - INFO -   Skipped words: 122,272
+2025-10-18 17:59:40,345 - data_preparation - INFO -   Control observations: 245,104
+2025-10-18 17:59:40,356 - data_preparation - INFO -   Dyslexic observations: 77,672
+2025-10-18 17:59:40,365 - data_preparation - INFO -   Unique subjects: 57
+2025-10-18 17:59:40,379 - data_preparation - INFO -   Unique words: 7543
+2025-10-18 17:59:40,379 - data_preparation - INFO - 
+Feature ranges:
+2025-10-18 17:59:40,381 - data_preparation - INFO -   length: [1.00, 29.00], mean=4.60
+2025-10-18 17:59:40,382 - data_preparation - INFO -   zipf: [0.91, 7.51], mean=5.88
+2025-10-18 17:59:40,384 - data_preparation - INFO -   surprisal: [0.00, 59.34], mean=6.87
+2025-10-18 17:59:40,414 - data_preparation - INFO - 
+Feature quartiles:
+2025-10-18 17:59:40,414 - data_preparation - INFO -   length: Q1=2.00, Q3=6.00, IQR=4.00
+2025-10-18 17:59:40,415 - data_preparation - INFO -   zipf: Q1=4.96, Q3=7.10, IQR=2.15
+2025-10-18 17:59:40,415 - data_preparation - INFO -   surprisal: Q1=2.75, Q3=9.89, IQR=7.15
+2025-10-18 17:59:40,517 - data_preparation - INFO - 
+Data balance check:
+2025-10-18 17:59:40,518 - data_preparation - INFO -   Group sizes: Control=245,104, Dyslexic=77,672
+2025-10-18 17:59:40,518 - data_preparation - INFO -   Skip rates: Control=0.403, Dyslexic=0.302
+2025-10-18 17:59:40,518 - data_preparation - INFO -   Mean TRT: Control=319.7ms, Dyslexic=414.2ms
+2025-10-18 17:59:40,702 - data_preparation - INFO - 
+Train/test split:
+2025-10-18 17:59:40,709 - data_preparation - INFO -   Train: 258,632 observations, 46 subjects
+2025-10-18 17:59:40,712 - data_preparation - INFO -   Test: 64,144 observations, 11 subjects
+2025-10-18 17:59:40,725 - __main__ - INFO - Results saved to results_gam\data_preparation_metadata.json
+2025-10-18 17:59:40,738 - __main__ - INFO - 
+================================================================================
+2025-10-18 17:59:40,738 - __main__ - INFO - PHASE 1: MODEL FITTING
+2025-10-18 17:59:40,738 - __main__ - INFO - ================================================================================
+2025-10-18 17:59:40,738 - gam_models - INFO - GAM Models initialized (pygam)
+2025-10-18 17:59:40,739 - gam_models - INFO - ============================================================
+2025-10-18 17:59:40,739 - gam_models - INFO - FITTING SKIP MODEL (Logistic GAM)
+2025-10-18 17:59:40,739 - gam_models - INFO - ============================================================
+2025-10-18 17:59:40,749 - gam_models - INFO -   Skip data prepared: 258,632 observations
+2025-10-18 17:59:40,750 - gam_models - INFO -     Control: 198,748
+2025-10-18 17:59:40,751 - gam_models - INFO -     Dyslexic: 59,884
+2025-10-18 17:59:40,752 - gam_models - INFO - Fitting skip model...
+2025-10-18 17:59:40,759 - gam_models - INFO -   Fitting control model...
+2025-10-18 17:59:55,455 - gam_models - INFO -   Fitting dyslexic model...
+2025-10-18 17:59:59,107 - gam_models - INFO - Skip models fitted successfully
+2025-10-18 17:59:59,108 - gam_models - INFO -   Control accuracy: 0.292
+2025-10-18 17:59:59,108 - gam_models - INFO -   Dyslexic accuracy: 0.084
+2025-10-18 17:59:59,110 - gam_models - INFO - ============================================================
+2025-10-18 17:59:59,110 - gam_models - INFO - FITTING DURATION MODEL (Gamma GAM)
+2025-10-18 17:59:59,110 - gam_models - INFO - ============================================================
+2025-10-18 17:59:59,149 - gam_models - INFO - Fitting on 162,277 fixated words
+2025-10-18 17:59:59,155 - gam_models - INFO -   Duration data prepared: 162,277 observations
+2025-10-18 17:59:59,156 - gam_models - INFO -     Control: 120,769
+2025-10-18 17:59:59,156 - gam_models - INFO -     Dyslexic: 41,508
+2025-10-18 17:59:59,156 - gam_models - INFO - Fitting duration model...
+2025-10-18 17:59:59,159 - gam_models - INFO -   Fitting control model...
+2025-10-18 18:00:05,554 - gam_models - INFO -   Fitting dyslexic model...
+2025-10-18 18:00:07,566 - gam_models - INFO - Duration models fitted successfully
+2025-10-18 18:00:07,566 - gam_models - INFO -   Control pseudo-R²: 0.103
+2025-10-18 18:00:07,566 - gam_models - INFO -   Dyslexic pseudo-R²: 0.078
+2025-10-18 18:00:07,573 - ert_predictor - INFO - ERT Predictor initialized
+2025-10-18 18:00:07,574 - __main__ - ERROR - Analysis failed: Object of type LogisticGAM is not JSON serializable
+Traceback (most recent call last):
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 254, in run_complete_analysis
+    skip_model, duration_model, ert_predictor = self.fit_models(train_data)
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 99, in fit_models
+    self.save_results(model_metadata, "model_metadata.json")
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 229, in save_results
+    json.dump(results_clean, f, indent=2)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\json\__init__.py", line 179, in dump
+    for chunk in iterable:
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\json\encoder.py", line 431, in _iterencode
+    yield from _iterencode_dict(o, _current_indent_level)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\json\encoder.py", line 405, in _iterencode_dict
+    yield from chunks
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\json\encoder.py", line 405, in _iterencode_dict
+    yield from chunks
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\json\encoder.py", line 405, in _iterencode_dict
+    yield from chunks
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\json\encoder.py", line 438, in _iterencode
+    o = _default(o)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\json\encoder.py", line 179, in default
+    raise TypeError(f'Object of type {o.__class__.__name__} '
+TypeError: Object of type LogisticGAM is not JSON serializable
+2025-10-18 18:00:07,579 - __main__ - ERROR - Analysis failed: Object of type LogisticGAM is not JSON serializable
+Traceback (most recent call last):
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 354, in main
+    pipeline.run_complete_analysis()
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 254, in run_complete_analysis
+    skip_model, duration_model, ert_predictor = self.fit_models(train_data)
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 99, in fit_models
+    self.save_results(model_metadata, "model_metadata.json")
+  File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\dyslexia_gam_analysis\main_gam_analysis.py", line 229, in save_results
+    json.dump(results_clean, f, indent=2)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\json\__init__.py", line 179, in dump
+    for chunk in iterable:
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\json\encoder.py", line 431, in _iterencode
+    yield from _iterencode_dict(o, _current_indent_level)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\json\encoder.py", line 405, in _iterencode_dict
+    yield from chunks
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\json\encoder.py", line 405, in _iterencode_dict
+    yield from chunks
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\json\encoder.py", line 405, in _iterencode_dict
+    yield from chunks
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\json\encoder.py", line 438, in _iterencode
+    o = _default(o)
+  File "C:\Users\hugos\miniconda3\envs\dyslexia-time-analysis\lib\json\encoder.py", line 179, in default
+    raise TypeError(f'Object of type {o.__class__.__name__} '
+TypeError: Object of type LogisticGAM is not JSON serializable
