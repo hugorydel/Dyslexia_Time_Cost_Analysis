@@ -223,7 +223,11 @@ def test_hypothesis_3(gap_results: dict) -> dict:
     pct_explained = gap_results.get("percent_explained", {})
 
     if not gaps or "M0" not in gaps:
-        return {"status": "FAILED", "reason": "Gap results not available"}
+        return {
+            "status": "FAILED",
+            "reason": "Gap results not available",
+            "summary": "Gap decomposition failed - no baseline gap computed",  # ADD THIS
+        }
 
     baseline_gap = gaps["M0"]
     final_gap = gaps.get("M3", np.nan)
@@ -425,26 +429,31 @@ def generate_text_report(report: dict) -> None:
     # Hypothesis 1
     h1 = report["hypothesis_1"]
     logger.info(f"\nHYPOTHESIS 1: {h1['status']}")
-    logger.info(f"  {h1['summary']}")
+    logger.info(f"  {h1.get('summary', 'No summary available')}")  # SAFE ACCESS
 
     # Hypothesis 2
     h2 = report["hypothesis_2"]
     logger.info(f"\nHYPOTHESIS 2: {h2['status']}")
-    logger.info(f"  {h2['summary']}")
+    logger.info(f"  {h2.get('summary', 'No summary available')}")  # SAFE ACCESS
 
     # Hypothesis 3
     h3 = report["hypothesis_3"]
     logger.info(f"\nHYPOTHESIS 3: {h3['status']}")
-    logger.info(f"  {h3['summary']}")
+    logger.info(
+        f"  {h3.get('summary', h3.get('reason', 'No summary available'))}"
+    )  # SAFE ACCESS
 
     # Conclusions
-    conclusions = report["conclusions"]
+    conclusions = report.get("conclusions", {})
+    all_confirmed = conclusions.get("all_hypotheses_confirmed", False)
     logger.info(
-        f"\nOVERALL: {'ALL HYPOTHESES CONFIRMED' if conclusions['all_hypotheses_confirmed'] else 'MIXED RESULTS'}"
+        f"\nOVERALL: {'ALL HYPOTHESES CONFIRMED' if all_confirmed else 'MIXED RESULTS'}"
     )
-    logger.info("\nKey Findings:")
-    for finding in conclusions["key_findings"]:
-        logger.info(f"  • {finding}")
+
+    if "key_findings" in conclusions:
+        logger.info("\nKey Findings:")
+        for finding in conclusions["key_findings"]:
+            logger.info(f"  • {finding}")
 
 
 def save_json_results(report: dict, output_path: Path) -> None:

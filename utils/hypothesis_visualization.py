@@ -426,14 +426,14 @@ def plot_model_comparison(gap_results: dict, output_path: Path) -> None:
                 ),
             )
 
-    # Compute and show DeltaR²
+    # Compute and show ΔR²
     for i in range(1, len(models)):
         if not np.isnan(r2s[i]) and not np.isnan(r2s[i - 1]):
             delta_r2 = r2s[i] - r2s[i - 1]
             mid_x = i - 0.5
             mid_y = (r2s[i] + r2s[i - 1]) / 2
             ax.annotate(
-                f"DeltaR²={delta_r2:.4f}",
+                f"ΔR²={delta_r2:.4f}",
                 xy=(mid_x, mid_y),
                 xytext=(mid_x, mid_y - 0.03),
                 ha="center",
@@ -604,7 +604,8 @@ def plot_predicted_vs_observed(continuous_results: dict, output_path: Path) -> N
     """
     predictions = continuous_results.get("predictions")
 
-    if predictions is None or "ERT_predicted" not in predictions.columns:
+    # Check for predictions column
+    if predictions is None or "ERT_expected" not in predictions.columns:
         logger.warning("No predictions available")
         return
 
@@ -614,14 +615,29 @@ def plot_predicted_vs_observed(continuous_results: dict, output_path: Path) -> N
         ax = axes[idx]
         group_name = "Dyslexic" if dyslexic else "Control"
 
-        group_data = predictions[predictions["dyslexic"] == dyslexic]
+        group_data = predictions[predictions["dyslexic"] == dyslexic].copy()
+
+        # CRITICAL FIX: Drop rows with NaN in either observed or predicted
+        group_data = group_data.dropna(subset=["ERT", "ERT_expected"])
+
+        if len(group_data) == 0:
+            logger.warning(f"No valid data for {group_name} group")
+            ax.text(
+                0.5,
+                0.5,
+                "No data available",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+            )
+            continue
 
         # Sample if too many points
         if len(group_data) > 10000:
             group_data = group_data.sample(10000, random_state=42)
 
-        observed = group_data["ERT"]
-        predicted = group_data["ERT_predicted"]
+        observed = group_data["ERT"].values  # Convert to numpy
+        predicted = group_data["ERT_expected"].values  # Convert to numpy
 
         # Scatter plot with transparency
         ax.scatter(

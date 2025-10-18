@@ -219,8 +219,8 @@ def test_alternative_binning(data: pd.DataFrame) -> dict:
                     )
 
                 logger.info(
-                    f"    {feature}: Control Delta={bin_results[f'{feature}_control_diff']:.1f}ms, "
-                    f"Dyslexic Delta={bin_results[f'{feature}_dyslexic_diff']:.1f}ms"
+                    f"    {feature}: Control Δ={bin_results[f'{feature}_control_diff']:.1f}ms, "
+                    f"Dyslexic Δ={bin_results[f'{feature}_dyslexic_diff']:.1f}ms"
                 )
 
             except Exception as e:

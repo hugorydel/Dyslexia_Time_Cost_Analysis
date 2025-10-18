@@ -425,7 +425,7 @@ class DyslexiaTimeAnalysisPipeline:
         continuous_results = run_continuous_models(data)
 
         # PHASE 4: Part C - Gap Decomposition
-        gap_results = run_gap_decomposition(data)
+        gap_results = run_gap_decomposition(continuous_results["predictions"])
 
         # PHASE 5: Sensitivity Analyses
         sensitivity_results = run_sensitivity_analyses(data)

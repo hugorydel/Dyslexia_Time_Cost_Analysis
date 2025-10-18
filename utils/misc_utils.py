@@ -76,19 +76,25 @@ def create_output_directories(base_dir: Path) -> dict:
 
 def setup_logging(log_file: str = "dyslexia_analysis.log") -> None:
     """
-    Setup logging configuration
-
-    Args:
-        log_file: Name of log file
+    Setup logging configuration with UTF-8 encoding
     """
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler(),
-        ],
+    import sys
+
+    # Create file handler with UTF-8 encoding
+    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+
+    # Create console handler with UTF-8 encoding
+    console_handler = logging.StreamHandler(sys.stdout)
+
+    # Set formatter
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+
+    # Configure root logger
+    logging.basicConfig(level=logging.INFO, handlers=[file_handler, console_handler])
 
 
 def validate_config(config) -> None:
