@@ -4561,3 +4561,711 @@ Traceback (most recent call last):
   File "C:\Users\hugos\Desktop\Dyslexia_Time_Paper\Dyslexia_Time_Cost_Analysis\utils\gap_decomposition.py", line 64, in run_gap_decomposition
     decomposition = decompose_gap_oaxaca_observed(data, models, interaction_models)
 NameError: name 'decompose_gap_oaxaca_observed' is not defined
+2025-10-18 14:03:43,317 - __main__ - INFO - Dyslexia Time Analysis Pipeline initialized
+2025-10-18 14:03:43,317 - __main__ - INFO - Dyslexia Time Analysis Pipeline initialized
+2025-10-18 14:03:45,636 - __main__ - INFO - Running hypothesis testing analysis...
+2025-10-18 14:03:45,636 - __main__ - INFO - ================================================================================
+2025-10-18 14:03:45,637 - __main__ - INFO - HYPOTHESIS TESTING ANALYSIS
+2025-10-18 14:03:45,637 - __main__ - INFO - ================================================================================
+2025-10-18 14:03:45,637 - __main__ - INFO - Loading CopCo dataset...
+2025-10-18 14:03:45,638 - utils.data_utils - INFO - Loading 57 participant files...
+2025-10-18 14:03:47,368 - utils.data_utils - INFO - Starting with 335,203 total word entries
+2025-10-18 14:03:47,546 - utils.data_utils - INFO - Word fixation patterns:
+2025-10-18 14:03:47,546 - utils.data_utils - INFO -   - Skipped words (0 fixations): 126,302
+2025-10-18 14:03:47,547 - utils.data_utils - INFO -   - Fixated words (1+ fixations): 208,901
+2025-10-18 14:03:47,547 - utils.data_utils - INFO -   - Unknown fixations (NaN): 0
+2025-10-18 14:03:47,579 - utils.data_utils - INFO - Fixated words reading times: median 272ms, 99th percentile 1777ms
+2025-10-18 14:03:47,582 - utils.data_utils - INFO - Removed 14 fixated words with extreme reading times (0 too short, 14 too long)
+2025-10-18 14:03:47,682 - utils.data_utils - INFO - Removed 23 words longer than 30 characters (likely data errors)
+2025-10-18 14:03:47,722 - utils.data_utils - INFO - Final dataset: 126,302 skipped words, 208,864 fixated words
+2025-10-18 14:03:47,723 - utils.data_utils - INFO - Data cleaning complete: 335,166 words retained (100.0% of original)
+2025-10-18 14:03:47,731 - utils.data_utils - INFO - Groups identified: 19 dyslexic, 39 control
+2025-10-18 14:03:47,804 - __main__ - INFO - Calculating skipping probabilities...
+2025-10-18 14:03:47,807 - utils.skipping_utils - INFO - Skipping analysis from ExtractedFeatures:
+2025-10-18 14:03:47,808 - utils.skipping_utils - INFO -   Total words: 335,166
+2025-10-18 14:03:47,808 - utils.skipping_utils - INFO -   Skipped: 126,302 (37.7%)
+2025-10-18 14:03:47,808 - utils.skipping_utils - INFO -   Fixated: 208,864 (62.3%)
+2025-10-18 14:03:47,847 - __main__ - INFO - Skipping analysis: 37.7% overall rate
+2025-10-18 14:03:47,862 - __main__ - INFO - Loaded: 335,166 words from 57 participants
+2025-10-18 14:03:47,863 - __main__ - INFO - ============================================================
+2025-10-18 14:03:47,863 - __main__ - INFO - COMPUTING LINGUISTIC FEATURES
+2025-10-18 14:03:47,863 - __main__ - INFO - ============================================================
+2025-10-18 14:03:47,864 - utils.linguistic_features - INFO - Loading Danish frequency list from danish_frequencies\danish_leipzig_for_analysis.txt
+2025-10-18 14:03:49,257 - utils.linguistic_features - WARNING - Found 2 duplicate words after lowercasing. 
+2025-10-18 14:03:49,623 - utils.linguistic_features - INFO - Loaded 1,499,999 word proportions from Leipzig Corpora
+2025-10-18 14:03:49,701 - utils.linguistic_features - INFO - Computing word frequency...
+2025-10-18 14:03:49,701 - utils.linguistic_features - INFO -   Stripping punctuation from words before frequency lookup
+2025-10-18 14:03:50,363 - utils.linguistic_features - INFO - 13 missing word instances were punctuation-only
+2025-10-18 14:03:50,363 - utils.linguistic_features - WARNING - 4,586 word instances (1.4%) not found in frequency list (197 unique valid words)
+2025-10-18 14:03:50,363 - utils.linguistic_features - INFO - Sample of 197 missing valid words: ['1986. mordet', '2000-direktiverne', 'af j.j', 'af kong', 'affaldspolitikken', 'april 1940 på amalienborg', 'awakens (2015', 'bjergstien', 'bliniopskrifter', 'blintzes', 'by-spildevand', 'cølibatægteskabet', 'drengekammeraterne', 'ecodesign-direktivet', 'emancipationskravet', 'en klase med', 'entrébeløb', 'er stakbærende', 'forbrugsopgjorte', 'forårsbebudning', 'havstrategier', 'henrik (prinsgemalen', 'højskoledanmark', 'h’er', 'h’erne', 'i græs-familien', 'idahot-forum', 'issefjerene', 'istandgøre', 'jedi (2017', 'kabeltromlerne', 'klimatilpasningslov', 'lgbtqi-familien', 'lgbtqi-rettigheder', 'melatoninen', 'miljøsejr', 'ph.d.-stilling', 'på p', 'renæssancekongen', 'sankthanstraditioner', 'skjortesyerske', 'spejder-juniorer', 'spådomsevner', 'stress-sygdomme', 'subapikalt', 'tscherning (1817-1890', 'tusindårsfornemmelser', 'udstillingsparate', 'årshjulets', 'ættesamfund']... (147 more)
+2025-10-18 14:03:50,370 - utils.linguistic_features - INFO - Excluding 4,599 word instances (1.4%) with missing frequencies from analysis
+2025-10-18 14:03:50,503 - utils.linguistic_features - INFO - Remaining dataset: 330,567 words
+2025-10-18 14:03:50,503 - utils.linguistic_features - INFO - Final dataset: 330,567 words with valid frequencies
+2025-10-18 14:03:54,476 - utils.linguistic_features - INFO - Loading causal language model: KennethTM/gpt2-medium-danish
+2025-10-18 14:03:55,953 - utils.linguistic_features - INFO - Using CPU for surprisal computation
+2025-10-18 14:03:55,953 - utils.linguistic_features - INFO - Causal language model loaded successfully
+2025-10-18 14:03:55,953 - utils.linguistic_features - INFO - Computing surprisal with causal GPT-2 (left-to-right)...
+2025-10-18 14:03:57,304 - utils.linguistic_features - INFO - Dataset statistics:
+2025-10-18 14:03:57,305 - utils.linguistic_features - INFO -   Total participant-sentence instances: 20,707
+2025-10-18 14:03:57,305 - utils.linguistic_features - INFO -   Unique sentence texts: 1,986
+2025-10-18 14:03:57,305 - utils.linguistic_features - INFO -   Average participants per sentence: 10.4
+2025-10-18 14:03:57,305 - utils.linguistic_features - INFO - Loading cached surprisal values from word_surprisal\surprisal_cache_gpt2.pkl
+2025-10-18 14:03:57,318 - utils.linguistic_features - INFO - Loaded surprisal for 1,986 unique sentences
+2025-10-18 14:03:57,319 - utils.linguistic_features - INFO - Broadcasting surprisal values to all participant instances...
+2025-10-18 14:03:57,319 - utils.linguistic_features - INFO -   Mapping surprisal to words...
+2025-10-18 14:04:00,318 - utils.linguistic_features - INFO -   Mapped 326,496 words
+2025-10-18 14:04:00,319 - utils.linguistic_features - INFO - 
+Surprisal Computation Results:
+2025-10-18 14:04:00,320 - utils.linguistic_features - INFO -   Unique sentences processed: 1,986
+2025-10-18 14:04:00,320 - utils.linguistic_features - INFO -   Total words with surprisal: 326,496 / 330,567
+2025-10-18 14:04:00,320 - utils.linguistic_features - INFO -   Mean: 6.93 bits
+2025-10-18 14:04:00,324 - utils.linguistic_features - INFO -   Median: 5.69 bits
+2025-10-18 14:04:00,326 - utils.linguistic_features - INFO -   Std: 5.55 bits
+2025-10-18 14:04:00,326 - utils.linguistic_features - INFO -   Range: [0.00, 59.34] bits
+2025-10-18 14:04:00,341 - utils.linguistic_features - INFO - Linguistic features added successfully
+2025-10-18 14:04:00,342 - utils.linguistic_features - INFO - 
+Feature Summary:
+2025-10-18 14:04:00,345 - utils.linguistic_features - INFO -   Word length: mean=4.67, std=3.08
+2025-10-18 14:04:00,349 - utils.linguistic_features - INFO -   Zipf frequency: mean=5.85, std=1.38, range=[0.91, 7.51]
+2025-10-18 14:04:00,351 - utils.linguistic_features - INFO -   Surprisal: mean=6.93, std=5.55
+2025-10-18 14:04:00,361 - utils.hypothesis_testing_utils - INFO - Preparing data for hypothesis testing...
+2025-10-18 14:04:00,401 - utils.hypothesis_testing_utils - INFO - Creating ERT variable...
+2025-10-18 14:04:00,404 - utils.hypothesis_testing_utils - INFO -   ERT created: 123,666 skipped (0ms), 206,901 fixated
+2025-10-18 14:04:00,404 - utils.hypothesis_testing_utils - INFO - Centering and scaling predictors...
+2025-10-18 14:04:00,418 - utils.hypothesis_testing_utils - INFO -   word_length: mean=4.67, scale=3.08
+2025-10-18 14:04:00,432 - utils.hypothesis_testing_utils - INFO -   word_frequency_zipf: mean=5.85, scale=1.38
+2025-10-18 14:04:00,444 - utils.hypothesis_testing_utils - INFO -   surprisal: mean=6.93, scale=5.55
+2025-10-18 14:04:00,444 - utils.hypothesis_testing_utils - INFO - Checking collinearity (VIF)...
+2025-10-18 14:04:00,525 - utils.hypothesis_testing_utils - INFO - VIF Results:
+2025-10-18 14:04:00,527 - utils.hypothesis_testing_utils - INFO -   Length: 2.82 (OK)
+2025-10-18 14:04:00,527 - utils.hypothesis_testing_utils - INFO -   Frequency: 3.18 (OK)
+2025-10-18 14:04:00,527 - utils.hypothesis_testing_utils - INFO -   Surprisal: 1.41 (OK)
+2025-10-18 14:04:00,527 - utils.hypothesis_testing_utils - INFO - Creating residualized surprisal...
+2025-10-18 14:04:00,543 - utils.hypothesis_testing_utils - INFO -   Correlation (Frequency-Surprisal): r=-0.539
+2025-10-18 14:04:00,543 - utils.hypothesis_testing_utils - INFO -   Residualized surprisal created
+2025-10-18 14:04:00,543 - utils.hypothesis_testing_utils - INFO - Defining pooled quartiles...
+2025-10-18 14:04:00,557 - utils.hypothesis_testing_utils - INFO -   word_length: Q1=2.00, Q3=6.00
+2025-10-18 14:04:00,571 - utils.hypothesis_testing_utils - INFO -   word_frequency_zipf: Q1=4.91, Q3=7.10
+2025-10-18 14:04:00,584 - utils.hypothesis_testing_utils - INFO -   surprisal: Q1=2.76, Q3=9.97
+2025-10-18 14:04:00,584 - utils.hypothesis_testing_utils - INFO - Data preparation complete: 330,567 words ready for analysis
+2025-10-18 14:04:00,597 - utils.quartile_analysis - INFO - ============================================================
+2025-10-18 14:04:00,597 - utils.quartile_analysis - INFO - PART A: QUARTILE ANALYSIS (Q1 vs Q3)
+2025-10-18 14:04:00,597 - utils.quartile_analysis - INFO - ============================================================
+2025-10-18 14:04:00,597 - utils.quartile_analysis - INFO - 
+Analyzing word_length...
+2025-10-18 14:04:01,441 - utils.quartile_analysis - INFO -   Computed means for 57 participants
+2025-10-18 14:04:01,442 - utils.quartile_analysis - INFO -     Control Q3-Q1: 259.7ms
+2025-10-18 14:04:01,442 - utils.quartile_analysis - INFO -     Dyslexic Q3-Q1: 442.6ms
+2025-10-18 14:04:01,502 - utils.quartile_analysis - INFO -   Fitting mixed model on 152,465 words...
+2025-10-18 14:04:02,068 - utils.quartile_analysis - INFO -   Group×Bin interaction: beta=134.79, p=0.0000
+2025-10-18 14:04:02,093 - utils.quartile_analysis - INFO -   Computing bootstrap CIs (1000 iterations)...
+2025-10-18 14:04:03,769 - utils.quartile_analysis - INFO -   Bootstrap 95% CI for interaction: [98.47, 259.71]
+2025-10-18 14:04:03,771 - utils.quartile_analysis - INFO - 
+Analyzing word_frequency_zipf...
+2025-10-18 14:04:04,535 - utils.quartile_analysis - INFO -   Computed means for 57 participants
+2025-10-18 14:04:04,536 - utils.quartile_analysis - INFO -     Control Q3-Q1: -225.9ms
+2025-10-18 14:04:04,537 - utils.quartile_analysis - INFO -     Dyslexic Q3-Q1: -388.2ms
+2025-10-18 14:04:04,598 - utils.quartile_analysis - INFO -   Fitting mixed model on 162,606 words...
+2025-10-18 14:04:07,406 - utils.quartile_analysis - INFO -   Group×Bin interaction: beta=-122.40, p=0.0000
+2025-10-18 14:04:07,441 - utils.quartile_analysis - INFO -   Computing bootstrap CIs (1000 iterations)...
+2025-10-18 14:04:09,125 - utils.quartile_analysis - INFO -   Bootstrap 95% CI for interaction: [-225.59, -87.90]
+2025-10-18 14:04:09,126 - utils.quartile_analysis - INFO - 
+Analyzing surprisal...
+2025-10-18 14:04:09,922 - utils.quartile_analysis - INFO -   Computed means for 57 participants
+2025-10-18 14:04:09,923 - utils.quartile_analysis - INFO -     Control Q3-Q1: 135.8ms
+2025-10-18 14:04:09,923 - utils.quartile_analysis - INFO -     Dyslexic Q3-Q1: 277.3ms
+2025-10-18 14:04:09,987 - utils.quartile_analysis - INFO -   Fitting mixed model on 163,257 words...
+2025-10-18 14:04:12,474 - utils.quartile_analysis - INFO -   Group×Bin interaction: beta=105.53, p=0.0000
+2025-10-18 14:04:12,504 - utils.quartile_analysis - INFO -   Computing bootstrap CIs (1000 iterations)...
+2025-10-18 14:04:14,211 - utils.quartile_analysis - INFO -   Bootstrap 95% CI for interaction: [84.99, 194.82]
+2025-10-18 14:04:14,212 - utils.continuous_models - INFO - ============================================================
+2025-10-18 14:04:14,212 - utils.continuous_models - INFO - PART B: CONTINUOUS MODELS (TWO-PART)
+2025-10-18 14:04:14,212 - utils.continuous_models - INFO - ============================================================
+2025-10-18 14:04:14,212 - utils.continuous_models - INFO - 
+1. SKIPPING MODEL (Logistic with Clustered SEs)
+2025-10-18 14:04:14,314 - utils.continuous_models - INFO -   Formula: skipped ~ dyslexic_int * (word_length_scaled + word_frequency_zipf_scaled + surprisal_scaled)
+2025-10-18 14:04:14,316 - utils.continuous_models - INFO -   Fitting on 326,496 words...
+2025-10-18 14:04:15,030 - utils.continuous_models - INFO -   Model fitted successfully with clustered SEs
+2025-10-18 14:04:15,032 - utils.continuous_models - INFO -     dyslexic_int:word_length_scaled: beta=-0.0250, p=0.6714
+2025-10-18 14:04:15,032 - utils.continuous_models - INFO -     dyslexic_int:word_frequency_zipf_scaled: beta=-0.0640, p=0.1975
+2025-10-18 14:04:15,032 - utils.continuous_models - INFO -     dyslexic_int:surprisal_scaled: beta=-0.0272, p=0.2667
+2025-10-18 14:04:15,043 - utils.continuous_models - INFO - 
+2. DURATION MODEL (Log-TRT | Fixated)
+2025-10-18 14:04:15,146 - utils.continuous_models - INFO -   Formula: log_TRT ~ dyslexic_int * (word_length_scaled + word_frequency_zipf_scaled + surprisal_scaled)
+2025-10-18 14:04:15,146 - utils.continuous_models - INFO -   Fitting on 204,224 fixated words...
+2025-10-18 14:04:16,208 - utils.continuous_models - INFO -   Model fitted successfully
+2025-10-18 14:04:16,209 - utils.continuous_models - INFO -   Smearing correction factor: 1.1562
+2025-10-18 14:04:16,209 - utils.continuous_models - INFO -     dyslexic_int:word_length_scaled: beta=0.0078, p=0.0585
+2025-10-18 14:04:16,209 - utils.continuous_models - INFO -     dyslexic_int:word_frequency_zipf_scaled: beta=-0.0084, p=0.0678
+2025-10-18 14:04:16,209 - utils.continuous_models - INFO -     dyslexic_int:surprisal_scaled: beta=0.0349, p=0.0000
+2025-10-18 14:04:16,218 - utils.continuous_models - INFO - 
+3. PREDICTING EXPECTED ERT
+2025-10-18 14:04:16,271 - utils.continuous_models - INFO -   Predicting expected ERT...
+2025-10-18 14:04:16,531 - utils.continuous_models - INFO -   Predicted expected ERT for 326,496 words
+2025-10-18 14:04:16,533 - utils.continuous_models - INFO -     Mean expected ERT: 228.71ms
+2025-10-18 14:04:16,534 - utils.continuous_models - INFO -     Mean observed ERT: 236.03ms
+2025-10-18 14:04:16,542 - utils.continuous_models - INFO - 
+4. VARIANCE EXPLAINED (ΔR² on Expected ERT)
+2025-10-18 14:04:16,663 - utils.continuous_models - INFO -   Computing ΔR² on 326,496 observations
+2025-10-18 14:04:16,987 - utils.continuous_models - INFO -     M0: R² = 0.2074
+2025-10-18 14:04:17,314 - utils.continuous_models - INFO -     M1: R² = 0.9267
+2025-10-18 14:04:17,645 - utils.continuous_models - INFO -     M2: R² = 0.9501
+2025-10-18 14:04:18,051 - utils.continuous_models - INFO -     M3: R² = 0.9608
+2025-10-18 14:04:18,051 - utils.continuous_models - INFO - 
+  Variance Explained (ΔR²):
+2025-10-18 14:04:18,051 - utils.continuous_models - INFO -     Length: ΔR² = 0.7193 (71.93%)
+2025-10-18 14:04:18,051 - utils.continuous_models - INFO -     Frequency: ΔR² = 0.0233 (2.33%)
+2025-10-18 14:04:18,051 - utils.continuous_models - INFO -     Surprisal: ΔR² = 0.0107 (1.07%)
+2025-10-18 14:04:18,078 - utils.continuous_models - INFO - 
+5. MS SHIFTS (Q1→Q3 on Expected ERT)
+2025-10-18 14:04:18,086 - utils.continuous_models - INFO - 
+  word_length: Q1=2.00, Q3=6.00
+2025-10-18 14:04:18,107 - utils.continuous_models - INFO -     Control: 136.3ms -> 220.5ms (Δ = 84.1ms)
+2025-10-18 14:04:18,126 - utils.continuous_models - INFO -     Dyslexic: 239.3ms -> 361.0ms (Δ = 121.7ms)
+2025-10-18 14:04:18,135 - utils.continuous_models - INFO - 
+  word_frequency_zipf: Q1=4.91, Q3=7.10
+2025-10-18 14:04:18,154 - utils.continuous_models - INFO -     Control: 209.3ms -> 167.5ms (Δ = -41.8ms)
+2025-10-18 14:04:18,171 - utils.continuous_models - INFO -     Dyslexic: 342.6ms -> 290.3ms (Δ = -52.3ms)
+2025-10-18 14:04:18,180 - utils.continuous_models - INFO - 
+  surprisal: Q1=2.76, Q3=9.97
+2025-10-18 14:04:18,199 - utils.continuous_models - INFO -     Control: 185.2ms -> 195.4ms (Δ = 10.2ms)
+2025-10-18 14:04:18,218 - utils.continuous_models - INFO -     Dyslexic: 300.9ms -> 334.1ms (Δ = 33.3ms)
+2025-10-18 14:04:18,218 - utils.continuous_models - INFO - 
+6. SLOPE RATIOS (Finite Differences on Expected ERT)
+2025-10-18 14:04:18,262 - utils.continuous_models - INFO -   word_length: SR = 1.447 (AMPLIFIED)
+2025-10-18 14:04:18,301 - utils.continuous_models - INFO -   word_frequency_zipf: SR = 1.251 (AMPLIFIED)
+2025-10-18 14:04:18,343 - utils.continuous_models - INFO -   surprisal: SR = 3.257 (AMPLIFIED)
+2025-10-18 14:04:18,343 - utils.continuous_models - INFO - 
+7. BOOTSTRAP CONFIDENCE INTERVALS
+2025-10-18 14:04:18,343 - utils.continuous_models - INFO -   Computing bootstrap CIs (100 iterations)...
+2025-10-18 14:04:40,946 - utils.gap_decomposition - INFO - ============================================================
+2025-10-18 14:04:40,946 - utils.gap_decomposition - INFO - PART C: GAP DECOMPOSITION (ON OBSERVED ERT)
+2025-10-18 14:04:40,946 - utils.gap_decomposition - INFO - ============================================================
+2025-10-18 14:04:41,047 - utils.gap_decomposition - INFO - Using common sample of 326,496 observations for all models
+2025-10-18 14:04:41,047 - utils.gap_decomposition - INFO - 
+Fitting M0 (main effects only)...
+2025-10-18 14:04:41,047 - utils.gap_decomposition - INFO -   Formula: ERT_expected ~ dyslexic_int
+2025-10-18 14:04:41,356 - utils.gap_decomposition - INFO -   M0 fitted successfully (OLS with clustered SEs)
+2025-10-18 14:04:41,356 - utils.gap_decomposition - INFO - 
+Fitting M1 (main effects only)...
+2025-10-18 14:04:41,356 - utils.gap_decomposition - INFO -   Formula: ERT_expected ~ dyslexic_int + word_length_scaled
+2025-10-18 14:04:41,688 - utils.gap_decomposition - INFO -   M1 fitted successfully (OLS with clustered SEs)
+2025-10-18 14:04:41,689 - utils.gap_decomposition - INFO - 
+Fitting M2 (main effects only)...
+2025-10-18 14:04:41,689 - utils.gap_decomposition - INFO -   Formula: ERT_expected ~ dyslexic_int + word_length_scaled + word_frequency_zipf_scaled
+2025-10-18 14:04:42,015 - utils.gap_decomposition - INFO -   M2 fitted successfully (OLS with clustered SEs)
+2025-10-18 14:04:42,016 - utils.gap_decomposition - INFO - 
+Fitting M3 (main effects only)...
+2025-10-18 14:04:42,016 - utils.gap_decomposition - INFO -   Formula: ERT_expected ~ dyslexic_int + word_length_scaled + word_frequency_zipf_scaled + surprisal_scaled
+2025-10-18 14:04:42,367 - utils.gap_decomposition - INFO -   M3 fitted successfully (OLS with clustered SEs)
+2025-10-18 14:04:42,377 - utils.gap_decomposition - INFO - 
+Computing gaps on OBSERVED ERT (not model predictions)...
+2025-10-18 14:04:42,377 - utils.gap_decomposition - INFO -   Computing gaps on observed ERT...
+2025-10-18 14:04:42,568 - utils.gap_decomposition - INFO -     M0: Gap = 133.03ms
+2025-10-18 14:04:42,791 - utils.gap_decomposition - INFO -     M1: Gap = 132.03ms
+2025-10-18 14:04:43,036 - utils.gap_decomposition - INFO -     M2: Gap = 132.16ms
+2025-10-18 14:04:43,289 - utils.gap_decomposition - INFO -     M3: Gap = 132.02ms
+2025-10-18 14:04:43,312 - utils.gap_decomposition - INFO -   Computing composition gaps...
+2025-10-18 14:04:43,465 - utils.gap_decomposition - INFO -     M0: Composition gap = -0.00ms
+2025-10-18 14:04:43,671 - utils.gap_decomposition - INFO -     M1: Composition gap = 1.00ms
+2025-10-18 14:04:43,868 - utils.gap_decomposition - INFO -     M2: Composition gap = 0.86ms
+2025-10-18 14:04:44,051 - utils.gap_decomposition - INFO -     M3: Composition gap = 1.00ms
+2025-10-18 14:04:44,069 - utils.gap_decomposition - INFO -   Computing R² on observed ERT...
+2025-10-18 14:04:44,075 - utils.gap_decomposition - INFO -     M0: R² = 0.0348
+2025-10-18 14:04:44,082 - utils.gap_decomposition - INFO -     M1: R² = 0.1599
+2025-10-18 14:04:44,089 - utils.gap_decomposition - INFO -     M2: R² = 0.1638
+2025-10-18 14:04:44,096 - utils.gap_decomposition - INFO -     M3: R² = 0.1656
+2025-10-18 14:04:44,096 - utils.gap_decomposition - INFO - 
+Fitting interaction models...
+2025-10-18 14:04:44,199 - utils.gap_decomposition - INFO -   Fitting M1_int...
+2025-10-18 14:04:44,532 - utils.gap_decomposition - INFO -     M1_int fitted successfully
+2025-10-18 14:04:44,596 - utils.gap_decomposition - INFO -   Fitting M2_int...
+2025-10-18 14:04:44,962 - utils.gap_decomposition - INFO -     M2_int fitted successfully
+2025-10-18 14:04:45,029 - utils.gap_decomposition - INFO -   Fitting M3_int...
+2025-10-18 14:04:45,459 - utils.gap_decomposition - INFO -     M3_int fitted successfully
+2025-10-18 14:04:45,469 - utils.gap_decomposition - INFO - 
+Oaxaca/Blinder Decomposition (on Observed ERT):
+2025-10-18 14:04:46,488 - utils.gap_decomposition - INFO -   Total observed gap: 133.03ms
+2025-10-18 14:04:46,488 - utils.gap_decomposition - INFO -   Composition effect: 1.00ms (0.8%)
+2025-10-18 14:04:46,488 - utils.gap_decomposition - INFO -   Coefficient effect: 131.72ms (99.0%)
+2025-10-18 14:04:46,488 - utils.gap_decomposition - INFO -   Residual: 0.30ms
+2025-10-18 14:04:46,489 - utils.gap_decomposition - INFO - 
+  → Groups read similar-difficulty words (composition ≈ 0%)
+2025-10-18 14:04:46,489 - utils.gap_decomposition - INFO -   → Gap is due to differential sensitivity (coefficient effect)
+2025-10-18 14:04:46,564 - utils.gap_decomposition - INFO - 
+============================================================
+2025-10-18 14:04:46,564 - utils.gap_decomposition - INFO - GAP DECOMPOSITION SUMMARY (ON OBSERVED ERT)
+2025-10-18 14:04:46,565 - utils.gap_decomposition - INFO - ============================================================
+2025-10-18 14:04:46,565 - utils.gap_decomposition - INFO - 
+Baseline observed gap (M0): 133.03ms
+2025-10-18 14:04:46,565 - utils.gap_decomposition - INFO - 
+M1 (+Length):
+2025-10-18 14:04:46,565 - utils.gap_decomposition - INFO -   Observed gap: 132.03ms
+2025-10-18 14:04:46,565 - utils.gap_decomposition - INFO -   Composition gap: 1.00ms
+2025-10-18 14:04:46,565 - utils.gap_decomposition - INFO -   % Explained: 99.3%
+2025-10-18 14:04:46,565 - utils.gap_decomposition - INFO -   ΔR²: 0.1250
+2025-10-18 14:04:46,566 - utils.gap_decomposition - INFO - 
+M2 (+Frequency):
+2025-10-18 14:04:46,566 - utils.gap_decomposition - INFO -   Observed gap: 132.16ms
+2025-10-18 14:04:46,566 - utils.gap_decomposition - INFO -   Composition gap: 0.86ms
+2025-10-18 14:04:46,566 - utils.gap_decomposition - INFO -   % Explained: 99.4%
+2025-10-18 14:04:46,566 - utils.gap_decomposition - INFO -   ΔR²: 0.0039
+2025-10-18 14:04:46,566 - utils.gap_decomposition - INFO - 
+M3 (+Surprisal):
+2025-10-18 14:04:46,566 - utils.gap_decomposition - INFO -   Observed gap: 132.02ms
+2025-10-18 14:04:46,566 - utils.gap_decomposition - INFO -   Composition gap: 1.00ms
+2025-10-18 14:04:46,567 - utils.gap_decomposition - INFO -   % Explained: 99.2%
+2025-10-18 14:04:46,567 - utils.gap_decomposition - INFO -   ΔR²: 0.0018
+2025-10-18 14:04:46,567 - utils.sensitivity_analysis - INFO - ============================================================
+2025-10-18 14:04:46,567 - utils.sensitivity_analysis - INFO - SENSITIVITY ANALYSES
+2025-10-18 14:04:46,567 - utils.sensitivity_analysis - INFO - ============================================================
+2025-10-18 14:04:46,567 - utils.sensitivity_analysis - INFO - 
+1. RESIDUALIZED SURPRISAL MODEL
+2025-10-18 14:04:46,643 - utils.sensitivity_analysis - INFO -   Formula: ERT ~ dyslexic_int * (word_length_scaled + word_frequency_zipf_scaled + surprisal_resid)
+2025-10-18 14:04:47,228 - utils.sensitivity_analysis - INFO -   Residualized surprisal: beta=11.6330, p=0.0000
+2025-10-18 14:04:47,228 - utils.sensitivity_analysis - INFO -   [OK] Surprisal effect robust to frequency collinearity
+2025-10-18 14:04:47,242 - utils.sensitivity_analysis - INFO - 
+2. SUBJECT-WISE CROSS-VALIDATION
+2025-10-18 14:04:47,243 - utils.sensitivity_analysis - INFO -   Running 10-fold subject-wise CV...
+2025-10-18 14:04:47,471 - utils.sensitivity_analysis - INFO -     Fold 1/10
+2025-10-18 14:04:48,047 - utils.sensitivity_analysis - INFO -     Fold 2/10
+2025-10-18 14:04:48,675 - utils.sensitivity_analysis - INFO -     Fold 3/10
+2025-10-18 14:04:49,293 - utils.sensitivity_analysis - INFO -     Fold 4/10
+2025-10-18 14:04:49,930 - utils.sensitivity_analysis - INFO -     Fold 5/10
+2025-10-18 14:04:50,518 - utils.sensitivity_analysis - INFO -     Fold 6/10
+2025-10-18 14:04:51,697 - utils.sensitivity_analysis - INFO -     Fold 7/10
+2025-10-18 14:04:52,313 - utils.sensitivity_analysis - INFO -     Fold 8/10
+2025-10-18 14:04:52,852 - utils.sensitivity_analysis - INFO -     Fold 9/10
+2025-10-18 14:04:53,372 - utils.sensitivity_analysis - INFO -     Fold 10/10
+2025-10-18 14:04:53,907 - utils.sensitivity_analysis - INFO -   Cross-validation R²: -0.3352 ± 0.2999
+2025-10-18 14:04:53,908 - utils.sensitivity_analysis - INFO -   Based on 10 successful folds
+2025-10-18 14:04:53,949 - utils.sensitivity_analysis - INFO - 
+3. ALTERNATIVE BINNING (Terciles & Quintiles)
+2025-10-18 14:04:53,950 - utils.sensitivity_analysis - INFO - 
+  Testing terciles...
+2025-10-18 14:04:54,065 - utils.sensitivity_analysis - INFO -     word_length: Control Δ=202.4ms, Dyslexic Δ=304.4ms
+2025-10-18 14:04:54,165 - utils.sensitivity_analysis - INFO -     word_frequency_zipf: Control Δ=-187.4ms, Dyslexic Δ=-283.4ms
+2025-10-18 14:04:54,270 - utils.sensitivity_analysis - INFO -     surprisal: Control Δ=112.9ms, Dyslexic Δ=200.7ms
+2025-10-18 14:04:54,270 - utils.sensitivity_analysis - INFO - 
+  Testing quintiles...
+2025-10-18 14:04:54,345 - utils.sensitivity_analysis - INFO -     word_length: Control Δ=284.7ms, Dyslexic Δ=452.5ms
+2025-10-18 14:04:54,419 - utils.sensitivity_analysis - INFO -     word_frequency_zipf: Control Δ=-242.1ms, Dyslexic Δ=-393.1ms
+2025-10-18 14:04:54,500 - utils.sensitivity_analysis - INFO -     surprisal: Control Δ=150.5ms, Dyslexic Δ=270.2ms
+2025-10-18 14:04:54,507 - utils.hypothesis_visualization - INFO - ============================================================
+2025-10-18 14:04:54,507 - utils.hypothesis_visualization - INFO - CREATING VISUALIZATIONS
+2025-10-18 14:04:54,508 - utils.hypothesis_visualization - INFO - ============================================================
+2025-10-18 14:04:54,508 - utils.hypothesis_visualization - INFO - 
+1. Continuous effect curves...
+2025-10-18 14:04:55,816 - utils.hypothesis_visualization - INFO -   Saved to results\continuous_effects_with_quartiles.png
+2025-10-18 14:04:55,818 - utils.hypothesis_visualization - INFO - 2. Gap decomposition...
+2025-10-18 14:04:55,818 - utils.hypothesis_visualization - WARNING - No gap results available
+2025-10-18 14:04:55,818 - utils.hypothesis_visualization - INFO - 3. Slope ratios...
+2025-10-18 14:04:56,108 - utils.hypothesis_visualization - INFO -   Saved to results\slope_ratios.png
+2025-10-18 14:04:56,109 - utils.hypothesis_visualization - INFO - 4. Model comparison...
+2025-10-18 14:04:56,128 - matplotlib.category - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
+2025-10-18 14:04:56,129 - matplotlib.category - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
+2025-10-18 14:04:56,508 - utils.hypothesis_visualization - INFO -   Saved to results\model_comparison.png
+2025-10-18 14:04:56,508 - utils.hypothesis_visualization - INFO - 5. Quartile effects...
+2025-10-18 14:04:57,113 - utils.hypothesis_visualization - INFO -   Saved to results\quartile_effects.png
+2025-10-18 14:04:57,113 - utils.hypothesis_visualization - INFO - 6. Predicted vs observed...
+2025-10-18 14:04:58,019 - utils.hypothesis_visualization - INFO -   Saved to results\predicted_vs_observed.png
+2025-10-18 14:04:58,020 - utils.hypothesis_visualization - INFO - 
+All visualizations saved to results
+2025-10-18 14:04:58,020 - utils.results_reporting - INFO - ============================================================
+2025-10-18 14:04:58,021 - utils.results_reporting - INFO - GENERATING RESULTS REPORT
+2025-10-18 14:04:58,021 - utils.results_reporting - INFO - ============================================================
+2025-10-18 14:04:58,024 - utils.results_reporting - INFO - 
+Testing Hypothesis 1: Feature effects on reading time
+2025-10-18 14:04:58,025 - utils.results_reporting - INFO -   Length: beta=0.1222, p=0.0000 - CONFIRMED
+2025-10-18 14:04:58,025 - utils.results_reporting - INFO -   Frequency: beta=-0.0486, p=0.0000 - CONFIRMED
+2025-10-18 14:04:58,025 - utils.results_reporting - INFO -   Surprisal: beta=0.0317, p=0.0000 - CONFIRMED
+2025-10-18 14:04:58,025 - utils.results_reporting - INFO - 
+Hypothesis 1: CONFIRMED
+2025-10-18 14:04:58,026 - utils.results_reporting - INFO - 
+Testing Hypothesis 2: Dyslexic amplification
+2025-10-18 14:04:58,026 - utils.results_reporting - INFO - 
+Hypothesis 2: CONFIRMED
+2025-10-18 14:04:58,026 - utils.results_reporting - INFO - 
+Testing Hypothesis 3: Gap explanation
+2025-10-18 14:04:58,027 - utils.results_reporting - INFO - 
+================================================================================
+2025-10-18 14:04:58,027 - utils.results_reporting - INFO - HYPOTHESIS TESTING RESULTS SUMMARY
+2025-10-18 14:04:58,027 - utils.results_reporting - INFO - ================================================================================
+2025-10-18 14:04:58,027 - utils.results_reporting - INFO - 
+HYPOTHESIS 1: CONFIRMED
+2025-10-18 14:04:58,027 - utils.results_reporting - INFO -   All features predict reading time in expected directions
+2025-10-18 14:04:58,027 - utils.results_reporting - INFO - 
+HYPOTHESIS 2: CONFIRMED
+2025-10-18 14:04:58,028 - utils.results_reporting - INFO -   All features show dyslexic amplification (SR > 1)
+2025-10-18 14:04:58,028 - utils.results_reporting - INFO - 
+HYPOTHESIS 3: FAILED
+2025-10-18 14:04:58,028 - utils.results_reporting - INFO -   Gap decomposition failed - no baseline gap computed
+2025-10-18 14:04:58,028 - utils.results_reporting - INFO - 
+OVERALL: ALL HYPOTHESES CONFIRMED
+2025-10-18 14:04:58,028 - utils.results_reporting - INFO - 
+Key Findings:
+2025-10-18 14:04:58,028 - utils.results_reporting - INFO -   • 3/3 features show dyslexic amplification
+2025-10-18 14:04:58,028 - utils.results_reporting - INFO -   • Features explain 99.2% of group gap
+2025-10-18 14:04:58,028 - utils.results_reporting - INFO -   • Effects consistent across multiple analyses
+2025-10-18 14:04:58,029 - utils.results_reporting - INFO - Report generation complete
+2025-10-18 14:04:58,031 - utils.misc_utils - INFO - Results saved to results\hypothesis_testing_results.json
+2025-10-18 14:04:58,031 - __main__ - INFO - 
+Hypothesis testing complete! Results saved to results
+2025-10-18 14:15:02,988 - __main__ - INFO - Dyslexia Time Analysis Pipeline initialized
+2025-10-18 14:15:02,988 - __main__ - INFO - Dyslexia Time Analysis Pipeline initialized
+2025-10-18 14:15:04,749 - __main__ - INFO - Running hypothesis testing analysis...
+2025-10-18 14:15:04,750 - __main__ - INFO - ================================================================================
+2025-10-18 14:15:04,750 - __main__ - INFO - HYPOTHESIS TESTING ANALYSIS
+2025-10-18 14:15:04,750 - __main__ - INFO - ================================================================================
+2025-10-18 14:15:04,750 - __main__ - INFO - Loading CopCo dataset...
+2025-10-18 14:15:04,751 - utils.data_utils - INFO - Loading 57 participant files...
+2025-10-18 14:15:06,092 - utils.data_utils - INFO - Starting with 335,203 total word entries
+2025-10-18 14:15:06,253 - utils.data_utils - INFO - Word fixation patterns:
+2025-10-18 14:15:06,253 - utils.data_utils - INFO -   - Skipped words (0 fixations): 126,302
+2025-10-18 14:15:06,253 - utils.data_utils - INFO -   - Fixated words (1+ fixations): 208,901
+2025-10-18 14:15:06,253 - utils.data_utils - INFO -   - Unknown fixations (NaN): 0
+2025-10-18 14:15:06,283 - utils.data_utils - INFO - Fixated words reading times: median 272ms, 99th percentile 1777ms
+2025-10-18 14:15:06,285 - utils.data_utils - INFO - Removed 14 fixated words with extreme reading times (0 too short, 14 too long)
+2025-10-18 14:15:06,381 - utils.data_utils - INFO - Removed 23 words longer than 30 characters (likely data errors)
+2025-10-18 14:15:06,416 - utils.data_utils - INFO - Final dataset: 126,302 skipped words, 208,864 fixated words
+2025-10-18 14:15:06,417 - utils.data_utils - INFO - Data cleaning complete: 335,166 words retained (100.0% of original)
+2025-10-18 14:15:06,423 - utils.data_utils - INFO - Groups identified: 19 dyslexic, 39 control
+2025-10-18 14:15:06,490 - __main__ - INFO - Calculating skipping probabilities...
+2025-10-18 14:15:06,494 - utils.skipping_utils - INFO - Skipping analysis from ExtractedFeatures:
+2025-10-18 14:15:06,496 - utils.skipping_utils - INFO -   Total words: 335,166
+2025-10-18 14:15:06,496 - utils.skipping_utils - INFO -   Skipped: 126,302 (37.7%)
+2025-10-18 14:15:06,496 - utils.skipping_utils - INFO -   Fixated: 208,864 (62.3%)
+2025-10-18 14:15:06,535 - __main__ - INFO - Skipping analysis: 37.7% overall rate
+2025-10-18 14:15:06,551 - __main__ - INFO - Loaded: 335,166 words from 57 participants
+2025-10-18 14:15:06,552 - __main__ - INFO - ============================================================
+2025-10-18 14:15:06,552 - __main__ - INFO - COMPUTING LINGUISTIC FEATURES
+2025-10-18 14:15:06,552 - __main__ - INFO - ============================================================
+2025-10-18 14:15:06,552 - utils.linguistic_features - INFO - Loading Danish frequency list from danish_frequencies\danish_leipzig_for_analysis.txt
+2025-10-18 14:15:07,834 - utils.linguistic_features - WARNING - Found 2 duplicate words after lowercasing. 
+2025-10-18 14:15:08,281 - utils.linguistic_features - INFO - Loaded 1,499,999 word proportions from Leipzig Corpora
+2025-10-18 14:15:08,343 - utils.linguistic_features - INFO - Computing word frequency...
+2025-10-18 14:15:08,345 - utils.linguistic_features - INFO -   Stripping punctuation from words before frequency lookup
+2025-10-18 14:15:09,021 - utils.linguistic_features - INFO - 13 missing word instances were punctuation-only
+2025-10-18 14:15:09,022 - utils.linguistic_features - WARNING - 4,586 word instances (1.4%) not found in frequency list (197 unique valid words)
+2025-10-18 14:15:09,022 - utils.linguistic_features - INFO - Sample of 197 missing valid words: ['1926-2016', '1986. mordet', '2. (margrethe', 'abilifyer', 'abrams efter', 'adspredelsens', 'adunyadet', 'af kong', 'amerikansk science', 'awakens (2015', 'blæredygtige', 'broderet messehagler og', 'by-spildevand', 'cybermind', 'dallis', 'efter star', 'en klase med', 'flensborggården', 'fædrelandssalmen', 'go-to-ting', 'grillparties', 'heksejagte', 'i star', 'initiativlyst', 'isotropic', 'it-mulighederne', 'klimatilpasningslov', 'klimatilpasningspakke', 'leartes’s', 'lgbtqi-familien', 'lgbtqi-rettigheder', 'lysfester', 'løvmand og', 'magtesløses', 'med prins', 'midsommerfælleskabet', 'nabofolkeslag', 'nivaagaard-tradition', 'og star', 'på p', 'renæssancekongen', 'sankthansormen', 'skjortesyerske', 'skraldepigerne', 'skywalker også', 'spejder-juniorer', 'superlærer', 'takstfinansiere', 'topgræsser', 'tscherning (1817-1890']... (147 more)
+2025-10-18 14:15:09,028 - utils.linguistic_features - INFO - Excluding 4,599 word instances (1.4%) with missing frequencies from analysis
+2025-10-18 14:15:09,120 - utils.linguistic_features - INFO - Remaining dataset: 330,567 words
+2025-10-18 14:15:09,121 - utils.linguistic_features - INFO - Final dataset: 330,567 words with valid frequencies
+2025-10-18 14:15:12,823 - utils.linguistic_features - INFO - Loading causal language model: KennethTM/gpt2-medium-danish
+2025-10-18 14:15:14,370 - utils.linguistic_features - INFO - Using CPU for surprisal computation
+2025-10-18 14:15:14,370 - utils.linguistic_features - INFO - Causal language model loaded successfully
+2025-10-18 14:15:14,371 - utils.linguistic_features - INFO - Computing surprisal with causal GPT-2 (left-to-right)...
+2025-10-18 14:15:15,612 - utils.linguistic_features - INFO - Dataset statistics:
+2025-10-18 14:15:15,613 - utils.linguistic_features - INFO -   Total participant-sentence instances: 20,707
+2025-10-18 14:15:15,613 - utils.linguistic_features - INFO -   Unique sentence texts: 1,986
+2025-10-18 14:15:15,613 - utils.linguistic_features - INFO -   Average participants per sentence: 10.4
+2025-10-18 14:15:15,613 - utils.linguistic_features - INFO - Loading cached surprisal values from word_surprisal\surprisal_cache_gpt2.pkl
+2025-10-18 14:15:15,626 - utils.linguistic_features - INFO - Loaded surprisal for 1,986 unique sentences
+2025-10-18 14:15:15,627 - utils.linguistic_features - INFO - Broadcasting surprisal values to all participant instances...
+2025-10-18 14:15:15,627 - utils.linguistic_features - INFO -   Mapping surprisal to words...
+2025-10-18 14:15:18,661 - utils.linguistic_features - INFO -   Mapped 326,496 words
+2025-10-18 14:15:18,662 - utils.linguistic_features - INFO - 
+Surprisal Computation Results:
+2025-10-18 14:15:18,662 - utils.linguistic_features - INFO -   Unique sentences processed: 1,986
+2025-10-18 14:15:18,663 - utils.linguistic_features - INFO -   Total words with surprisal: 326,496 / 330,567
+2025-10-18 14:15:18,663 - utils.linguistic_features - INFO -   Mean: 6.93 bits
+2025-10-18 14:15:18,667 - utils.linguistic_features - INFO -   Median: 5.69 bits
+2025-10-18 14:15:18,669 - utils.linguistic_features - INFO -   Std: 5.55 bits
+2025-10-18 14:15:18,669 - utils.linguistic_features - INFO -   Range: [0.00, 59.34] bits
+2025-10-18 14:15:18,683 - utils.linguistic_features - INFO - Linguistic features added successfully
+2025-10-18 14:15:18,684 - utils.linguistic_features - INFO - 
+Feature Summary:
+2025-10-18 14:15:18,685 - utils.linguistic_features - INFO -   Word length: mean=4.67, std=3.08
+2025-10-18 14:15:18,687 - utils.linguistic_features - INFO -   Zipf frequency: mean=5.85, std=1.38, range=[0.91, 7.51]
+2025-10-18 14:15:18,689 - utils.linguistic_features - INFO -   Surprisal: mean=6.93, std=5.55
+2025-10-18 14:15:18,698 - utils.hypothesis_testing_utils - INFO - Preparing data for hypothesis testing...
+2025-10-18 14:15:18,738 - utils.hypothesis_testing_utils - INFO - Creating ERT variable...
+2025-10-18 14:15:18,741 - utils.hypothesis_testing_utils - INFO -   ERT created: 123,666 skipped (0ms), 206,901 fixated
+2025-10-18 14:15:18,741 - utils.hypothesis_testing_utils - INFO - Centering and scaling predictors...
+2025-10-18 14:15:18,755 - utils.hypothesis_testing_utils - INFO -   word_length: mean=4.67, scale=3.08
+2025-10-18 14:15:18,768 - utils.hypothesis_testing_utils - INFO -   word_frequency_zipf: mean=5.85, scale=1.38
+2025-10-18 14:15:18,781 - utils.hypothesis_testing_utils - INFO -   surprisal: mean=6.93, scale=5.55
+2025-10-18 14:15:18,782 - utils.hypothesis_testing_utils - INFO - Checking collinearity (VIF)...
+2025-10-18 14:15:18,862 - utils.hypothesis_testing_utils - INFO - VIF Results:
+2025-10-18 14:15:18,863 - utils.hypothesis_testing_utils - INFO -   Length: 2.82 (OK)
+2025-10-18 14:15:18,863 - utils.hypothesis_testing_utils - INFO -   Frequency: 3.18 (OK)
+2025-10-18 14:15:18,863 - utils.hypothesis_testing_utils - INFO -   Surprisal: 1.41 (OK)
+2025-10-18 14:15:18,864 - utils.hypothesis_testing_utils - INFO - Creating residualized surprisal...
+2025-10-18 14:15:18,879 - utils.hypothesis_testing_utils - INFO -   Correlation (Frequency-Surprisal): r=-0.539
+2025-10-18 14:15:18,879 - utils.hypothesis_testing_utils - INFO -   Residualized surprisal created
+2025-10-18 14:15:18,880 - utils.hypothesis_testing_utils - INFO - Defining pooled quartiles...
+2025-10-18 14:15:18,893 - utils.hypothesis_testing_utils - INFO -   word_length: Q1=2.00, Q3=6.00
+2025-10-18 14:15:18,905 - utils.hypothesis_testing_utils - INFO -   word_frequency_zipf: Q1=4.91, Q3=7.10
+2025-10-18 14:15:18,919 - utils.hypothesis_testing_utils - INFO -   surprisal: Q1=2.76, Q3=9.97
+2025-10-18 14:15:18,919 - utils.hypothesis_testing_utils - INFO - Data preparation complete: 330,567 words ready for analysis
+2025-10-18 14:15:18,927 - utils.quartile_analysis - INFO - ============================================================
+2025-10-18 14:15:18,928 - utils.quartile_analysis - INFO - PART A: QUARTILE ANALYSIS (Q1 vs Q3)
+2025-10-18 14:15:18,928 - utils.quartile_analysis - INFO - ============================================================
+2025-10-18 14:15:18,928 - utils.quartile_analysis - INFO - 
+Analyzing word_length...
+2025-10-18 14:15:19,725 - utils.quartile_analysis - INFO -   Computed means for 57 participants
+2025-10-18 14:15:19,726 - utils.quartile_analysis - INFO -     Control Q3-Q1: 259.7ms
+2025-10-18 14:15:19,726 - utils.quartile_analysis - INFO -     Dyslexic Q3-Q1: 442.6ms
+2025-10-18 14:15:19,784 - utils.quartile_analysis - INFO -   Fitting mixed model on 152,465 words...
+2025-10-18 14:15:20,392 - utils.quartile_analysis - INFO -   Group×Bin interaction: beta=134.79, p=0.0000
+2025-10-18 14:15:20,421 - utils.quartile_analysis - INFO -   Computing bootstrap CIs (1000 iterations)...
+2025-10-18 14:15:22,101 - utils.quartile_analysis - INFO -   Bootstrap 95% CI for interaction: [98.47, 259.71]
+2025-10-18 14:15:22,102 - utils.quartile_analysis - INFO - 
+Analyzing word_frequency_zipf...
+2025-10-18 14:15:22,889 - utils.quartile_analysis - INFO -   Computed means for 57 participants
+2025-10-18 14:15:22,889 - utils.quartile_analysis - INFO -     Control Q3-Q1: -225.9ms
+2025-10-18 14:15:22,890 - utils.quartile_analysis - INFO -     Dyslexic Q3-Q1: -388.2ms
+2025-10-18 14:15:22,951 - utils.quartile_analysis - INFO -   Fitting mixed model on 162,606 words...
+2025-10-18 14:15:25,719 - utils.quartile_analysis - INFO -   Group×Bin interaction: beta=-122.40, p=0.0000
+2025-10-18 14:15:25,746 - utils.quartile_analysis - INFO -   Computing bootstrap CIs (1000 iterations)...
+2025-10-18 14:15:27,447 - utils.quartile_analysis - INFO -   Bootstrap 95% CI for interaction: [-225.59, -87.90]
+2025-10-18 14:15:27,447 - utils.quartile_analysis - INFO - 
+Analyzing surprisal...
+2025-10-18 14:15:28,237 - utils.quartile_analysis - INFO -   Computed means for 57 participants
+2025-10-18 14:15:28,237 - utils.quartile_analysis - INFO -     Control Q3-Q1: 135.8ms
+2025-10-18 14:15:28,238 - utils.quartile_analysis - INFO -     Dyslexic Q3-Q1: 277.3ms
+2025-10-18 14:15:28,302 - utils.quartile_analysis - INFO -   Fitting mixed model on 163,257 words...
+2025-10-18 14:15:31,310 - utils.quartile_analysis - INFO -   Group×Bin interaction: beta=105.53, p=0.0000
+2025-10-18 14:15:31,346 - utils.quartile_analysis - INFO -   Computing bootstrap CIs (1000 iterations)...
+2025-10-18 14:15:33,218 - utils.quartile_analysis - INFO -   Bootstrap 95% CI for interaction: [84.99, 194.82]
+2025-10-18 14:15:33,219 - utils.continuous_models - INFO - ============================================================
+2025-10-18 14:15:33,219 - utils.continuous_models - INFO - PART B: CONTINUOUS MODELS (TWO-PART)
+2025-10-18 14:15:33,219 - utils.continuous_models - INFO - ============================================================
+2025-10-18 14:15:33,219 - utils.continuous_models - INFO - 
+1. SKIPPING MODEL (Logistic with Clustered SEs)
+2025-10-18 14:15:33,323 - utils.continuous_models - INFO -   Formula: skipped ~ dyslexic_int * (word_length_scaled + word_frequency_zipf_scaled + surprisal_scaled)
+2025-10-18 14:15:33,324 - utils.continuous_models - INFO -   Fitting on 326,496 words...
+2025-10-18 14:15:34,055 - utils.continuous_models - INFO -   Model fitted successfully with clustered SEs
+2025-10-18 14:15:34,056 - utils.continuous_models - INFO -     dyslexic_int:word_length_scaled: beta=-0.0250, p=0.6714
+2025-10-18 14:15:34,057 - utils.continuous_models - INFO -     dyslexic_int:word_frequency_zipf_scaled: beta=-0.0640, p=0.1975
+2025-10-18 14:15:34,057 - utils.continuous_models - INFO -     dyslexic_int:surprisal_scaled: beta=-0.0272, p=0.2667
+2025-10-18 14:15:34,068 - utils.continuous_models - INFO - 
+2. DURATION MODEL (Log-TRT | Fixated)
+2025-10-18 14:15:34,237 - utils.continuous_models - INFO -   Formula: log_TRT ~ dyslexic_int * (word_length_scaled + word_frequency_zipf_scaled + surprisal_scaled)
+2025-10-18 14:15:34,238 - utils.continuous_models - INFO -   Fitting on 204,224 fixated words...
+2025-10-18 14:15:35,369 - utils.continuous_models - INFO -   Model fitted successfully
+2025-10-18 14:15:35,369 - utils.continuous_models - INFO -   Smearing correction factor: 1.1562
+2025-10-18 14:15:35,370 - utils.continuous_models - INFO -     dyslexic_int:word_length_scaled: beta=0.0078, p=0.0585
+2025-10-18 14:15:35,370 - utils.continuous_models - INFO -     dyslexic_int:word_frequency_zipf_scaled: beta=-0.0084, p=0.0678
+2025-10-18 14:15:35,370 - utils.continuous_models - INFO -     dyslexic_int:surprisal_scaled: beta=0.0349, p=0.0000
+2025-10-18 14:15:35,381 - utils.continuous_models - INFO - 
+3. PREDICTING EXPECTED ERT
+2025-10-18 14:15:35,460 - utils.continuous_models - INFO -   Predicting expected ERT...
+2025-10-18 14:15:35,737 - utils.continuous_models - INFO -   Predicted expected ERT for 326,496 words
+2025-10-18 14:15:35,739 - utils.continuous_models - INFO -     Mean expected ERT: 228.71ms
+2025-10-18 14:15:35,740 - utils.continuous_models - INFO -     Mean observed ERT: 236.03ms
+2025-10-18 14:15:35,749 - utils.continuous_models - INFO - 
+4. VARIANCE EXPLAINED (ΔR² on Expected ERT)
+2025-10-18 14:15:35,878 - utils.continuous_models - INFO -   Computing ΔR² on 326,496 observations
+2025-10-18 14:15:36,200 - utils.continuous_models - INFO -     M0: R² = 0.2074
+2025-10-18 14:15:36,573 - utils.continuous_models - INFO -     M1: R² = 0.9267
+2025-10-18 14:15:36,929 - utils.continuous_models - INFO -     M2: R² = 0.9501
+2025-10-18 14:15:37,297 - utils.continuous_models - INFO -     M3: R² = 0.9608
+2025-10-18 14:15:37,297 - utils.continuous_models - INFO - 
+  Variance Explained (ΔR²):
+2025-10-18 14:15:37,297 - utils.continuous_models - INFO -     Length: ΔR² = 0.7193 (71.93%)
+2025-10-18 14:15:37,297 - utils.continuous_models - INFO -     Frequency: ΔR² = 0.0233 (2.33%)
+2025-10-18 14:15:37,297 - utils.continuous_models - INFO -     Surprisal: ΔR² = 0.0107 (1.07%)
+2025-10-18 14:15:37,328 - utils.continuous_models - INFO - 
+5. MS SHIFTS (Q1→Q3 on Expected ERT)
+2025-10-18 14:15:37,336 - utils.continuous_models - INFO - 
+  word_length: Q1=2.00, Q3=6.00
+2025-10-18 14:15:37,355 - utils.continuous_models - INFO -     Control: 136.3ms -> 220.5ms (Δ = 84.1ms)
+2025-10-18 14:15:37,370 - utils.continuous_models - INFO -     Dyslexic: 239.3ms -> 361.0ms (Δ = 121.7ms)
+2025-10-18 14:15:37,380 - utils.continuous_models - INFO - 
+  word_frequency_zipf: Q1=4.91, Q3=7.10
+2025-10-18 14:15:37,400 - utils.continuous_models - INFO -     Control: 209.3ms -> 167.5ms (Δ = -41.8ms)
+2025-10-18 14:15:37,421 - utils.continuous_models - INFO -     Dyslexic: 342.6ms -> 290.3ms (Δ = -52.3ms)
+2025-10-18 14:15:37,431 - utils.continuous_models - INFO - 
+  surprisal: Q1=2.76, Q3=9.97
+2025-10-18 14:15:37,451 - utils.continuous_models - INFO -     Control: 185.2ms -> 195.4ms (Δ = 10.2ms)
+2025-10-18 14:15:37,472 - utils.continuous_models - INFO -     Dyslexic: 300.9ms -> 334.1ms (Δ = 33.3ms)
+2025-10-18 14:15:37,473 - utils.continuous_models - INFO - 
+6. SLOPE RATIOS (Finite Differences on Expected ERT)
+2025-10-18 14:15:37,515 - utils.continuous_models - INFO -   word_length: SR = 1.447 (AMPLIFIED)
+2025-10-18 14:15:37,556 - utils.continuous_models - INFO -   word_frequency_zipf: SR = 1.251 (AMPLIFIED)
+2025-10-18 14:15:37,601 - utils.continuous_models - INFO -   surprisal: SR = 3.257 (AMPLIFIED)
+2025-10-18 14:15:37,601 - utils.continuous_models - INFO - 
+7. BOOTSTRAP CONFIDENCE INTERVALS
+2025-10-18 14:15:37,601 - utils.continuous_models - INFO -   Computing bootstrap CIs (100 iterations)...
+2025-10-18 14:16:00,228 - utils.gap_decomposition - INFO - ============================================================
+2025-10-18 14:16:00,228 - utils.gap_decomposition - INFO - PART C: GAP DECOMPOSITION (ON OBSERVED ERT)
+2025-10-18 14:16:00,228 - utils.gap_decomposition - INFO - ============================================================
+2025-10-18 14:16:00,342 - utils.gap_decomposition - INFO - Using common sample of 326,496 observations for all models
+2025-10-18 14:16:00,343 - utils.gap_decomposition - INFO - 
+Fitting M0 (main effects only)...
+2025-10-18 14:16:00,343 - utils.gap_decomposition - INFO -   Formula: ERT ~ dyslexic_int
+2025-10-18 14:16:00,678 - utils.gap_decomposition - INFO -   M0 fitted successfully (OLS with clustered SEs)
+2025-10-18 14:16:00,678 - utils.gap_decomposition - INFO - 
+Fitting M1 (main effects only)...
+2025-10-18 14:16:00,678 - utils.gap_decomposition - INFO -   Formula: ERT ~ dyslexic_int + word_length_scaled
+2025-10-18 14:16:01,059 - utils.gap_decomposition - INFO -   M1 fitted successfully (OLS with clustered SEs)
+2025-10-18 14:16:01,059 - utils.gap_decomposition - INFO - 
+Fitting M2 (main effects only)...
+2025-10-18 14:16:01,059 - utils.gap_decomposition - INFO -   Formula: ERT ~ dyslexic_int + word_length_scaled + word_frequency_zipf_scaled
+2025-10-18 14:16:01,513 - utils.gap_decomposition - INFO -   M2 fitted successfully (OLS with clustered SEs)
+2025-10-18 14:16:01,513 - utils.gap_decomposition - INFO - 
+Fitting M3 (main effects only)...
+2025-10-18 14:16:01,513 - utils.gap_decomposition - INFO -   Formula: ERT ~ dyslexic_int + word_length_scaled + word_frequency_zipf_scaled + surprisal_scaled
+2025-10-18 14:16:01,912 - utils.gap_decomposition - INFO -   M3 fitted successfully (OLS with clustered SEs)
+2025-10-18 14:16:01,926 - utils.gap_decomposition - INFO - 
+Computing modelled group gaps from predictions on common sample...
+2025-10-18 14:16:01,927 - utils.gap_decomposition - INFO -   Computing modelled group gaps (Δk)...
+2025-10-18 14:16:02,158 - utils.gap_decomposition - INFO -     M0: Δ0 = 143.02ms
+2025-10-18 14:16:02,414 - utils.gap_decomposition - INFO -     M1: Δ1 = 141.94ms
+2025-10-18 14:16:02,664 - utils.gap_decomposition - INFO -     M2: Δ2 = 142.09ms
+2025-10-18 14:16:02,909 - utils.gap_decomposition - INFO -     M3: Δ3 = 141.93ms
+2025-10-18 14:16:02,929 - utils.gap_decomposition - INFO -   Computing composition gaps...
+2025-10-18 14:16:03,083 - utils.gap_decomposition - INFO -     M0: Composition gap = -0.00ms
+2025-10-18 14:16:03,279 - utils.gap_decomposition - INFO -     M1: Composition gap = 1.09ms
+2025-10-18 14:16:03,485 - utils.gap_decomposition - INFO -     M2: Composition gap = 0.94ms
+2025-10-18 14:16:03,683 - utils.gap_decomposition - INFO -     M3: Composition gap = 1.09ms
+2025-10-18 14:16:03,705 - utils.gap_decomposition - INFO -   Computing R² on observed ERT...
+2025-10-18 14:16:03,713 - utils.gap_decomposition - INFO -     M0: R² = 0.0354
+2025-10-18 14:16:03,719 - utils.gap_decomposition - INFO -     M1: R² = 0.1613
+2025-10-18 14:16:03,727 - utils.gap_decomposition - INFO -     M2: R² = 0.1653
+2025-10-18 14:16:03,734 - utils.gap_decomposition - INFO -     M3: R² = 0.1670
+2025-10-18 14:16:03,734 - utils.gap_decomposition - INFO - 
+Fitting interaction models...
+2025-10-18 14:16:03,845 - utils.gap_decomposition - INFO -   Fitting M1_int...
+2025-10-18 14:16:04,192 - utils.gap_decomposition - INFO -     M1_int fitted successfully
+2025-10-18 14:16:04,254 - utils.gap_decomposition - INFO -   Fitting M2_int...
+2025-10-18 14:16:04,633 - utils.gap_decomposition - INFO -     M2_int fitted successfully
+2025-10-18 14:16:04,701 - utils.gap_decomposition - INFO -   Fitting M3_int...
+2025-10-18 14:16:05,156 - utils.gap_decomposition - INFO -     M3_int fitted successfully
+2025-10-18 14:16:05,165 - utils.gap_decomposition - INFO - 
+Oaxaca/Blinder Decomposition (on Observed ERT):
+2025-10-18 14:16:06,215 - utils.gap_decomposition - INFO -   Total observed gap: 143.02ms
+2025-10-18 14:16:06,216 - utils.gap_decomposition - INFO -   Composition effect: 1.09ms (0.8%)
+2025-10-18 14:16:06,216 - utils.gap_decomposition - INFO -   Coefficient effect: 141.60ms (99.0%)
+2025-10-18 14:16:06,216 - utils.gap_decomposition - INFO -   Residual: 0.33ms
+2025-10-18 14:16:06,216 - utils.gap_decomposition - INFO - 
+  → Groups read similar-difficulty words (composition ≈ 0%)
+2025-10-18 14:16:06,216 - utils.gap_decomposition - INFO -   → Gap is due to differential sensitivity (coefficient effect)
+2025-10-18 14:16:06,302 - utils.gap_decomposition - INFO - 
+============================================================
+2025-10-18 14:16:06,303 - utils.gap_decomposition - INFO - GAP DECOMPOSITION SUMMARY (ON OBSERVED ERT)
+2025-10-18 14:16:06,303 - utils.gap_decomposition - INFO - ============================================================
+2025-10-18 14:16:06,303 - utils.gap_decomposition - INFO - 
+Baseline modelled gap (Δ0): 143.02ms
+2025-10-18 14:16:06,303 - utils.gap_decomposition - INFO - 
+M1 (+Length):
+2025-10-18 14:16:06,304 - utils.gap_decomposition - INFO -   Modelled gap (Δ1): 141.94ms
+2025-10-18 14:16:06,304 - utils.gap_decomposition - INFO -   Composition gap: 1.09ms
+2025-10-18 14:16:06,304 - utils.gap_decomposition - INFO -   % Gap explained: 0.8%
+2025-10-18 14:16:06,304 - utils.gap_decomposition - INFO -   ΔR²: 0.1259
+2025-10-18 14:16:06,304 - utils.gap_decomposition - INFO - 
+M2 (+Frequency):
+2025-10-18 14:16:06,304 - utils.gap_decomposition - INFO -   Modelled gap (Δ2): 142.09ms
+2025-10-18 14:16:06,305 - utils.gap_decomposition - INFO -   Composition gap: 0.94ms
+2025-10-18 14:16:06,305 - utils.gap_decomposition - INFO -   % Gap explained: 0.7%
+2025-10-18 14:16:06,305 - utils.gap_decomposition - INFO -   ΔR²: 0.0040
+2025-10-18 14:16:06,305 - utils.gap_decomposition - INFO - 
+M3 (+Surprisal):
+2025-10-18 14:16:06,305 - utils.gap_decomposition - INFO -   Modelled gap (Δ3): 141.93ms
+2025-10-18 14:16:06,305 - utils.gap_decomposition - INFO -   Composition gap: 1.09ms
+2025-10-18 14:16:06,306 - utils.gap_decomposition - INFO -   % Gap explained: 0.8%
+2025-10-18 14:16:06,306 - utils.gap_decomposition - INFO -   ΔR²: 0.0018
+2025-10-18 14:16:06,306 - utils.sensitivity_analysis - INFO - ============================================================
+2025-10-18 14:16:06,306 - utils.sensitivity_analysis - INFO - SENSITIVITY ANALYSES
+2025-10-18 14:16:06,306 - utils.sensitivity_analysis - INFO - ============================================================
+2025-10-18 14:16:06,306 - utils.sensitivity_analysis - INFO - 
+1. RESIDUALIZED SURPRISAL MODEL
+2025-10-18 14:16:06,374 - utils.sensitivity_analysis - INFO -   Formula: ERT ~ dyslexic_int * (word_length_scaled + word_frequency_zipf_scaled + surprisal_resid)
+2025-10-18 14:16:07,057 - utils.sensitivity_analysis - INFO -   Residualized surprisal: beta=11.6330, p=0.0000
+2025-10-18 14:16:07,058 - utils.sensitivity_analysis - INFO -   [OK] Surprisal effect robust to frequency collinearity
+2025-10-18 14:16:07,072 - utils.sensitivity_analysis - INFO - 
+2. SUBJECT-WISE CROSS-VALIDATION
+2025-10-18 14:16:07,073 - utils.sensitivity_analysis - INFO -   Running 10-fold subject-wise CV...
+2025-10-18 14:16:07,317 - utils.sensitivity_analysis - INFO -     Fold 1/10
+2025-10-18 14:16:07,980 - utils.sensitivity_analysis - INFO -     Fold 2/10
+2025-10-18 14:16:08,609 - utils.sensitivity_analysis - INFO -     Fold 3/10
+2025-10-18 14:16:09,308 - utils.sensitivity_analysis - INFO -     Fold 4/10
+2025-10-18 14:16:09,927 - utils.sensitivity_analysis - INFO -     Fold 5/10
+2025-10-18 14:16:10,629 - utils.sensitivity_analysis - INFO -     Fold 6/10
+2025-10-18 14:16:11,970 - utils.sensitivity_analysis - INFO -     Fold 7/10
+2025-10-18 14:16:12,694 - utils.sensitivity_analysis - INFO -     Fold 8/10
+2025-10-18 14:16:13,327 - utils.sensitivity_analysis - INFO -     Fold 9/10
+2025-10-18 14:16:14,098 - utils.sensitivity_analysis - INFO -     Fold 10/10
+2025-10-18 14:16:14,712 - utils.sensitivity_analysis - INFO -   Cross-validation R²: -0.3352 ± 0.2999
+2025-10-18 14:16:14,712 - utils.sensitivity_analysis - INFO -   Based on 10 successful folds
+2025-10-18 14:16:14,758 - utils.sensitivity_analysis - INFO - 
+3. ALTERNATIVE BINNING (Terciles & Quintiles)
+2025-10-18 14:16:14,759 - utils.sensitivity_analysis - INFO - 
+  Testing terciles...
+2025-10-18 14:16:14,892 - utils.sensitivity_analysis - INFO -     word_length: Control Δ=202.4ms, Dyslexic Δ=304.4ms
+2025-10-18 14:16:14,995 - utils.sensitivity_analysis - INFO -     word_frequency_zipf: Control Δ=-187.4ms, Dyslexic Δ=-283.4ms
+2025-10-18 14:16:15,101 - utils.sensitivity_analysis - INFO -     surprisal: Control Δ=112.9ms, Dyslexic Δ=200.7ms
+2025-10-18 14:16:15,102 - utils.sensitivity_analysis - INFO - 
+  Testing quintiles...
+2025-10-18 14:16:15,178 - utils.sensitivity_analysis - INFO -     word_length: Control Δ=284.7ms, Dyslexic Δ=452.5ms
+2025-10-18 14:16:15,258 - utils.sensitivity_analysis - INFO -     word_frequency_zipf: Control Δ=-242.1ms, Dyslexic Δ=-393.1ms
+2025-10-18 14:16:15,343 - utils.sensitivity_analysis - INFO -     surprisal: Control Δ=150.5ms, Dyslexic Δ=270.2ms
+2025-10-18 14:16:15,351 - utils.hypothesis_visualization - INFO - ============================================================
+2025-10-18 14:16:15,352 - utils.hypothesis_visualization - INFO - CREATING VISUALIZATIONS
+2025-10-18 14:16:15,352 - utils.hypothesis_visualization - INFO - ============================================================
+2025-10-18 14:16:15,352 - utils.hypothesis_visualization - INFO - 
+1. Continuous effect curves...
+2025-10-18 14:16:16,678 - utils.hypothesis_visualization - INFO -   Saved to results\continuous_effects_with_quartiles.png
+2025-10-18 14:16:16,681 - utils.hypothesis_visualization - INFO - 2. Gap decomposition...
+2025-10-18 14:16:17,010 - utils.hypothesis_visualization - INFO -   Saved to results\gap_decomposition.png
+2025-10-18 14:16:17,010 - utils.hypothesis_visualization - INFO - 3. Slope ratios...
+2025-10-18 14:16:17,311 - utils.hypothesis_visualization - INFO -   Saved to results\slope_ratios.png
+2025-10-18 14:16:17,311 - utils.hypothesis_visualization - INFO - 4. Model comparison...
+2025-10-18 14:16:17,323 - matplotlib.category - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
+2025-10-18 14:16:17,326 - matplotlib.category - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
+2025-10-18 14:16:17,720 - utils.hypothesis_visualization - INFO -   Saved to results\model_comparison.png
+2025-10-18 14:16:17,721 - utils.hypothesis_visualization - INFO - 5. Quartile effects...
+2025-10-18 14:16:18,345 - utils.hypothesis_visualization - INFO -   Saved to results\quartile_effects.png
+2025-10-18 14:16:18,345 - utils.hypothesis_visualization - INFO - 6. Predicted vs observed...
+2025-10-18 14:16:19,278 - utils.hypothesis_visualization - INFO -   Saved to results\predicted_vs_observed.png
+2025-10-18 14:16:19,278 - utils.hypothesis_visualization - INFO - 
+All visualizations saved to results
+2025-10-18 14:16:19,278 - utils.results_reporting - INFO - ============================================================
+2025-10-18 14:16:19,279 - utils.results_reporting - INFO - GENERATING RESULTS REPORT
+2025-10-18 14:16:19,279 - utils.results_reporting - INFO - ============================================================
+2025-10-18 14:16:19,281 - utils.results_reporting - INFO - 
+Testing Hypothesis 1: Feature effects on reading time
+2025-10-18 14:16:19,282 - utils.results_reporting - INFO -   Length: beta=0.1222, p=0.0000 - CONFIRMED
+2025-10-18 14:16:19,282 - utils.results_reporting - INFO -   Frequency: beta=-0.0486, p=0.0000 - CONFIRMED
+2025-10-18 14:16:19,282 - utils.results_reporting - INFO -   Surprisal: beta=0.0317, p=0.0000 - CONFIRMED
+2025-10-18 14:16:19,282 - utils.results_reporting - INFO - 
+Hypothesis 1: CONFIRMED
+2025-10-18 14:16:19,283 - utils.results_reporting - INFO - 
+Testing Hypothesis 2: Dyslexic amplification
+2025-10-18 14:16:19,283 - utils.results_reporting - INFO - 
+Hypothesis 2: CONFIRMED
+2025-10-18 14:16:19,283 - utils.results_reporting - INFO - 
+Testing Hypothesis 3: Gap explanation
+2025-10-18 14:16:19,283 - utils.results_reporting - INFO -   Baseline gap: 143.02ms
+2025-10-18 14:16:19,283 - utils.results_reporting - INFO -   Final gap: 141.93ms
+2025-10-18 14:16:19,283 - utils.results_reporting - INFO -   Total explained: 0.8%
+2025-10-18 14:16:19,283 - utils.results_reporting - INFO -     Length: 0.8%
+2025-10-18 14:16:19,284 - utils.results_reporting - INFO -     Frequency: -0.1%
+2025-10-18 14:16:19,284 - utils.results_reporting - INFO -     Surprisal: 0.1%
+2025-10-18 14:16:19,284 - utils.results_reporting - INFO - 
+Hypothesis 3: NOT CONFIRMED
+2025-10-18 14:16:19,285 - utils.results_reporting - INFO - 
+================================================================================
+2025-10-18 14:16:19,285 - utils.results_reporting - INFO - HYPOTHESIS TESTING RESULTS SUMMARY
+2025-10-18 14:16:19,285 - utils.results_reporting - INFO - ================================================================================
+2025-10-18 14:16:19,285 - utils.results_reporting - INFO - 
+HYPOTHESIS 1: CONFIRMED
+2025-10-18 14:16:19,285 - utils.results_reporting - INFO -   All features predict reading time in expected directions
+2025-10-18 14:16:19,285 - utils.results_reporting - INFO - 
+HYPOTHESIS 2: CONFIRMED
+2025-10-18 14:16:19,285 - utils.results_reporting - INFO -   All features show dyslexic amplification (SR > 1)
+2025-10-18 14:16:19,287 - utils.results_reporting - INFO - 
+HYPOTHESIS 3: NOT CONFIRMED
+2025-10-18 14:16:19,287 - utils.results_reporting - INFO -   Features explain 0.8% of the dyslexic-control gap
+2025-10-18 14:16:19,287 - utils.results_reporting - INFO - 
+OVERALL: MIXED RESULTS
+2025-10-18 14:16:19,287 - utils.results_reporting - INFO - 
+Key Findings:
+2025-10-18 14:16:19,287 - utils.results_reporting - INFO -   • 3/3 features show dyslexic amplification
+2025-10-18 14:16:19,287 - utils.results_reporting - INFO -   • Features explain 0.8% of group gap
+2025-10-18 14:16:19,287 - utils.results_reporting - INFO -   • Effects consistent across multiple analyses
+2025-10-18 14:16:19,288 - utils.results_reporting - INFO - Report generation complete
+2025-10-18 14:16:19,290 - utils.misc_utils - INFO - Results saved to results\hypothesis_testing_results.json
+2025-10-18 14:16:19,290 - __main__ - INFO - 
+Hypothesis testing complete! Results saved to results
