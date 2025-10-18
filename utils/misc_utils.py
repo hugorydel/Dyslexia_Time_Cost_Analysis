@@ -30,6 +30,8 @@ def make_serializable(obj: Any) -> Any:
         return obj.tolist()
     elif isinstance(obj, (np.integer, np.floating)):
         return obj.item()
+    elif isinstance(obj, (np.bool_, bool)):
+        return bool(obj)
     elif hasattr(obj, "__dict__"):
         return str(obj)
     else:
