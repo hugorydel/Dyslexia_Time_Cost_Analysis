@@ -42,16 +42,16 @@ def shapley_decomposition(ert_predictor, data: pd.DataFrame) -> Dict:
 
     Args:
         ert_predictor: ERTPredictor instance
-        data: Full dataset
+        data: Sample data (already sampled by caller)
 
     Returns:
         Dictionary with decomposition results
     """
     logger.info("  Computing Shapley decomposition...")
 
-    # Sample data for faster computation
-    sample_size = min(5000, len(data))
-    sample_data = data.sample(sample_size, random_state=42)
+    # DON'T sample here - use the data passed in
+    # This was the bug causing inconsistent baselines
+    sample_data = data.copy()
 
     # Get predictions for dyslexic observations
     dys_data = sample_data[sample_data["group"] == "dyslexic"]
@@ -149,7 +149,7 @@ def equal_ease_counterfactual(
 
     Args:
         ert_predictor: ERTPredictor instance
-        data: Full dataset
+        data: Sample data (already sampled by caller)
         quartiles: Feature quartiles (for IQR)
 
     Returns:
@@ -157,9 +157,8 @@ def equal_ease_counterfactual(
     """
     logger.info("  Computing equal-ease counterfactual...")
 
-    # Sample data
-    sample_size = min(5000, len(data))
-    sample_data = data.sample(sample_size, random_state=42)
+    # DON'T sample here - use the data passed in
+    sample_data = data.copy()
 
     # Get IQR for each feature
     iqr = {feat: vals["iqr"] for feat, vals in quartiles.items()}
@@ -192,7 +191,9 @@ def equal_ease_counterfactual(
 
     # Clip to reasonable ranges
     shifted_data["length"] = shifted_data["length"].clip(lower=1)
-    shifted_data["zipf"] = shifted_data["zipf"].clip(lower=1, upper=7)
+    # Note: for residualized zipf, don't clip to 1-7 range since it can be negative
+    # If you're using raw zipf, uncomment the line below:
+    # shifted_data["zipf"] = shifted_data["zipf"].clip(lower=1, upper=7)
     shifted_data["surprisal"] = shifted_data["surprisal"].clip(lower=0)
 
     # Counterfactual predictions
@@ -241,77 +242,122 @@ def equal_ease_counterfactual(
 
 def per_feature_equalization(ert_predictor, data: pd.DataFrame, feature: str) -> Dict:
     """
-    Per-feature equalization: Approximate effect by using control predictions
-    for dyslexic observations
+    Per-feature equalization: Counterfactual where dyslexics have control's
+    feature distribution for ONE specific feature
+
+    Strategy: For dyslexic observations, set the target feature to control group mean
+    This approximates "what if dyslexics weren't differentially affected by this feature"
 
     Args:
         ert_predictor: ERTPredictor instance
         data: Full dataset
-        feature: Feature to equalize (for labeling only - we equalize all)
+        feature: Specific feature to equalize ('length', 'zipf', or 'surprisal')
 
     Returns:
         Dictionary with equalization results
     """
     logger.info(f"  Computing per-feature equalization for {feature}...")
 
-    # Sample data
+    # Use consistent random seed for reproducibility
+    np.random.seed(42)
     sample_size = min(5000, len(data))
     sample_data = data.sample(sample_size, random_state=42)
 
-    # Baseline gap
-    baseline_ert = []
+    # === STEP 1: BASELINE GAP ===
+    # Compute observed ERT for all observations using their actual group models
+    ert_observed = []
+    groups_list = []
+    valid_indices = []
+
     for idx, row in sample_data.iterrows():
         group = row["group"]
         features = row[["length", "zipf", "surprisal"]].to_frame().T
         try:
             ert = ert_predictor.predict_ert(features, group)[0]
-            baseline_ert.append(ert)
+            ert_observed.append(ert)
+            groups_list.append(group)
+            valid_indices.append(idx)
         except:
-            baseline_ert.append(np.nan)
+            continue
 
-    sample_data["ERT_baseline"] = baseline_ert
-    sample_data = sample_data.dropna(subset=["ERT_baseline"])
-
-    if len(sample_data) == 0:
+    if len(ert_observed) == 0:
         return {"error": "No valid predictions"}
 
+    # Create clean dataframe with only valid predictions
+    sample_data_clean = sample_data.loc[valid_indices].copy()
+    sample_data_clean["ERT_observed"] = ert_observed
+    sample_data_clean["group"] = groups_list
+
     baseline_gap = (
-        sample_data[sample_data["group"] == "dyslexic"]["ERT_baseline"].mean()
-        - sample_data[sample_data["group"] == "control"]["ERT_baseline"].mean()
+        sample_data_clean[sample_data_clean["group"] == "dyslexic"][
+            "ERT_observed"
+        ].mean()
+        - sample_data_clean[sample_data_clean["group"] == "control"][
+            "ERT_observed"
+        ].mean()
     )
 
-    # Counterfactual: Use control predictions for all observations
-    hybrid_ert = []
-    for idx, row in sample_data.iterrows():
-        features = row[["length", "zipf", "surprisal"]].to_frame().T
+    # === STEP 2: COUNTERFACTUAL - Equalize ONE feature ===
+    # Compute control group mean for THIS specific feature
+    control_feature_mean = sample_data_clean[sample_data_clean["group"] == "control"][
+        feature
+    ].mean()
+
+    logger.info(f"    Control mean for {feature}: {control_feature_mean:.3f}")
+
+    # Create counterfactual predictions
+    ert_counterfactual = []
+
+    for idx, row in sample_data_clean.iterrows():
+        group = row["group"]
+        features_cf = row[["length", "zipf", "surprisal"]].copy().to_frame().T
+
+        # INTERVENTION: Only for dyslexic observations, replace THIS feature with control mean
+        # This simulates "what if dyslexics had control's typical value for this feature"
+        if group == "dyslexic":
+            features_cf[feature] = control_feature_mean
+
+        # Use ORIGINAL group model (this is key - we're not changing the model sensitivity)
         try:
-            # Always use control predictions
-            ert = ert_predictor.predict_ert(features, "control")[0]
-            hybrid_ert.append(ert)
+            ert = ert_predictor.predict_ert(features_cf, group)[0]
+            ert_counterfactual.append(ert)
         except:
-            hybrid_ert.append(np.nan)
+            ert_counterfactual.append(np.nan)
 
-    sample_data["ERT_hybrid"] = hybrid_ert
-    sample_data = sample_data.dropna(subset=["ERT_hybrid"])
+    sample_data_clean["ERT_counterfactual"] = ert_counterfactual
+    sample_data_clean = sample_data_clean.dropna(subset=["ERT_counterfactual"])
 
-    hybrid_gap = (
-        sample_data[sample_data["group"] == "dyslexic"]["ERT_hybrid"].mean()
-        - sample_data[sample_data["group"] == "control"]["ERT_hybrid"].mean()
+    if len(sample_data_clean) == 0:
+        return {"error": "No valid counterfactual predictions"}
+
+    counterfactual_gap = (
+        sample_data_clean[sample_data_clean["group"] == "dyslexic"][
+            "ERT_counterfactual"
+        ].mean()
+        - sample_data_clean[sample_data_clean["group"] == "control"][
+            "ERT_counterfactual"
+        ].mean()
     )
 
-    gap_explained = baseline_gap - hybrid_gap
+    # === STEP 3: COMPUTE GAP EXPLAINED ===
+    gap_explained = baseline_gap - counterfactual_gap
     pct_explained = (gap_explained / baseline_gap * 100) if baseline_gap != 0 else 0
 
+    logger.info(f"    Baseline gap: {baseline_gap:.2f} ms")
     logger.info(
-        f"    {feature} equalization explains {gap_explained:.2f} ms ({pct_explained:.1f}%)"
+        f"    Counterfactual gap (with {feature} equalized): {counterfactual_gap:.2f} ms"
+    )
+    logger.info(
+        f"    Gap explained by {feature}: {gap_explained:.2f} ms ({pct_explained:.1f}%)"
     )
 
     return {
         "feature": feature,
         "baseline_gap": float(baseline_gap),
-        "hybrid_gap": float(hybrid_gap),
+        "counterfactual_gap": float(counterfactual_gap),
         "gap_explained": float(gap_explained),
         "pct_explained": float(pct_explained),
+        "control_mean": float(control_feature_mean),
     }
 
 
@@ -322,6 +368,8 @@ def test_hypothesis_3(
 ) -> Dict:
     """
     Test Hypothesis 3: Gap decomposition
+
+    CRITICAL: All gap computations use the SAME sample for consistency
 
     Args:
         ert_predictor: ERTPredictor instance
@@ -335,22 +383,58 @@ def test_hypothesis_3(
     logger.info("HYPOTHESIS 3: GAP DECOMPOSITION")
     logger.info("=" * 60)
 
-    # Total gap
-    total_gap = compute_total_gap(ert_predictor, data)
-    logger.info(f"\nTotal observed gap: {total_gap:.2f} ms")
+    # === USE CONSISTENT SAMPLE FOR ALL ANALYSES ===
+    # This fixes the "inconsistent gap baseline" bug
+    np.random.seed(42)
+    sample_size = min(5000, len(data))
+    analysis_sample = data.sample(sample_size, random_state=42)
 
-    # Shapley decomposition
-    shapley = shapley_decomposition(ert_predictor, data)
+    logger.info(
+        f"\nUsing consistent sample of {len(analysis_sample):,} observations for all H3 analyses"
+    )
 
-    # Equal-ease counterfactual
-    equal_ease = equal_ease_counterfactual(ert_predictor, data, quartiles)
+    # === 1. TOTAL GAP (on consistent sample) ===
+    total_gap_observed = compute_total_gap(ert_predictor, analysis_sample)
+    logger.info(f"\nTotal observed gap: {total_gap_observed:.2f} ms")
 
-    # Per-feature equalization (compute for all features)
+    # === 2. SHAPLEY DECOMPOSITION (on same sample) ===
+    shapley = shapley_decomposition(ert_predictor, analysis_sample)
+
+    # Verify Shapley gap matches total gap (should be close)
+    if "total_gap" in shapley:
+        gap_diff = abs(shapley["total_gap"] - total_gap_observed)
+        if gap_diff > 5:  # More than 5ms difference is suspicious
+            logger.warning(
+                f"⚠️  Shapley gap ({shapley['total_gap']:.2f}) differs from total gap ({total_gap_observed:.2f}) by {gap_diff:.2f}ms"
+            )
+
+    # === 3. EQUAL-EASE COUNTERFACTUAL (on same sample) ===
+    equal_ease = equal_ease_counterfactual(ert_predictor, analysis_sample, quartiles)
+
+    # Verify equal-ease baseline matches
+    if "baseline_gap" in equal_ease:
+        gap_diff = abs(equal_ease["baseline_gap"] - total_gap_observed)
+        if gap_diff > 5:
+            logger.warning(
+                f"⚠️  Equal-ease baseline ({equal_ease['baseline_gap']:.2f}) differs from total gap ({total_gap_observed:.2f}) by {gap_diff:.2f}ms"
+            )
+
+    # === 4. PER-FEATURE EQUALIZATION (on same sample) ===
     per_feature = {}
     for feature in ["length", "zipf", "surprisal"]:
-        per_feature[feature] = per_feature_equalization(ert_predictor, data, feature)
+        per_feature[feature] = per_feature_equalization(
+            ert_predictor, analysis_sample, feature
+        )
 
-    # Decision logic
+        # Verify baseline consistency
+        if "baseline_gap" in per_feature[feature]:
+            gap_diff = abs(per_feature[feature]["baseline_gap"] - total_gap_observed)
+            if gap_diff > 5:
+                logger.warning(
+                    f"⚠️  {feature} equalization baseline ({per_feature[feature]['baseline_gap']:.2f}) differs from total gap ({total_gap_observed:.2f}) by {gap_diff:.2f}ms"
+                )
+
+    # === 5. DECISION LOGIC ===
     sensitivity_explained = any(
         res.get("pct_explained", 0) >= 25 for res in per_feature.values()
     )
@@ -364,8 +448,10 @@ def test_hypothesis_3(
         status = "NOT CONFIRMED"
 
     logger.info(f"\nHYPOTHESIS 3: {status}")
+    logger.info(f"  Sensitivity explanation: {sensitivity_explained}")
+    logger.info(f"  Text difficulty explanation: {text_difficulty_explained}")
 
-    # Create summary
+    # === 6. GENERATE SUMMARY ===
     if status == "STRONGLY CONFIRMED":
         summary = "Features explain gap through both sensitivity and text difficulty"
     elif status == "CONFIRMED":
@@ -378,9 +464,29 @@ def test_hypothesis_3(
 
     return {
         "status": status,
-        "total_gap": total_gap,
+        "total_gap": total_gap_observed,
+        "sample_size": len(analysis_sample),
         "shapley_decomposition": shapley,
         "equal_ease_counterfactual": equal_ease,
         "per_feature_equalization": per_feature,
         "summary": summary,
+        "gap_consistency_check": {
+            "total_gap": total_gap_observed,
+            "shapley_gap": shapley.get("total_gap", None),
+            "equal_ease_baseline": equal_ease.get("baseline_gap", None),
+            "max_difference": (
+                max(
+                    abs(
+                        shapley.get("total_gap", total_gap_observed)
+                        - total_gap_observed
+                    ),
+                    abs(
+                        equal_ease.get("baseline_gap", total_gap_observed)
+                        - total_gap_observed
+                    ),
+                )
+                if shapley.get("total_gap") and equal_ease.get("baseline_gap")
+                else 0
+            ),
+        },
     }

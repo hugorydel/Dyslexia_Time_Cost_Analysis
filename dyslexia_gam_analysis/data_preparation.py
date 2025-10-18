@@ -1,6 +1,6 @@
 """
-Data Preparation for GAM Analysis
-Prepares data with required columns and formatting
+Data Preparation with Orthogonalized Zipf (Option 2B)
+Keeps length raw, residualizes zipf to remove collinearity
 """
 
 import logging
@@ -8,35 +8,90 @@ from typing import Dict, Tuple
 
 import numpy as np
 import pandas as pd
+from sklearn.linear_model import LinearRegression
 
 logger = logging.getLogger(__name__)
 
 
-def prepare_gam_data(data: pd.DataFrame) -> pd.DataFrame:
+def orthogonalize_zipf(data: pd.DataFrame) -> pd.DataFrame:
+    """
+    Orthogonalize zipf with respect to length (Option 2B)
+
+    Keep length as-is, residualize zipf to get "frequency beyond length"
+
+    Args:
+        data: DataFrame with 'length' and 'zipf' columns
+
+    Returns:
+        DataFrame with added 'zipf_resid' column and renamed 'zipf_original'
+    """
+    logger.info("Orthogonalizing zipf with respect to length...")
+
+    # Store original zipf values
+    data["zipf_original"] = data["zipf"].copy()
+
+    # Remove rows with missing values for regression
+    valid_mask = data[["length", "zipf"]].notna().all(axis=1)
+    valid_data = data[valid_mask].copy()
+
+    # Fit linear regression: zipf ~ length
+    X = valid_data[["length"]].values
+    y = valid_data["zipf"].values
+
+    reg = LinearRegression()
+    reg.fit(X, y)
+
+    # Compute residuals for all valid rows
+    y_pred = reg.predict(X)
+    residuals = y - y_pred
+
+    # Store residuals
+    data.loc[valid_mask, "zipf_resid"] = residuals
+
+    # For any invalid rows, set to NaN (will be dropped later)
+    data.loc[~valid_mask, "zipf_resid"] = np.nan
+
+    # Log diagnostics
+    corr_original = data["length"].corr(data["zipf_original"])
+    corr_resid = data["length"].corr(data["zipf_resid"])
+
+    logger.info(f"  Original correlation (length, zipf): {corr_original:.3f}")
+    logger.info(f"  Residual correlation (length, zipf_resid): {corr_resid:.3f}")
+    logger.info(f"  R² from regression: {reg.score(X, y):.3f}")
+    logger.info(
+        f"  Regression coefficients: intercept={reg.intercept_:.3f}, slope={reg.coef_[0]:.3f}"
+    )
+
+    # Replace zipf with zipf_resid for modeling
+    data["zipf"] = data["zipf_resid"].copy()
+
+    logger.info("  Zipf successfully orthogonalized!")
+    logger.info("  NOTE: 'zipf' now contains residualized values")
+    logger.info("  NOTE: 'zipf_original' contains original values")
+
+    return data
+
+
+def prepare_gam_data(
+    data: pd.DataFrame, residualize_zipf: bool = False
+) -> pd.DataFrame:
     """
     Prepare data for GAM fitting
 
-    Required columns in output:
-    - skip: binary (0/1)
-    - TRT: total reading time (only for fixated words)
-    - length: word length
-    - zipf: word frequency
-    - surprisal: word surprisal
-    - group: "control" or "dyslexic"
-    - group_numeric: 0=control, 1=dyslexic
-    - subject_id: subject identifier
-    - word_text: word text
-    - dyslexic: boolean
-    - ERT: expected reading time (computed)
-
     Args:
         data: Raw data with linguistic features
+        residualize_zipf: If True, orthogonalize zipf against length
+                         If False, use raw zipf values
 
     Returns:
         Cleaned DataFrame ready for GAM fitting
     """
     logger.info("=" * 60)
     logger.info("PREPARING DATA FOR GAM ANALYSIS")
+    if residualize_zipf:
+        logger.info("MODE: Residualized Zipf (controlling for length)")
+    else:
+        logger.info("MODE: Raw Zipf (natural co-occurrence)")
     logger.info("=" * 60)
 
     # Check required columns exist
@@ -74,12 +129,39 @@ def prepare_gam_data(data: pd.DataFrame) -> pd.DataFrame:
     gam_data["group"] = gam_data["dyslexic"].map({False: "control", True: "dyslexic"})
     gam_data["group_numeric"] = gam_data["dyslexic"].astype(int)
 
-    # Remove rows with missing values in key features
+    # Remove rows with missing values in key features (BEFORE orthogonalization)
     before_clean = len(gam_data)
     gam_data = gam_data.dropna(subset=["length", "zipf", "surprisal"])
     after_clean = len(gam_data)
 
     logger.info(f"Dropped {before_clean - after_clean:,} rows with missing features")
+
+    # CONDITIONAL ORTHOGONALIZATION
+    if residualize_zipf:
+        logger.info("\nApplying zipf orthogonalization...")
+        gam_data = orthogonalize_zipf(gam_data)
+
+        # Drop any rows where orthogonalization created NaN
+        before_ortho = len(gam_data)
+        gam_data = gam_data.dropna(subset=["zipf"])
+        after_ortho = len(gam_data)
+        if after_ortho < before_ortho:
+            logger.info(
+                f"Dropped {before_ortho - after_ortho:,} rows after orthogonalization"
+            )
+    else:
+        logger.info("\nUsing raw zipf values (no orthogonalization)")
+        # Store original for reference
+        gam_data["zipf_original"] = gam_data["zipf"].copy()
+
+        # Log correlation
+        corr_length_zipf = gam_data["length"].corr(gam_data["zipf"])
+        logger.info(f"  Correlation (length, zipf): {corr_length_zipf:.3f}")
+        if abs(corr_length_zipf) > 0.7:
+            logger.warning(f"  ⚠️  High correlation detected (r={corr_length_zipf:.3f})")
+            logger.warning(
+                f"  GAMs can handle this, but be aware of potential collinearity"
+            )
 
     # Remove extreme outliers in TRT (beyond 3 SD for fixated words)
     fixated = gam_data[gam_data["skip"] == 0]
@@ -97,8 +179,6 @@ def prepare_gam_data(data: pd.DataFrame) -> pd.DataFrame:
         )
 
     # Compute ERT for each observation
-    # For skipped words: ERT = 0
-    # For fixated words: ERT = TRT
     gam_data["ERT"] = gam_data.apply(
         lambda row: 0 if row["skip"] == 1 else row["TRT"], axis=1
     )
@@ -115,18 +195,74 @@ def prepare_gam_data(data: pd.DataFrame) -> pd.DataFrame:
 
     # Feature ranges
     logger.info(f"\nFeature ranges:")
-    for feat in ["length", "zipf", "surprisal"]:
-        logger.info(
-            f"  {feat}: [{gam_data[feat].min():.2f}, {gam_data[feat].max():.2f}], "
-            f"mean={gam_data[feat].mean():.2f}"
-        )
+    logger.info(
+        f"  length: [{gam_data['length'].min():.2f}, {gam_data['length'].max():.2f}], "
+        f"mean={gam_data['length'].mean():.2f}"
+    )
+
+    zipf_label = "zipf (residualized)" if residualize_zipf else "zipf (raw)"
+    logger.info(
+        f"  {zipf_label}: [{gam_data['zipf'].min():.2f}, {gam_data['zipf'].max():.2f}], "
+        f"mean={gam_data['zipf'].mean():.2f}"
+    )
+
+    logger.info(
+        f"  surprisal: [{gam_data['surprisal'].min():.2f}, {gam_data['surprisal'].max():.2f}], "
+        f"mean={gam_data['surprisal'].mean():.2f}"
+    )
 
     return gam_data
+
+
+def prepare_data_pipeline(
+    data: pd.DataFrame,
+    residualize_zipf: bool = False,
+) -> Tuple[pd.DataFrame, pd.DataFrame, Dict]:
+    """
+    Full data preparation pipeline
+
+    Args:
+        data: Raw data with linguistic features
+        residualize_zipf: Whether to orthogonalize zipf against length
+
+    Returns:
+        (train_data, test_data, metadata) tuple
+    """
+    # Prepare data
+    gam_data = prepare_gam_data(data, residualize_zipf=residualize_zipf)
+
+    # Compute quartiles
+    quartiles = compute_feature_quartiles(gam_data)
+
+    # Check balance
+    balance_stats = check_data_balance(gam_data)
+
+    # Train/test split
+    train_data, test_data = train_test_split_by_subject(gam_data, test_size=0.2)
+
+    # Package metadata
+    metadata = {
+        "quartiles": quartiles,
+        "balance_stats": balance_stats,
+        "n_total": len(gam_data),
+        "n_train": len(train_data),
+        "n_test": len(test_data),
+        "residualized": residualize_zipf,
+        "note": (
+            "zipf values are RESIDUALIZED (orthogonal to length)"
+            if residualize_zipf
+            else "zipf values are RAW (natural co-occurrence with length)"
+        ),
+    }
+
+    return train_data, test_data, metadata
 
 
 def compute_feature_quartiles(data: pd.DataFrame) -> Dict[str, Dict[str, float]]:
     """
     Compute Q1 (25th) and Q3 (75th) percentiles for each feature
+
+    NOTE: For zipf, we use the RESIDUALIZED values since that's what the model sees
 
     Args:
         data: Prepared data
@@ -150,8 +286,9 @@ def compute_feature_quartiles(data: pd.DataFrame) -> Dict[str, Dict[str, float]]
 
     logger.info("\nFeature quartiles:")
     for feat, vals in quartiles.items():
+        label = f"{feat} (resid)" if feat == "zipf" else feat
         logger.info(
-            f"  {feat}: Q1={vals['q1']:.2f}, Q3={vals['q3']:.2f}, IQR={vals['iqr']:.2f}"
+            f"  {label}: Q1={vals['q1']:.2f}, Q3={vals['q3']:.2f}, IQR={vals['iqr']:.2f}"
         )
 
     return quartiles
@@ -272,10 +409,10 @@ def prepare_data_pipeline(
     Returns:
         (train_data, test_data, metadata) tuple
     """
-    # Prepare data
+    # Prepare data (including orthogonalization)
     gam_data = prepare_gam_data(data)
 
-    # Compute quartiles
+    # Compute quartiles (on residualized zipf)
     quartiles = compute_feature_quartiles(gam_data)
 
     # Check balance
@@ -291,6 +428,7 @@ def prepare_data_pipeline(
         "n_total": len(gam_data),
         "n_train": len(train_data),
         "n_test": len(test_data),
+        "note": "zipf values are RESIDUALIZED (orthogonal to length)",
     }
 
     return train_data, test_data, metadata

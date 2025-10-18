@@ -1,0 +1,40 @@
+{
+  "status": "PARTIALLY CONFIRMED",
+  "slope_ratios": {
+    "length": {
+      "slope_ratio": 1.13317166628099,
+      "bootstrap_mean_sr": 1.1331714948923581,
+      "ci_low": 1.1330616299290608,
+      "ci_high": 1.1332816901315454,
+      "p_value": 0.0,
+      "amplified": true,
+      "ci_excludes_1": true,
+      "significant": true,
+      "status": "CONFIRMED"
+    },
+    "zipf": {
+      "slope_ratio": 0.6755696732385973,
+      "bootstrap_mean_sr": 0.6758981707456776,
+      "ci_low": 0.6748290058646523,
+      "ci_high": 0.677439316738605,
+      "p_value": 1.0,
+      "amplified": false,
+      "ci_excludes_1": true,
+      "significant": false,
+      "status": "NOT CONFIRMED"
+    },
+    "surprisal": {
+      "slope_ratio": 2.2233382137669313,
+      "bootstrap_mean_sr": 2.2237946591639193,
+      "ci_low": 2.2221987842936923,
+      "ci_high": 2.225591942586511,
+      "p_value": 0.0,
+      "amplified": true,
+      "ci_excludes_1": true,
+      "significant": true,
+      "status": "CONFIRMED"
+    }
+  },
+  "n_amplified": 2,
+  "summary": "2/3 features show significant dyslexic amplification (SR > 1.0 with p < 0.05)"
+}

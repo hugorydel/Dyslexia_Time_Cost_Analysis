@@ -1,0 +1,138 @@
+{
+  "status": "CONFIRMED",
+  "features": {
+    "length": {
+      "amie_control": {
+        "feature": "length",
+        "group": "control",
+        "q1": 2.0,
+        "q3": 6.0,
+        "ert_q1": 116.99025851834612,
+        "ert_q3": 238.39135103896598,
+        "amie_ms": 121.40109252061986
+      },
+      "amie_dyslexic": {
+        "feature": "length",
+        "group": "dyslexic",
+        "q1": 2.0,
+        "q3": 6.0,
+        "ert_q1": 204.84153121819756,
+        "ert_q3": 342.409809518121,
+        "amie_ms": 137.56827829992343
+      },
+      "quartile_contrasts": {
+        "feature": "length",
+        "control": {
+          "ert_q1": 116.99025851834612,
+          "ert_q3": 238.39135103896598,
+          "delta_ert": 121.40109252061986
+        },
+        "dyslexic": {
+          "ert_q1": 204.84153121819756,
+          "ert_q3": 342.409809518121,
+          "delta_ert": 137.56827829992343
+        },
+        "difference_in_differences": 16.16718577930358
+      },
+      "permutation_importance": {
+        "feature": "length",
+        "baseline_q2": 0.15036571812960997,
+        "mean_q2_permuted": -0.052146657989870934,
+        "delta_q2": 0.20251237611948092,
+        "importance_pct": 134.67988490895402
+      },
+      "expected_direction": "positive",
+      "correct_direction": true,
+      "status": "CONFIRMED"
+    },
+    "zipf": {
+      "amie_control": {
+        "feature": "zipf",
+        "group": "control",
+        "q1": -0.4520851262468346,
+        "q3": 0.562301540555457,
+        "ert_q1": 208.2959203660678,
+        "ert_q3": 192.35528995183913,
+        "amie_ms": -15.940630414228679
+      },
+      "amie_dyslexic": {
+        "feature": "zipf",
+        "group": "dyslexic",
+        "q1": -0.4520851262468346,
+        "q3": 0.562301540555457,
+        "ert_q1": 307.57059363070914,
+        "ert_q3": 296.8015871505514,
+        "amie_ms": -10.769006480157714
+      },
+      "quartile_contrasts": {
+        "feature": "zipf",
+        "control": {
+          "ert_q1": 208.2959203660678,
+          "ert_q3": 192.35528995183913,
+          "delta_ert": -15.940630414228679
+        },
+        "dyslexic": {
+          "ert_q1": 307.57059363070914,
+          "ert_q3": 296.8015871505514,
+          "delta_ert": -10.769006480157714
+        },
+        "difference_in_differences": 5.171623934070965
+      },
+      "permutation_importance": {
+        "feature": "zipf",
+        "baseline_q2": 0.15036571812960997,
+        "mean_q2_permuted": 0.14609716705299525,
+        "delta_q2": 0.004268551076614724,
+        "importance_pct": 2.838779430385444
+      },
+      "expected_direction": "negative",
+      "correct_direction": true,
+      "status": "CONFIRMED"
+    },
+    "surprisal": {
+      "amie_control": {
+        "feature": "surprisal",
+        "group": "control",
+        "q1": 2.7454854629713985,
+        "q3": 9.893726444065395,
+        "ert_q1": 192.27875858611483,
+        "ert_q3": 207.5112043720111,
+        "amie_ms": 15.23244578589626
+      },
+      "amie_dyslexic": {
+        "feature": "surprisal",
+        "group": "dyslexic",
+        "q1": 2.7454854629713985,
+        "q3": 9.893726444065395,
+        "ert_q1": 281.7374130502266,
+        "ert_q3": 315.60429185514283,
+        "amie_ms": 33.86687880491621
+      },
+      "quartile_contrasts": {
+        "feature": "surprisal",
+        "control": {
+          "ert_q1": 192.27875858611483,
+          "ert_q3": 207.5112043720111,
+          "delta_ert": 15.23244578589626
+        },
+        "dyslexic": {
+          "ert_q1": 281.7374130502266,
+          "ert_q3": 315.60429185514283,
+          "delta_ert": 33.86687880491621
+        },
+        "difference_in_differences": 18.63443301901995
+      },
+      "permutation_importance": {
+        "feature": "surprisal",
+        "baseline_q2": 0.15036571812960997,
+        "mean_q2_permuted": 0.14725941027318104,
+        "delta_q2": 0.0031063078564289304,
+        "importance_pct": 2.065835148508653
+      },
+      "expected_direction": "positive",
+      "correct_direction": true,
+      "status": "CONFIRMED"
+    }
+  },
+  "summary": "All features show expected effects on reading time"
+}

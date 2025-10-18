@@ -77,28 +77,31 @@ class DyslexiaGAMPipeline:
             train_data: Training data
 
         Returns:
-            (skip_model_dict, duration_model_dict, gam_instance) tuple
+            (skip_model_dict, duration_model_dict, ert_predictor) tuple
         """
 
         logger.info("\n" + "=" * 80)
         logger.info("PHASE 1: MODEL FITTING")
         logger.info("=" * 80)
 
-        # Fit both GAMs
-        skip_model, duration_model, gam_instance = fit_gam_models(train_data)
+        # Fit both GAMs - returns metadata only, not model objects
+        skip_metadata, duration_metadata, gam_instance = fit_gam_models(train_data)
 
         # Create ERT predictor
+        from ert_predictor import create_ert_predictor
+
         ert_predictor = create_ert_predictor(gam_instance)
 
-        # Save model metadata
+        # Save model metadata (now safe for JSON)
         model_metadata = {
-            "skip_model": skip_model,
-            "duration_model": duration_model,
+            "skip_model": skip_metadata,
+            "duration_model": duration_metadata,
         }
 
         self.save_results(model_metadata, "model_metadata.json")
 
-        return skip_model, duration_model, ert_predictor
+        # Return metadata and predictor
+        return skip_metadata, duration_metadata, ert_predictor
 
     def test_hypotheses(
         self,

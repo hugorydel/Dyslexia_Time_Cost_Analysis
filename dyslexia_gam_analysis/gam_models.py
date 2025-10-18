@@ -1,5 +1,5 @@
 """
-GAM Model Fitting for Dyslexia Analysis - Pure Python Implementation
+GAM Model Fitting for Dyslexia Analysis - FIXED
 Uses pygam for GAM fitting with group-specific smooths
 """
 
@@ -9,8 +9,8 @@ from typing import Dict, Tuple
 
 import numpy as np
 import pandas as pd
-from pygam import GammaGAM, LogisticGAM, f, s, te
-from pygam.terms import TermList
+from pygam import GammaGAM, LogisticGAM, s
+from sklearn.metrics import roc_auc_score
 
 warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
@@ -32,16 +32,6 @@ class DyslexiaGAMModels:
         """
         Fit skip model (logistic GAM):
         skip ~ group + s(length, by=group) + s(zipf, by=group) + s(surprisal, by=group)
-
-        Args:
-            data: DataFrame with columns:
-                - skip: binary (0/1)
-                - group_numeric: 0=control, 1=dyslexic
-                - length, zipf, surprisal: features
-                - subject_id, word_text: for reference
-
-        Returns:
-            Dictionary with model and metadata
         """
         logger.info("=" * 60)
         logger.info("FITTING SKIP MODEL (Logistic GAM)")
@@ -50,28 +40,28 @@ class DyslexiaGAMModels:
         # Prepare data
         X, y, group = self._prepare_skip_data(data)
 
-        # Store feature means for later predictions
+        # Store feature means
         self.feature_means = {
             "length": X[:, 0].mean(),
             "zipf": X[:, 1].mean(),
             "surprisal": X[:, 2].mean(),
         }
 
-        # Build GAM with group-specific smooths
-        # We'll use interactions between smooths and group factor
-        # pygam doesn't have explicit "by=" but we can create interaction terms
-
         logger.info("Fitting skip model...")
         try:
-            # Create separate models for each group, then combine predictions
-            # This is a workaround for pygam's lack of "by=" parameter
-
             # Split by group
             ctrl_mask = group == 0
             dys_mask = group == 1
 
             X_ctrl, y_ctrl = X[ctrl_mask], y[ctrl_mask]
             X_dys, y_dys = X[dys_mask], y[dys_mask]
+
+            logger.info(
+                f"  Control: {len(X_ctrl):,} obs, skip rate: {y_ctrl.mean():.3f}"
+            )
+            logger.info(
+                f"  Dyslexic: {len(X_dys):,} obs, skip rate: {y_dys.mean():.3f}"
+            )
 
             # Fit control model
             logger.info("  Fitting control model...")
@@ -93,21 +83,27 @@ class DyslexiaGAMModels:
                 "dyslexic": gam_dys,
             }
 
-            # Compute pseudo-R² for both
-            ctrl_accuracy = (gam_ctrl.predict(X_ctrl) > 0.5).astype(int).mean()
-            dys_accuracy = (gam_dys.predict(X_dys) > 0.5).astype(int).mean()
+            # Compute proper metrics (AUC instead of accuracy)
+            ctrl_pred_proba = gam_ctrl.predict_proba(X_ctrl)
+            dys_pred_proba = gam_dys.predict_proba(X_dys)
+
+            ctrl_auc = roc_auc_score(y_ctrl, ctrl_pred_proba)
+            dys_auc = roc_auc_score(y_dys, dys_pred_proba)
 
             logger.info("Skip models fitted successfully")
-            logger.info(f"  Control accuracy: {ctrl_accuracy:.3f}")
-            logger.info(f"  Dyslexic accuracy: {dys_accuracy:.3f}")
+            logger.info(f"  Control AUC: {ctrl_auc:.3f}")
+            logger.info(f"  Dyslexic AUC: {dys_auc:.3f}")
 
             return {
-                "models": self.skip_model,
+                # Don't include model objects - just metadata
                 "family": "binomial",
-                "n_obs_control": len(X_ctrl),
-                "n_obs_dyslexic": len(X_dys),
-                "accuracy_control": float(ctrl_accuracy),
-                "accuracy_dyslexic": float(dys_accuracy),
+                "n_obs_control": int(len(X_ctrl)),
+                "n_obs_dyslexic": int(len(X_dys)),
+                "skip_rate_control": float(y_ctrl.mean()),
+                "skip_rate_dyslexic": float(y_dys.mean()),
+                "auc_control": float(ctrl_auc),
+                "auc_dyslexic": float(dys_auc),
+                "n_splines": 5,
             }
 
         except Exception as e:
@@ -116,16 +112,7 @@ class DyslexiaGAMModels:
 
     def fit_duration_model(self, data: pd.DataFrame) -> Dict:
         """
-        Fit duration model (Gamma GAM):
-        TRT ~ group + s(length, by=group) + s(zipf, by=group) + s(surprisal, by=group)
-
-        Only fits on fixated words (skip==0)
-
-        Args:
-            data: DataFrame with TRT column
-
-        Returns:
-            Dictionary with model and metadata
+        Fit duration model (Gamma GAM)
         """
         logger.info("=" * 60)
         logger.info("FITTING DURATION MODEL (Gamma GAM)")
@@ -147,6 +134,13 @@ class DyslexiaGAMModels:
             X_ctrl, y_ctrl = X[ctrl_mask], y[ctrl_mask]
             X_dys, y_dys = X[dys_mask], y[dys_mask]
 
+            logger.info(
+                f"  Control: {len(X_ctrl):,} obs, mean TRT: {y_ctrl.mean():.1f}ms"
+            )
+            logger.info(
+                f"  Dyslexic: {len(X_dys):,} obs, mean TRT: {y_dys.mean():.1f}ms"
+            )
+
             # Fit control model
             logger.info("  Fitting control model...")
             gam_ctrl = GammaGAM(
@@ -167,7 +161,7 @@ class DyslexiaGAMModels:
                 "dyslexic": gam_dys,
             }
 
-            # Compute pseudo-R² for both
+            # Compute pseudo-R²
             ctrl_r2 = gam_ctrl.statistics_["pseudo_r2"]["explained_deviance"]
             dys_r2 = gam_dys.statistics_["pseudo_r2"]["explained_deviance"]
 
@@ -176,12 +170,15 @@ class DyslexiaGAMModels:
             logger.info(f"  Dyslexic pseudo-R²: {dys_r2:.3f}")
 
             return {
-                "models": self.duration_model,
+                # Don't include model objects
                 "family": "Gamma",
-                "n_obs_control": len(X_ctrl),
-                "n_obs_dyslexic": len(X_dys),
+                "n_obs_control": int(len(X_ctrl)),
+                "n_obs_dyslexic": int(len(X_dys)),
+                "mean_trt_control": float(y_ctrl.mean()),
+                "mean_trt_dyslexic": float(y_dys.mean()),
                 "r2_control": float(ctrl_r2),
                 "r2_dyslexic": float(dys_r2),
+                "n_splines": 5,
             }
 
         except Exception as e:
@@ -202,11 +199,18 @@ class DyslexiaGAMModels:
         y = data["skip"].values
         group = data["group_numeric"].values
 
+        # Check for any issues before filtering
+        n_before = len(X)
+
         # Remove any NaN rows
-        valid_mask = ~np.isnan(X).any(axis=1) & ~np.isnan(y)
+        valid_mask = ~np.isnan(X).any(axis=1) & ~np.isnan(y) & ~np.isnan(group)
         X = X[valid_mask]
         y = y[valid_mask]
         group = group[valid_mask]
+
+        n_after = len(X)
+        if n_after < n_before:
+            logger.warning(f"  Dropped {n_before - n_after} rows with NaN values")
 
         logger.info(f"  Skip data prepared: {len(X):,} observations")
         logger.info(f"    Control: {(group==0).sum():,}")
@@ -240,57 +244,32 @@ class DyslexiaGAMModels:
         return X, y, group
 
     def predict_skip(self, X: np.ndarray, group: str) -> np.ndarray:
-        """
-        Predict skip probability
-
-        Args:
-            X: Feature matrix (n_samples, 3) with [length, zipf, surprisal]
-            group: "control" or "dyslexic"
-
-        Returns:
-            Array of skip probabilities
-        """
+        """Predict skip probability"""
         if self.skip_model is None:
             raise ValueError("Skip model not fitted yet")
 
         model = self.skip_model[group]
         predictions = model.predict_proba(X)
-
         return predictions
 
     def predict_trt(self, X: np.ndarray, group: str) -> np.ndarray:
-        """
-        Predict TRT (given fixation)
-
-        Args:
-            X: Feature matrix (n_samples, 3)
-            group: "control" or "dyslexic"
-
-        Returns:
-            Array of predicted TRT values (ms)
-        """
+        """Predict TRT (given fixation)"""
         if self.duration_model is None:
             raise ValueError("Duration model not fitted yet")
 
         model = self.duration_model[group]
         predictions = model.predict(X)
-
         return predictions
 
 
 def fit_gam_models(data: pd.DataFrame) -> Tuple[Dict, Dict, DyslexiaGAMModels]:
     """
     Convenience function to fit both models
-
-    Args:
-        data: Prepared DataFrame with all required columns
-
-    Returns:
-        (skip_model_dict, duration_model_dict, gam_instance) tuple
+    Returns metadata only (not model objects)
     """
     gam = DyslexiaGAMModels()
 
-    skip_model = gam.fit_skip_model(data)
-    duration_model = gam.fit_duration_model(data)
+    skip_model_metadata = gam.fit_skip_model(data)
+    duration_model_metadata = gam.fit_duration_model(data)
 
-    return skip_model, duration_model, gam
+    return skip_model_metadata, duration_model_metadata, gam
