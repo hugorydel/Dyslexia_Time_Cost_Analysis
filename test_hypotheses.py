@@ -19,6 +19,7 @@ from hypothesis_testing_utils.gam_models import fit_gam_models
 from hypothesis_testing_utils.h1_feature_effects import test_hypothesis_1
 from hypothesis_testing_utils.h2_amplification import test_hypothesis_2
 from hypothesis_testing_utils.h3_gap_decomposition import test_hypothesis_3
+from hypothesis_testing_utils.zipf_diagnostic import run_zipf_diagnostic
 
 # Configure logging
 logging.basicConfig(
@@ -30,6 +31,7 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger(__name__)
+CI_ITERATIONS = 100  # Number of bootstrap iterations for CIs
 
 
 class DyslexiaGAMPipeline:
@@ -37,7 +39,7 @@ class DyslexiaGAMPipeline:
     Complete GAM-based analysis pipeline
     """
 
-    def __init__(self, results_dir: str = "hypothesis_testing_results"):
+    def __init__(self, results_dir: str = "results"):
         self.results_dir = Path(results_dir)
         self.results_dir.mkdir(exist_ok=True, parents=True)
 
@@ -134,7 +136,7 @@ class DyslexiaGAMPipeline:
 
         # Hypothesis 2: Dyslexic amplification
         h2_results = test_hypothesis_2(
-            ert_predictor, train_data, quartiles, n_bootstrap=1000
+            ert_predictor, train_data, quartiles, n_bootstrap=CI_ITERATIONS
         )
         self.save_results(h2_results, "h2_amplification.json")
 
@@ -243,9 +245,9 @@ class DyslexiaGAMPipeline:
         logger.info("DYSLEXIA GAM ANALYSIS - COMPLETE PIPELINE")
         logger.info("=" * 80)
 
-        script_dir = Path(__file__).resolve().parent.parent
+        script_dir = Path(__file__).resolve().parent
         data_path = (
-            script_dir / "preprocessing_results" / "preprocessed_data.csv"
+            script_dir / "input_data" / "preprocessed_data.csv"
         )  # Default path; can be parameterized
 
         try:
@@ -260,7 +262,35 @@ class DyslexiaGAMPipeline:
                 ert_predictor, train_data, test_data, metadata
             )
 
-            # Phase 4: Generate final report
+            # Phase 4: Zipf diagnostic
+            # Combine train and test data
+            logger.info("\n" + "=" * 80)
+            logger.info("PREPARING DATA FOR ZIPF DIAGNOSTIC")
+            logger.info("=" * 80)
+
+            full_data = pd.concat([train_data, test_data], ignore_index=True)
+            logger.info(f"Combined dataset: {len(full_data):,} observations")
+            logger.info(f"  Train: {len(train_data):,}")
+            logger.info(f"  Test:  {len(test_data):,}")
+
+            # Run comprehensive zipf diagnostic
+            logger.info("\n" + "=" * 80)
+            logger.info("RUNNING ZIPF FREQUENCY DIAGNOSTIC")
+            logger.info("=" * 80)
+
+            diagnostic_results = run_zipf_diagnostic(
+                data=full_data,
+                ert_predictor=ert_predictor,
+                quartiles=metadata["quartiles"],
+                output_dir=self.results_dir / "zipf_diagnostic",
+            )
+
+            # Save diagnostic results
+            self.save_results(diagnostic_results, "zipf_diagnostic_results.json")
+
+            logger.info("✓ Zipf diagnostic complete")
+
+            # Phase 5: Generate final report
             final_report = self._compile_final_report(metadata, hypothesis_results)
             self.save_results(final_report, "final_analysis_report.json")
 
@@ -342,7 +372,7 @@ def main():
     parser.add_argument(
         "--results-dir",
         type=str,
-        default="hypothesis_testing_results",
+        default="results",
         help="Directory to save results",
     )
 

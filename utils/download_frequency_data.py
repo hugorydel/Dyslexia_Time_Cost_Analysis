@@ -44,8 +44,8 @@ OUTPUT_DIR = (
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Processing parameters
-TOP_N_WORDS = 3000000  # Keep top 3M words
-MIN_FREQUENCY = 1  # Minimum frequency threshold
+TOP_N_WORDS = 1500000  # Keep top 3M words
+MIN_FREQUENCY = 2  # Minimum frequency threshold
 REMOVE_PUNCT_ONLY = True  # Remove entries that are only punctuation
 ADD_LOG_TRANSFORM = True  # Add log-transformed frequency columns
 
@@ -82,7 +82,7 @@ def download_file(url, filename):
         print(f"  ✓ Downloaded: {filepath}")
         return filepath
     except requests.exceptions.RequestException as e:
-        print(f"  [X] Failed to download: {e}")
+        print(f"  X Failed to download: {e}")
         return None
 
 
