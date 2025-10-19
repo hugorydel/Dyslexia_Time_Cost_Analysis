@@ -46,23 +46,39 @@ class CompleteAnalysisPipeline:
     Complete end-to-end analysis pipeline
     """
 
-    def __init__(self, results_dir: str = "results_final", n_bootstrap: int = 1000):
+    def __init__(
+        self,
+        results_dir: str = "results_final",
+        n_bootstrap: int = 1000,
+        use_cache: bool = True,
+        quick_mode: bool = False,
+    ):
         self.results_dir = Path(results_dir)
         self.results_dir.mkdir(exist_ok=True, parents=True)
 
         # Create subdirectories
         self.figures_dir = self.results_dir / "figures"
         self.tables_dir = self.results_dir / "tables"
+
+        # Separate cache roots by mode
+        self.quick_mode = quick_mode
+        self.cache_dir = self.results_dir / (
+            "cache_quick" if self.quick_mode else "cache_full"
+        )
+
         self.figures_dir.mkdir(exist_ok=True)
         self.tables_dir.mkdir(exist_ok=True)
+        self.cache_dir.mkdir(exist_ok=True)
 
         self.n_bootstrap = n_bootstrap
+        self.use_cache = use_cache
 
         logger.info("=" * 80)
         logger.info("COMPLETE DYSLEXIA GAM ANALYSIS PIPELINE")
         logger.info("=" * 80)
         logger.info(f"Results directory: {self.results_dir}")
         logger.info(f"Bootstrap iterations: {n_bootstrap}")
+        logger.info(f"Cache directory: {self.cache_dir}")  # <— added
 
     def run(self, data_path: str):
         """Execute complete analysis pipeline"""
@@ -93,13 +109,33 @@ class CompleteAnalysisPipeline:
             logger.info("PHASE 2: GAM MODEL FITTING")
             logger.info("=" * 80)
 
-            skip_meta, duration_meta, gam_models = fit_gam_models(
-                prepared_data, use_log_duration=True
-            )
+            if self.use_cache:
+                import joblib
+
+                cache_path = self.cache_dir / "gam_models.pkl"
+
+                if cache_path.exists():
+                    logger.info("✓ Loading models from cache...")
+                    gam_models = joblib.load(cache_path)
+                    skip_meta = joblib.load(self.cache_dir / "skip_metadata.pkl")
+                    duration_meta = joblib.load(
+                        self.cache_dir / "duration_metadata.pkl"
+                    )
+                else:
+                    skip_meta, duration_meta, gam_models = fit_gam_models(
+                        prepared_data, use_log_duration=True
+                    )
+                    joblib.dump(gam_models, cache_path)
+                    joblib.dump(skip_meta, self.cache_dir / "skip_metadata.pkl")
+                    joblib.dump(duration_meta, self.cache_dir / "duration_metadata.pkl")
+                    logger.info("💾 Models saved to cache")
+            else:
+                skip_meta, duration_meta, gam_models = fit_gam_models(
+                    prepared_data, use_log_duration=True
+                )
 
             ert_predictor = create_ert_predictor(gam_models)
 
-            # Save model metadata
             model_metadata = {"skip_model": skip_meta, "duration_model": duration_meta}
             self._save_json(model_metadata, "model_metadata.json")
 
@@ -116,15 +152,33 @@ class CompleteAnalysisPipeline:
             )
             self._save_json(h1_results, "h1_results.json")
 
-            # H2: Amplification
-            h2_results = test_hypothesis_2(
-                ert_predictor,
-                prepared_data,
-                quartiles,
-                bin_edges,
-                bin_weights,
-                n_bootstrap=self.n_bootstrap,
-            )
+            # H2: Amplification (with bootstrap)
+            if self.use_cache:
+                cache_path = self.cache_dir / "h2_results.pkl"
+                if cache_path.exists():
+                    logger.info("✓ Loading H2 results from cache...")
+                    h2_results = joblib.load(cache_path)
+                else:
+                    h2_results = test_hypothesis_2(
+                        ert_predictor,
+                        prepared_data,
+                        quartiles,
+                        bin_edges,
+                        bin_weights,
+                        n_bootstrap=self.n_bootstrap,
+                    )
+                    joblib.dump(h2_results, cache_path)
+                    logger.info("💾 H2 results saved to cache")
+            else:
+                h2_results = test_hypothesis_2(
+                    ert_predictor,
+                    prepared_data,
+                    quartiles,
+                    bin_edges,
+                    bin_weights,
+                    n_bootstrap=self.n_bootstrap,
+                )
+
             self._save_json(h2_results, "h2_results.json")
 
             # H3: Gap Decomposition
@@ -133,26 +187,9 @@ class CompleteAnalysisPipeline:
 
             logger.info("✅ Phase 3 complete")
 
-            # ===== PHASE 4: VISUALIZATION =====
+            # ===== PHASE 4: TABLE GENERATION =====
             logger.info("\n" + "=" * 80)
-            logger.info("PHASE 5: FIGURE GENERATION")
-            logger.info("=" * 80)
-
-            generate_all_figures(
-                ert_predictor=ert_predictor,
-                data=prepared_data,
-                h1_results=h1_results,
-                h2_results=h2_results,
-                h3_results=h3_results,
-                quartiles=quartiles,
-                output_dir=self.figures_dir,
-            )
-
-            logger.info("✅ Phase 4 complete")
-
-            # ===== PHASE 5: TABLE GENERATION =====
-            logger.info("\n" + "=" * 80)
-            logger.info("PHASE 5: TABLE GENERATION")
+            logger.info("PHASE 4: TABLE GENERATION")
             logger.info("=" * 80)
 
             generate_all_tables(
@@ -164,6 +201,26 @@ class CompleteAnalysisPipeline:
                 output_dir=self.tables_dir,
             )
 
+            logger.info("✅ Phase 4 complete")
+
+            # ===== PHASE 5: FIGURE GENERATION =====
+            logger.info("\n" + "=" * 80)
+            logger.info("PHASE 5: FIGURE GENERATION")
+            logger.info("=" * 80)
+
+            generate_all_figures(
+                ert_predictor=ert_predictor,
+                data=prepared_data,
+                h1_results=h1_results,
+                h2_results=h2_results,
+                h3_results=h3_results,
+                quartiles=quartiles,
+                gam_models=gam_models,
+                skip_metadata=skip_meta,
+                duration_metadata=duration_meta,
+                output_dir=self.figures_dir,
+            )
+
             logger.info("✅ Phase 5 complete")
 
             # ===== PHASE 6: FINAL REPORT =====
@@ -171,13 +228,13 @@ class CompleteAnalysisPipeline:
             logger.info("PHASE 6: FINAL REPORT")
             logger.info("=" * 80)
 
-            # Compile comprehensive results
             final_results = {
                 "metadata": {
                     "n_total": len(prepared_data),
                     "n_bins": len(bin_weights),
                     "n_bootstrap": self.n_bootstrap,
                     "data_note": metadata.get("note", ""),
+                    "used_cache": self.use_cache,
                 },
                 "hypotheses": {
                     "h1": {
@@ -198,7 +255,6 @@ class CompleteAnalysisPipeline:
 
             self._save_json(final_results, "final_report.json")
 
-            # Create markdown summary
             create_results_summary_markdown(
                 h1_results,
                 h2_results,
@@ -279,7 +335,6 @@ class CompleteAnalysisPipeline:
         logger.info("1. Review RESULTS_SUMMARY.md for interpretation")
         logger.info("2. Check figures/ for publication-quality plots")
         logger.info("3. Check tables/ for formatted tables (CSV, TXT, LaTeX)")
-        logger.info("4. Review validation warnings if any")
         logger.info("=" * 80 + "\n")
 
 
@@ -289,6 +344,11 @@ def main():
     )
     parser.add_argument(
         "--data-path", type=str, default="", help="Path to preprocessed data CSV"
+    )
+    parser.add_argument(
+        "--use-cache",
+        default=True,
+        help="Load from cache if available (skip refitting models)",
     )
     parser.add_argument(
         "--results-dir",
@@ -318,7 +378,10 @@ def main():
 
     # Initialize and run pipeline
     pipeline = CompleteAnalysisPipeline(
-        results_dir=args.results_dir, n_bootstrap=n_bootstrap
+        results_dir=args.results_dir,
+        n_bootstrap=n_bootstrap,
+        use_cache=args.use_cache,
+        quick_mode=args.quick,
     )
 
     try:

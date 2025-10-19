@@ -182,39 +182,33 @@ def bootstrap_all_metrics(
 ) -> Tuple[Dict, Dict]:
     """
     COMPREHENSIVE BOOTSTRAP: Resample subjects and recompute ALL metrics
-
-    This is the SOURCE OF TRUTH for all confidence intervals
-
-    Returns:
-        (bootstrap_samples, confidence_intervals) tuple
+    FIXED: Separate storage for AMIE vs SR to avoid duplicate keys
     """
     logger.info(f"\nRunning comprehensive bootstrap ({n_bootstrap} iterations)...")
-    logger.info("Resampling subjects and refitting all metrics...")
 
     subjects = data["subject_id"].unique()
     n_subjects = len(subjects)
 
-    # Storage for bootstrap samples
+    # FIXED: Separate top-level keys for different metric types
     bootstrap_results = {
         "amie": {
             f: {"control": [], "dyslexic": []} for f in ["length", "zipf", "surprisal"]
         },
-        "sr_skip": {f: [] for f in ["length", "zipf", "surprisal"]},
-        "sr_duration": {f: [] for f in ["length", "zipf", "surprisal"]},
-        "sr_ert": {f: [] for f in ["length", "zipf", "surprisal"]},
+        "slope_ratios": {  # ← RENAMED from duplicate 'amie'
+            "sr_skip": {f: [] for f in ["length", "zipf", "surprisal"]},
+            "sr_duration": {f: [] for f in ["length", "zipf", "surprisal"]},
+            "sr_ert": {f: [] for f in ["length", "zipf", "surprisal"]},
+        },
     }
 
     for i in tqdm(range(n_bootstrap), desc="Bootstrap"):
-        # Resample subjects with replacement
         np.random.seed(i)
         boot_subjects = np.random.choice(subjects, size=n_subjects, replace=True)
-
-        # Collect all observations from sampled subjects
         boot_data = pd.concat(
             [data[data["subject_id"] == s] for s in boot_subjects], ignore_index=True
         )
 
-        if len(boot_data) == 0:
+        if len(boot_data) < 1000:
             continue
 
         # Recompute quartiles on bootstrap sample
@@ -227,13 +221,42 @@ def bootstrap_all_metrics(
             for feat in ["length", "zipf", "surprisal"]
         }
 
-        # === COMPUTE ALL METRICS ON BOOTSTRAP SAMPLE ===
-
+        # === COMPUTE ALL METRICS ===
         for feature in ["length", "zipf", "surprisal"]:
-            # 1. AMIEs (not strictly needed for H2, but good to have)
-            # Skip for brevity
 
-            # 2. Slope Ratios for all pathways
+            # 1. AMIEs
+            for group in ["control", "dyslexic"]:
+                try:
+                    if feature == "zipf":
+                        from hypothesis_testing_utils.h1_feature_effects import (
+                            compute_amie_conditional_zipf,
+                        )
+
+                        amie_result = compute_amie_conditional_zipf(
+                            ert_predictor,
+                            boot_data,
+                            group,
+                            boot_quartiles,
+                            bin_edges,
+                            bin_weights,
+                        )
+                        amie = amie_result.get("amie_ms", np.nan)
+                    else:
+                        from hypothesis_testing_utils.h1_feature_effects import (
+                            compute_amie_standard,
+                        )
+
+                        amie_result = compute_amie_standard(
+                            ert_predictor, boot_data, feature, group, boot_quartiles
+                        )
+                        amie = amie_result.get("amie_ms", np.nan)
+
+                    if not np.isnan(amie):
+                        bootstrap_results["amie"][feature][group].append(amie)
+                except Exception as e:
+                    pass
+
+            # 2. Slope Ratios (store in nested structure)
             for pathway in ["skip", "duration", "ert"]:
                 try:
                     if feature == "zipf":
@@ -251,37 +274,48 @@ def bootstrap_all_metrics(
                         )
 
                     if not np.isnan(sr):
-                        bootstrap_results[f"sr_{pathway}"][feature].append(sr)
+                        bootstrap_results["slope_ratios"][f"sr_{pathway}"][
+                            feature
+                        ].append(sr)
                 except:
                     pass
 
     # === COMPUTE CONFIDENCE INTERVALS ===
-    ci_results = {}
+    ci_results = {"amie": {}, "slope_ratios": {}}
 
-    for metric_name, metric_data in bootstrap_results.items():
-        ci_results[metric_name] = {}
+    # CIs for AMIEs
+    for feature in ["length", "zipf", "surprisal"]:
+        ci_results["amie"][feature] = {}
+        for group in ["control", "dyslexic"]:
+            samples = bootstrap_results["amie"][feature][group]
+            if len(samples) > 0:
+                ci_results["amie"][feature][group] = {
+                    "mean": float(np.mean(samples)),
+                    "ci_low": float(np.percentile(samples, 2.5)),
+                    "ci_high": float(np.percentile(samples, 97.5)),
+                    "n_samples": len(samples),
+                }
 
-        if isinstance(metric_data, dict):
-            for key, values in metric_data.items():
-                if isinstance(values, dict):
-                    ci_results[metric_name][key] = {}
-                    for subkey, subvalues in values.items():
-                        if len(subvalues) > 0:
-                            ci_results[metric_name][key][subkey] = {
-                                "mean": float(np.mean(subvalues)),
-                                "ci_low": float(np.percentile(subvalues, 2.5)),
-                                "ci_high": float(np.percentile(subvalues, 97.5)),
-                            }
-                else:
-                    if len(values) > 0:
-                        ci_results[metric_name][key] = {
-                            "mean": float(np.mean(values)),
-                            "ci_low": float(np.percentile(values, 2.5)),
-                            "ci_high": float(np.percentile(values, 97.5)),
-                            "n_samples": len(values),
-                        }
+    # CIs for SRs
+    for pathway in ["sr_skip", "sr_duration", "sr_ert"]:
+        ci_results["slope_ratios"][pathway] = {}
+        for feature in ["length", "zipf", "surprisal"]:
+            samples = bootstrap_results["slope_ratios"][pathway][feature]
+            if len(samples) > 0:
+                ci_results["slope_ratios"][pathway][feature] = {
+                    "mean": float(np.mean(samples)),
+                    "ci_low": float(np.percentile(samples, 2.5)),
+                    "ci_high": float(np.percentile(samples, 97.5)),
+                    "n_samples": len(samples),
+                }
 
     logger.info("Bootstrap complete!")
+    logger.info(
+        f"  AMIE samples: {sum(len(bootstrap_results['amie'][f][g]) for f in bootstrap_results['amie'] for g in bootstrap_results['amie'][f])}"
+    )
+    logger.info(
+        f"  SR samples: {sum(len(bootstrap_results['slope_ratios'][p][f]) for p in bootstrap_results['slope_ratios'] for f in bootstrap_results['slope_ratios'][p])}"
+    )
 
     return bootstrap_results, ci_results
 
