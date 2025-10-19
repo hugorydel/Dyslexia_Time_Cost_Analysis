@@ -1,0 +1,316 @@
+{
+  "h1_feature_effects": {
+    "status": "PARTIALLY CONFIRMED",
+    "features": {
+      "length": {
+        "amie_control": {
+          "feature": "length",
+          "group": "control",
+          "q1": 2.0,
+          "q3": 6.0,
+          "ert_q1": 130.06429459762023,
+          "ert_q3": 234.29475433538911,
+          "amie_ms": 104.23045973776888
+        },
+        "amie_dyslexic": {
+          "feature": "length",
+          "group": "dyslexic",
+          "q1": 2.0,
+          "q3": 6.0,
+          "ert_q1": 216.69996322744032,
+          "ert_q3": 342.07726654481326,
+          "amie_ms": 125.37730331737293
+        },
+        "quartile_contrasts": {
+          "feature": "length",
+          "control": {
+            "ert_q1": 130.06429459762023,
+            "ert_q3": 234.29475433538911,
+            "delta_ert": 104.23045973776888
+          },
+          "dyslexic": {
+            "ert_q1": 216.69996322744032,
+            "ert_q3": 342.07726654481326,
+            "delta_ert": 125.37730331737293
+          },
+          "difference_in_differences": 21.146843579604052
+        },
+        "permutation_importance": {
+          "feature": "length",
+          "baseline_q2": 0.15002247473342412,
+          "mean_q2_permuted": 0.01979671582020266,
+          "delta_q2": 0.13022575891322147,
+          "importance_pct": 86.80416660545059
+        },
+        "expected_direction": "positive",
+        "correct_direction": true,
+        "status": "CONFIRMED"
+      },
+      "zipf": {
+        "amie_control": {
+          "feature": "zipf",
+          "group": "control",
+          "q1": 4.9552610562020005,
+          "q3": 7.101769569208432,
+          "ert_q1": 205.512475614682,
+          "ert_q3": 188.0371549944785,
+          "amie_ms": -17.47532062020349
+        },
+        "amie_dyslexic": {
+          "feature": "zipf",
+          "group": "dyslexic",
+          "q1": 4.9552610562020005,
+          "q3": 7.101769569208432,
+          "ert_q1": 293.63570756649,
+          "ert_q3": 300.8829830578004,
+          "amie_ms": 7.247275491310404
+        },
+        "quartile_contrasts": {
+          "feature": "zipf",
+          "control": {
+            "ert_q1": 205.512475614682,
+            "ert_q3": 188.0371549944785,
+            "delta_ert": -17.47532062020349
+          },
+          "dyslexic": {
+            "ert_q1": 293.63570756649,
+            "ert_q3": 300.8829830578004,
+            "delta_ert": 7.247275491310404
+          },
+          "difference_in_differences": 24.722596111513894
+        },
+        "permutation_importance": {
+          "feature": "zipf",
+          "baseline_q2": 0.15002247473342412,
+          "mean_q2_permuted": 0.14000825324510902,
+          "delta_q2": 0.0100142214883151,
+          "importance_pct": 6.675147511137538
+        },
+        "expected_direction": "negative",
+        "correct_direction": false,
+        "status": "NOT CONFIRMED"
+      },
+      "surprisal": {
+        "amie_control": {
+          "feature": "surprisal",
+          "group": "control",
+          "q1": 2.7454854629713985,
+          "q3": 9.893726444065395,
+          "ert_q1": 193.29103203040148,
+          "ert_q3": 209.02979395786642,
+          "amie_ms": 15.738761927464935
+        },
+        "amie_dyslexic": {
+          "feature": "surprisal",
+          "group": "dyslexic",
+          "q1": 2.7454854629713985,
+          "q3": 9.893726444065395,
+          "ert_q1": 283.09622666231195,
+          "ert_q3": 317.6091477156669,
+          "amie_ms": 34.512921053354944
+        },
+        "quartile_contrasts": {
+          "feature": "surprisal",
+          "control": {
+            "ert_q1": 193.29103203040148,
+            "ert_q3": 209.02979395786642,
+            "delta_ert": 15.738761927464935
+          },
+          "dyslexic": {
+            "ert_q1": 283.09622666231195,
+            "ert_q3": 317.6091477156669,
+            "delta_ert": 34.512921053354944
+          },
+          "difference_in_differences": 18.77415912589001
+        },
+        "permutation_importance": {
+          "feature": "surprisal",
+          "baseline_q2": 0.15002247473342412,
+          "mean_q2_permuted": 0.1473500204566278,
+          "delta_q2": 0.0026724542767963266,
+          "importance_pct": 1.781369279199685
+        },
+        "expected_direction": "positive",
+        "correct_direction": true,
+        "status": "CONFIRMED"
+      }
+    },
+    "summary": "Some features show expected effects on reading time"
+  },
+  "h2_amplification": {
+    "status": "PARTIALLY CONFIRMED",
+    "slope_ratios": {
+      "length": {
+        "slope_ratio": 1.2028854485800689,
+        "bootstrap_mean_sr": 1.202872878480661,
+        "ci_low": 1.202499365982743,
+        "ci_high": 1.2034177661535048,
+        "ci_width": 0.000918400170761835,
+        "p_value": 0.0,
+        "amplified": true,
+        "ci_excludes_1": true,
+        "significant": true,
+        "status": "CONFIRMED",
+        "component_srs": {
+          "feature": "length",
+          "control": {
+            "p_skip_q1": 0.516398906939774,
+            "p_skip_q3": 0.25104359936039483,
+            "delta_p_skip": -0.26535530757937914,
+            "trt_q1": 268.94954635973596,
+            "trt_q3": 312.82829565953705,
+            "delta_trt": 43.878749299801086
+          },
+          "dyslexic": {
+            "p_skip_q1": 0.38840031554035054,
+            "p_skip_q3": 0.18262167024070328,
+            "delta_p_skip": -0.20577864529964726,
+            "trt_q1": 354.3166694385978,
+            "trt_q3": 418.505426545317,
+            "delta_trt": 64.18875710671921
+          },
+          "sr_skip": 0.7754834345572306,
+          "sr_duration": 1.4628666069798437,
+          "interpretation": "Controls use this feature more for skipping; dyslexics show amplified duration costs"
+        }
+      },
+      "zipf": {
+        "slope_ratio": 0.4147148798478533,
+        "bootstrap_mean_sr": 0.41325839638138434,
+        "ci_low": 0.4064714285715204,
+        "ci_high": 0.4231966312271747,
+        "ci_width": 0.016725202655654303,
+        "p_value": 1.0,
+        "amplified": false,
+        "ci_excludes_1": true,
+        "significant": false,
+        "status": "NOT CONFIRMED",
+        "component_srs": {
+          "feature": "zipf",
+          "control": {
+            "p_skip_q1": 0.30664718002358804,
+            "p_skip_q3": 0.3604480947113158,
+            "delta_p_skip": 0.05380091468772774,
+            "trt_q1": 296.4038937948988,
+            "trt_q3": 294.01390792448865,
+            "delta_trt": -2.3899858704101575
+          },
+          "dyslexic": {
+            "p_skip_q1": 0.2559082595188744,
+            "p_skip_q3": 0.2583855851779721,
+            "delta_p_skip": 0.0024773256590976955,
+            "trt_q1": 394.62299013912826,
+            "trt_q3": 405.7135042743285,
+            "delta_trt": 11.090514135200237
+          },
+          "sr_skip": 0.04604616247654217,
+          "sr_duration": 4.640409917275761,
+          "interpretation": "Controls use this feature more for skipping; dyslexics show amplified duration costs"
+        }
+      },
+      "surprisal": {
+        "slope_ratio": 2.1928612436234993,
+        "bootstrap_mean_sr": 2.192631643998875,
+        "ci_low": 2.192141268178344,
+        "ci_high": 2.193243251399152,
+        "ci_width": 0.0011019832208081226,
+        "p_value": 0.0,
+        "amplified": true,
+        "ci_excludes_1": true,
+        "significant": true,
+        "status": "CONFIRMED",
+        "component_srs": {
+          "feature": "surprisal",
+          "control": {
+            "p_skip_q1": 0.3308885239965231,
+            "p_skip_q3": 0.3102523891523106,
+            "delta_p_skip": -0.02063613484421245,
+            "trt_q1": 288.8771736286841,
+            "trt_q3": 303.05258136519234,
+            "delta_trt": 14.175407736508248
+          },
+          "dyslexic": {
+            "p_skip_q1": 0.24525276919696387,
+            "p_skip_q3": 0.22239837127563525,
+            "delta_p_skip": -0.022854397921328623,
+            "trt_q1": 375.0874665165756,
+            "trt_q3": 408.4471225152864,
+            "delta_trt": 33.35965599871082
+          },
+          "sr_skip": 1.1074941162122858,
+          "sr_duration": 2.3533471924616487,
+          "interpretation": "Dyslexics show amplification in both skip and duration"
+        }
+      }
+    },
+    "n_amplified": 2,
+    "summary": "2/3 features show significant dyslexic amplification (SR > 1.0 with p < 0.05)"
+  },
+  "h3_gap_decomposition": {
+    "status": "STRONGLY CONFIRMED",
+    "total_gap": 91.36005572574155,
+    "sample_size": 5000,
+    "random_seed": 42,
+    "shapley_decomposition": {
+      "total_gap": 94.23103384950252,
+      "skip_contribution": 28.823813956351003,
+      "duration_contribution": 65.40721989315152,
+      "skip_pct": 30.58845136134859,
+      "duration_pct": 69.41154863865141
+    },
+    "equal_ease_counterfactual": {
+      "baseline_gap": 90.49503591373727,
+      "counterfactual_gap": 37.99509978374404,
+      "dyslexic_saved": 166.7112057249193,
+      "control_saved": 114.21126959492605,
+      "gap_shrink_ms": 52.49993612999323,
+      "gap_shrink_pct": 58.01416132928864
+    },
+    "per_feature_equalization": {
+      "length": {
+        "feature": "length",
+        "baseline_gap": 90.49503591373727,
+        "counterfactual_gap": 119.9299891625798,
+        "gap_explained": -29.434953248842533,
+        "pct_explained": -32.52659436137564,
+        "method": "percentile_matching"
+      },
+      "zipf": {
+        "feature": "zipf",
+        "baseline_gap": 90.49503591373727,
+        "counterfactual_gap": 90.91616878982197,
+        "gap_explained": -0.4211328760846982,
+        "pct_explained": -0.4653657207077473,
+        "method": "percentile_matching"
+      },
+      "surprisal": {
+        "feature": "surprisal",
+        "baseline_gap": 90.49503591373727,
+        "counterfactual_gap": 90.46847664970622,
+        "gap_explained": 0.026559264031050134,
+        "pct_explained": 0.0293488629104112,
+        "method": "percentile_matching"
+      }
+    },
+    "summary": "Features explain gap through both differential sensitivity and text difficulty",
+    "interpretation_note": "Note: Negative per-feature explanations indicate that dyslexics encounter easier text in those dimensions, suggesting the gap exists despite compositional advantages rather than because of compositional disadvantages.",
+    "gap_consistency_check": {
+      "total_gap": 91.36005572574155,
+      "shapley_gap": 94.23103384950252,
+      "equal_ease_baseline": 90.49503591373727,
+      "max_difference": 3.735997935765255
+    }
+  },
+  "overall_conclusions": {
+    "all_hypotheses_supported": false,
+    "h1_status": "PARTIALLY CONFIRMED",
+    "h2_status": "PARTIALLY CONFIRMED",
+    "h3_status": "STRONGLY CONFIRMED",
+    "key_findings": [
+      "Some features show expected effects on reading time",
+      "2/3 features show significant dyslexic amplification (SR > 1.0 with p < 0.05)",
+      "Features explain gap through both differential sensitivity and text difficulty"
+    ],
+    "interpretation": "Results show that word-level features (length, frequency, predictability) significantly affect reading time in expected directions. Dyslexic readers show amplified effects for 2/3 features, indicating greater sensitivity to word difficulty. The dyslexic-control reading time gap is explained by both differential sensitivity and text difficulty."
+  }
+}

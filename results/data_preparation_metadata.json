@@ -1,0 +1,53 @@
+{
+  "quartiles": {
+    "length": {
+      "q1": 2.0,
+      "q3": 6.0,
+      "iqr": 4.0
+    },
+    "zipf": {
+      "q1": 4.9552610562020005,
+      "q3": 7.101769569208432,
+      "iqr": 2.146508513006432
+    },
+    "surprisal": {
+      "q1": 2.7454854629713985,
+      "q3": 9.893726444065395,
+      "iqr": 7.148240981093997
+    }
+  },
+  "balance_stats": {
+    "group_balance": {
+      "control": 245104,
+      "dyslexic": 77672,
+      "ratio": 0.3168940531366277
+    },
+    "skip_rates": {
+      "control": 0.40300851883282196,
+      "dyslexic": 0.3024642084663714
+    },
+    "mean_trt": {
+      "control": 319.727203143687,
+      "dyslexic": 414.1698813193304
+    },
+    "feature_means": {
+      "length": {
+        "control": 4.609916606828122,
+        "dyslexic": 4.552309712637759
+      },
+      "zipf": {
+        "control": 5.869846187336988,
+        "dyslexic": 5.90118322029259
+      },
+      "surprisal": {
+        "control": 6.882022346628733,
+        "dyslexic": 6.838537700850083
+      }
+    }
+  },
+  "n_total": 322776,
+  "n_train": 258632,
+  "n_test": 64144,
+  "residualized": false,
+  "note": "zipf values are RAW (natural co-occurrence with length)"
+}

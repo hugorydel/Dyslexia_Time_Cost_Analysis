@@ -864,7 +864,7 @@ class ZipfDiagnostic:
         else:
             logger.info(f"   → Controls show stronger duration effects")
 
-        logger.info("\n3. COMBINED (ERT): (1−p_skip) × TRT")
+        logger.info("\n3. COMBINED (ERT): (1-p_skip) × TRT")
         logger.info(
             f"   Control:  ΔERT = {results['control']['delta_ert']:+.2f} ms  "
             f"({results['control']['ert_q1']:.1f} → {results['control']['ert_q3']:.1f})"
@@ -1071,7 +1071,7 @@ class ZipfDiagnostic:
         ax.set_xticklabels(["Q1\n(low freq)", "Q3\n(high freq)"])
         ax.set_ylabel("ERT (ms)")
         ax.set_title(
-            f'Combined ERT = (1−skip) × TRT\nSR = {results["slope_ratios"]["sr_ert"]:.3f}'
+            f'Combined ERT = (1-skip) × TRT\nSR = {results["slope_ratios"]["sr_ert"]:.3f}'
         )
         ax.legend()
         ax.grid(True, alpha=0.3)
@@ -1192,7 +1192,7 @@ class ZipfDiagnostic:
                 ctrl_skip = self.data[self.data["dyslexic"] == False]["skip"].mean()
                 dys_skip = self.data[self.data["dyslexic"] == True]["skip"].mean()
 
-            f.write(f"1. Your plot shows TRT-only; AMIE is on ERT = (1−skip)·TRT\n")
+            f.write(f"1. Your plot shows TRT-only; AMIE is on ERT = (1-skip)·TRT\n")
             f.write(
                 f"   - Controls skip more overall ({ctrl_skip:.3f} vs {dys_skip:.3f})\n"
             )
