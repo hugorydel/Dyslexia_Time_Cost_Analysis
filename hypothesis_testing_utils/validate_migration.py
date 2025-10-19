@@ -378,11 +378,10 @@ def main():
     import json
 
     # Default paths
-    results_dir = Path("results_v2")
+    results_dir = Path("results_final")
 
     if not results_dir.exists():
         print(f"❌ Results directory not found: {results_dir}")
-        print("Please run test_hypotheses_v2.py first")
         sys.exit(1)
 
     validator = MigrationValidator()

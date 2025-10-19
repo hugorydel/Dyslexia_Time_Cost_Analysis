@@ -1,10 +1,9 @@
 """
-GAM Models with Tensor Product Interactions - REVISED
-Key changes:
-- Added te(length, zipf) tensor product interaction
-- Grid search over n_splines and lambda
-- Proper GroupKFold CV
-- Smearing factor for log-Gaussian duration model
+GAM Models with Tensor Product Interactions - V1 TWEAKED
+Key changes from original:
+1. Removed upfront full-data gridsearch (eliminates label leakage)
+2. Added 1-SE rule for model selection
+3. Added EDF saturation checks
 """
 
 import logging
@@ -13,9 +12,11 @@ from typing import Dict, Tuple
 
 import numpy as np
 import pandas as pd
+from joblib import Parallel, delayed
 from pygam import LinearGAM, LogisticGAM, s, te
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import GroupKFold
+from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
@@ -24,31 +25,82 @@ logger = logging.getLogger(__name__)
 class DyslexiaGAMModels:
     """
     GAM models with tensor product interactions
+    Uses proper nested CV with 1-SE rule
     """
 
     def __init__(self):
         self.skip_model = None
         self.duration_model = None
         self.feature_means = None
-        self.smearing_factors = None  # For log-Gaussian duration
+        self.smearing_factors = None
         logger.info("GAM Models initialized with tensor product support")
+
+    def _fit_single_fold(self, X, y, tr, va, n_splines, lam_search, model_type):
+        """
+        Fit a single CV fold (for parallel processing)
+
+        Args:
+            X, y: Data arrays
+            tr, va: Train/validation indices
+            n_splines: Number of splines (frozen)
+            lam_search: Lambda grid
+            model_type: 'skip' or 'duration'
+
+        Returns:
+            Validation score (AUC or RMSE)
+        """
+        if model_type == "skip":
+            gam = LogisticGAM(
+                s(0, n_splines=n_splines)
+                + s(1, n_splines=n_splines)
+                + s(2, n_splines=n_splines)
+                + te(0, 1, n_splines=[n_splines, n_splines])
+            )
+            gam.gridsearch(X[tr], y[tr], lam=lam_search, progress=False)
+            p = gam.predict_proba(X[va])
+            return roc_auc_score(y[va], p)
+        else:  # duration
+            gam = LinearGAM(
+                s(0, n_splines=n_splines)
+                + s(1, n_splines=n_splines)
+                + s(2, n_splines=n_splines)
+                + te(0, 1, n_splines=[n_splines, n_splines])
+            )
+            gam.gridsearch(X[tr], y[tr], lam=lam_search, progress=False)
+            yhat = gam.predict(X[va])
+            return np.sqrt(np.mean((y[va] - yhat) ** 2))
 
     def fit_skip_model(
         self,
         data: pd.DataFrame,
-        n_splines_search: list = [8, 10, 12],
+        n_splines_search: list = None,
         lam_search: np.ndarray = None,
+        quick_mode: bool = False,
     ) -> Dict:
         """
-        Fit skip model with tensor product interaction
+        Fit skip model with TWO-STAGE approach:
+        Stage 1: Pre-select n_splines on subsample (3-fold CV)
+        Stage 2: Validate on full data (10-fold CV with frozen n_splines)
+
         skip ~ s(length) + s(zipf) + s(surprisal) + te(length, zipf)
         """
         logger.info("=" * 60)
         logger.info("FITTING SKIP MODEL (Logistic GAM + Tensor Product)")
         logger.info("=" * 60)
 
+        # Set defaults
+        if n_splines_search is None:
+            n_splines_search = [8, 10] if not quick_mode else [10]
+
         if lam_search is None:
-            lam_search = np.logspace(-3, 3, 11)
+            lam_search = (
+                np.logspace(-3, 3, 7) if not quick_mode else np.logspace(-2, 2, 5)
+            )
+
+        if quick_mode:
+            logger.info("  ⚡ QUICK MODE enabled")
+            logger.info(f"     n_splines: {n_splines_search}")
+            logger.info(f"     lambda: {len(lam_search)} values")
 
         # Prepare data
         X, y, group, subjects = self._prepare_skip_data(data)
@@ -70,31 +122,72 @@ class DyslexiaGAMModels:
         logger.info(f"  Control: {len(X_ctrl):,} obs, skip rate: {y_ctrl.mean():.3f}")
         logger.info(f"  Dyslexic: {len(X_dys):,} obs, skip rate: {y_dys.mean():.3f}")
 
-        # Fit control model with grid search
-        logger.info("  Fitting control model (with CV grid search)...")
-        gam_ctrl = self._fit_skip_model_cv(
-            X_ctrl, y_ctrl, subj_ctrl, n_splines_search, lam_search
+        # === CONTROL MODEL ===
+        logger.info("\n  Fitting control model...")
+
+        # Stage 1: Pre-select hyperparameters
+        n_sp_ctrl = self._preselect_hyperparameters(
+            X_ctrl, y_ctrl, subj_ctrl, n_splines_search, lam_search, "skip"
         )
 
-        # Fit dyslexic model
-        logger.info("  Fitting dyslexic model (with CV grid search)...")
-        gam_dys = self._fit_skip_model_cv(
-            X_dys, y_dys, subj_dys, n_splines_search, lam_search
+        # Stage 2: Validate with frozen hyperparameters
+        cv_auc_ctrl = self._validate_with_frozen_hyperparameters(
+            X_ctrl, y_ctrl, subj_ctrl, n_sp_ctrl, lam_search, "skip"
+        )
+
+        # Final fit on all data
+        logger.info("    Fitting final model on all control data...")
+        gam_ctrl = LogisticGAM(
+            s(0, n_splines=n_sp_ctrl)
+            + s(1, n_splines=n_sp_ctrl)
+            + s(2, n_splines=n_sp_ctrl)
+            + te(0, 1, n_splines=[n_sp_ctrl, n_sp_ctrl])
+        )
+        gam_ctrl.gridsearch(X_ctrl, y_ctrl, lam=lam_search, progress=False)
+
+        ctrl_pred = gam_ctrl.predict_proba(X_ctrl)
+        ctrl_auc = roc_auc_score(y_ctrl, ctrl_pred)
+        logger.info(f"    Final control AUC: {ctrl_auc:.3f}")
+        logger.info(
+            f"    Final control EDF: {np.sum(gam_ctrl.statistics_['edof']):.1f}"
+        )
+
+        # === DYSLEXIC MODEL ===
+        logger.info("\n  Fitting dyslexic model...")
+
+        # Stage 1: Pre-select hyperparameters
+        n_sp_dys = self._preselect_hyperparameters(
+            X_dys, y_dys, subj_dys, n_splines_search, lam_search, "skip"
+        )
+
+        # Stage 2: Validate with frozen hyperparameters
+        cv_auc_dys = self._validate_with_frozen_hyperparameters(
+            X_dys, y_dys, subj_dys, n_sp_dys, lam_search, "skip"
+        )
+
+        # Final fit on all data
+        logger.info("    Fitting final model on all dyslexic data...")
+        gam_dys = LogisticGAM(
+            s(0, n_splines=n_sp_dys)
+            + s(1, n_splines=n_sp_dys)
+            + s(2, n_splines=n_sp_dys)
+            + te(0, 1, n_splines=[n_sp_dys, n_sp_dys])
+        )
+        gam_dys.gridsearch(X_dys, y_dys, lam=lam_search, progress=False)
+
+        dys_pred = gam_dys.predict_proba(X_dys)
+        dys_auc = roc_auc_score(y_dys, dys_pred)
+        logger.info(f"    Final dyslexic AUC: {dys_auc:.3f}")
+        logger.info(
+            f"    Final dyslexic EDF: {np.sum(gam_dys.statistics_['edof']):.1f}"
         )
 
         # Store models
         self.skip_model = {"control": gam_ctrl, "dyslexic": gam_dys}
 
-        # Compute metrics
-        ctrl_pred = gam_ctrl.predict_proba(X_ctrl)
-        dys_pred = gam_dys.predict_proba(X_dys)
-
-        ctrl_auc = roc_auc_score(y_ctrl, ctrl_pred)
-        dys_auc = roc_auc_score(y_dys, dys_pred)
-
-        logger.info("Skip models fitted successfully")
-        logger.info(f"  Control AUC: {ctrl_auc:.3f}")
-        logger.info(f"  Dyslexic AUC: {dys_auc:.3f}")
+        logger.info("\n✓ Skip models fitted successfully")
+        logger.info(f"  Control: AUC={ctrl_auc:.3f} (CV: {cv_auc_ctrl:.3f})")
+        logger.info(f"  Dyslexic: AUC={dys_auc:.3f} (CV: {cv_auc_dys:.3f})")
 
         return {
             "family": "binomial",
@@ -102,70 +195,159 @@ class DyslexiaGAMModels:
             "n_obs_dyslexic": int(len(X_dys)),
             "auc_control": float(ctrl_auc),
             "auc_dyslexic": float(dys_auc),
+            "cv_auc_control": float(cv_auc_ctrl),
+            "cv_auc_dyslexic": float(cv_auc_dys),
+            "n_splines_control": int(n_sp_ctrl),
+            "n_splines_dyslexic": int(n_sp_dys),
             "has_tensor_product": True,
+            "method": "two_stage_preselection",
         }
 
     def _fit_skip_model_cv(self, X, y, subjects, n_splines_search, lam_search):
-        """Fit skip model with GroupKFold CV"""
+        """
+        Logistic skip model — nested CV + 1-SE rule on AUC.
+        Returns a refit LogisticGAM on all X,y with the selected n_splines and λ.
+        """
+        uniq_subj = np.unique(subjects).size
+        n_splits = max(2, min(10, uniq_subj))
 
-        # Model specification with tensor product
-        # s(0) = length, s(1) = zipf, s(2) = surprisal, te(0,1) = length × zipf
-        best_auc = -np.inf
-        best_model = None
+        results = []
+        for n_sp in tqdm(n_splines_search, desc="    Grid search (skip)", leave=False):
+            gkf = GroupKFold(n_splits=n_splits)
+            fold_aucs, fold_edfs = [], []
 
-        # Grid search
-        for n_sp in n_splines_search:
-            gam = LogisticGAM(
-                s(0, n_splines=n_sp)  # length
-                + s(1, n_splines=n_sp)  # zipf
-                + s(2, n_splines=n_sp)  # surprisal
-                + te(0, 1, n_splines=[n_sp, n_sp])  # length × zipf interaction
-            )
-
-            # Grid search over lambda
-            gam.gridsearch(X, y, lam=lam_search, progress=False)
-
-            # Cross-validate with GroupKFold
-            gkf = GroupKFold(n_splits=min(10, len(np.unique(subjects))))
-            cv_aucs = []
-
-            for train_idx, val_idx in gkf.split(X, y, groups=subjects):
-                X_train, X_val = X[train_idx], X[val_idx]
-                y_train, y_val = y[train_idx], y[val_idx]
-
-                # Refit on fold
-                gam_fold = LogisticGAM(
+            for tr, va in tqdm(
+                gkf.split(X, y, groups=subjects),
+                total=n_splits,
+                desc=f"      CV folds (n_sp={n_sp})",
+                leave=False,
+            ):
+                gam = LogisticGAM(
                     s(0, n_splines=n_sp)
                     + s(1, n_splines=n_sp)
                     + s(2, n_splines=n_sp)
                     + te(0, 1, n_splines=[n_sp, n_sp])
                 )
-                gam_fold.gridsearch(X_train, y_train, lam=lam_search, progress=False)
+                # λ tuned on TRAIN only
+                gam.gridsearch(X[tr], y[tr], lam=lam_search, progress=False)
 
-                # Evaluate
-                pred_val = gam_fold.predict_proba(X_val)
-                auc_val = roc_auc_score(y_val, pred_val)
-                cv_aucs.append(auc_val)
+                p = gam.predict_proba(X[va])
+                fold_aucs.append(roc_auc_score(y[va], p))
+                fold_edfs.append(float(np.sum(gam.statistics_["edof"])))
 
-            mean_auc = np.mean(cv_aucs)
+            mean_auc = float(np.mean(fold_aucs))
+            se_auc = float(np.std(fold_aucs, ddof=1) / np.sqrt(len(fold_aucs)))
+            mean_edf = float(np.mean(fold_edfs))
 
-            if mean_auc > best_auc:
-                best_auc = mean_auc
-                best_model = gam
+            results.append(
+                dict(n_sp=n_sp, mean_auc=mean_auc, se_auc=se_auc, mean_edf=mean_edf)
+            )
+            logger.info(
+                f"        n_splines={n_sp}: CV AUC={mean_auc:.4f} (±{se_auc:.4f}), EDF≈{mean_edf:.1f}"
+            )
 
-        logger.info(f"    Best CV AUC: {best_auc:.3f}")
+        # 1-SE rule on AUC (pick smallest n_sp within 1-SE of best)
+        best = max(results, key=lambda r: r["mean_auc"])
+        threshold = best["mean_auc"] - best["se_auc"]
+        within = [r for r in results if r["mean_auc"] >= threshold]
+        selected = min(within, key=lambda r: r["n_sp"])
 
-        return best_model
+        approx_max_edf = selected["n_sp"] * 3 + selected["n_sp"] * selected["n_sp"]
+        if selected["mean_edf"] > 0.9 * approx_max_edf:
+            logger.warning(
+                f"      ⚠ EDF near saturation ({selected['mean_edf']:.1f} / {approx_max_edf})"
+            )
+        else:
+            logger.info(
+                f"      ✓ EDF OK ({selected['mean_edf']:.1f} / {approx_max_edf})"
+            )
+
+        logger.info(
+            f"    Refitting full-data skip model with n_splines={selected['n_sp']}..."
+        )
+        final = LogisticGAM(
+            s(0, n_splines=selected["n_sp"])
+            + s(1, n_splines=selected["n_sp"])
+            + s(2, n_splines=selected["n_sp"])
+            + te(0, 1, n_splines=[selected["n_sp"], selected["n_sp"]])
+        )
+        final.gridsearch(X, y, lam=lam_search, progress=False)
+        logger.info(
+            f"    Final skip EDF={np.sum(final.statistics_['edof']):.1f}, λ={final.lam}"
+        )
+        return final
+
+    def _prepare_skip_data(
+        self, data: pd.DataFrame
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Prepare skip data"""
+        X = data[["length", "zipf", "surprisal"]].values
+        y = data["skip"].values
+        group = data["group_numeric"].values
+        subjects = data["subject_id"].values
+
+        # Remove NaN
+        valid_mask = ~np.isnan(X).any(axis=1) & ~np.isnan(y)
+
+        # Cast X to float32 for memory efficiency (no precision loss for GAMs)
+        X_filtered = X[valid_mask].astype(np.float32)
+        return X_filtered, y[valid_mask], group[valid_mask], subjects[valid_mask]
+
+    def _prepare_duration_data(
+        self, data: pd.DataFrame, use_log: bool
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Prepare duration data"""
+        X = data[["length", "zipf", "surprisal"]].values
+        y = data["TRT"].values
+
+        if use_log:
+            y = np.log(np.clip(y, 1, None))  # log transform
+
+        group = data["group_numeric"].values
+        subjects = data["subject_id"].values
+
+        valid_mask = (
+            ~np.isnan(X).any(axis=1) & ~np.isnan(y) & (y > 0 if not use_log else True)
+        )
+
+        # Cast X to float32 for memory efficiency (no precision loss for GAMs)
+        X_filtered = X[valid_mask].astype(np.float32)
+        return X_filtered, y[valid_mask], group[valid_mask], subjects[valid_mask]
+
+    def predict_skip(self, X: np.ndarray, group: str) -> np.ndarray:
+        """Predict skip probability"""
+        if self.skip_model is None:
+            raise ValueError("Skip model not fitted")
+
+        return self.skip_model[group].predict_proba(X)
+
+    def predict_trt(self, X: np.ndarray, group: str) -> np.ndarray:
+        """Predict TRT (with smearing factor if log-transform used)"""
+        if self.duration_model is None:
+            raise ValueError("Duration model not fitted")
+
+        predictions = self.duration_model[group].predict(X)
+
+        # Apply smearing factor if log-transform was used
+        if self.smearing_factors is not None:
+            smearing = self.smearing_factors[group]
+            predictions = np.exp(predictions) * smearing
+
+        return predictions
 
     def fit_duration_model(
         self,
         data: pd.DataFrame,
-        n_splines_search: list = [8, 10, 12],
+        n_splines_search: list = None,
         lam_search: np.ndarray = None,
         use_log_transform: bool = True,
+        quick_mode: bool = False,
     ) -> Dict:
         """
-        Fit duration model (log-Gaussian with smearing factor)
+        Fit duration model with TWO-STAGE approach:
+        Stage 1: Pre-select n_splines on subsample (3-fold CV)
+        Stage 2: Validate on full data (10-fold CV with frozen n_splines)
+
         log(TRT) ~ s(length) + s(zipf) + s(surprisal) + te(length, zipf)
         """
         logger.info("=" * 60)
@@ -174,12 +356,23 @@ class DyslexiaGAMModels:
         )
         logger.info("=" * 60)
 
+        # Set defaults
+        if n_splines_search is None:
+            n_splines_search = [8, 10] if not quick_mode else [10]
+
         if lam_search is None:
-            lam_search = np.logspace(-3, 3, 11)
+            lam_search = (
+                np.logspace(-3, 3, 7) if not quick_mode else np.logspace(-2, 2, 5)
+            )
+
+        if quick_mode:
+            logger.info("  ⚡ QUICK MODE enabled")
+            logger.info(f"     n_splines: {n_splines_search}")
+            logger.info(f"     lambda: {len(lam_search)} values")
 
         # Filter to fixated words
         fixated = data[data["skip"] == 0].copy()
-        logger.info(f"Fitting on {len(fixated):,} fixated words")
+        logger.info(f"  Fitting on {len(fixated):,} fixated words")
 
         # Prepare data
         X, y, group, subjects = self._prepare_duration_data(fixated, use_log_transform)
@@ -206,21 +399,70 @@ class DyslexiaGAMModels:
                 f"  Dyslexic: {len(X_dys):,} obs, mean TRT: {y_dys.mean():.1f}ms"
             )
 
-        # Fit models
-        logger.info("  Fitting control model...")
-        gam_ctrl, residuals_ctrl = self._fit_duration_model_cv(
-            X_ctrl, y_ctrl, subj_ctrl, n_splines_search, lam_search
+        # === CONTROL MODEL ===
+        logger.info("\n  Fitting control model...")
+
+        # Stage 1: Pre-select hyperparameters
+        n_sp_ctrl = self._preselect_hyperparameters(
+            X_ctrl, y_ctrl, subj_ctrl, n_splines_search, lam_search, "duration"
         )
 
-        logger.info("  Fitting dyslexic model...")
-        gam_dys, residuals_dys = self._fit_duration_model_cv(
-            X_dys, y_dys, subj_dys, n_splines_search, lam_search
+        # Stage 2: Validate with frozen hyperparameters
+        cv_rmse_ctrl = self._validate_with_frozen_hyperparameters(
+            X_ctrl, y_ctrl, subj_ctrl, n_sp_ctrl, lam_search, "duration"
+        )
+
+        # Final fit on all data
+        logger.info("    Fitting final model on all control data...")
+        gam_ctrl = LinearGAM(
+            s(0, n_splines=n_sp_ctrl)
+            + s(1, n_splines=n_sp_ctrl)
+            + s(2, n_splines=n_sp_ctrl)
+            + te(0, 1, n_splines=[n_sp_ctrl, n_sp_ctrl])
+        )
+        gam_ctrl.gridsearch(X_ctrl, y_ctrl, lam=lam_search, progress=False)
+
+        residuals_ctrl = y_ctrl - gam_ctrl.predict(X_ctrl)
+        ctrl_r2 = gam_ctrl.statistics_["pseudo_r2"]["explained_deviance"]
+        logger.info(f"    Final control R²: {ctrl_r2:.3f}")
+        logger.info(
+            f"    Final control EDF: {np.sum(gam_ctrl.statistics_['edof']):.1f}"
+        )
+
+        # === DYSLEXIC MODEL ===
+        logger.info("\n  Fitting dyslexic model...")
+
+        # Stage 1: Pre-select hyperparameters
+        n_sp_dys = self._preselect_hyperparameters(
+            X_dys, y_dys, subj_dys, n_splines_search, lam_search, "duration"
+        )
+
+        # Stage 2: Validate with frozen hyperparameters
+        cv_rmse_dys = self._validate_with_frozen_hyperparameters(
+            X_dys, y_dys, subj_dys, n_sp_dys, lam_search, "duration"
+        )
+
+        # Final fit on all data
+        logger.info("    Fitting final model on all dyslexic data...")
+        gam_dys = LinearGAM(
+            s(0, n_splines=n_sp_dys)
+            + s(1, n_splines=n_sp_dys)
+            + s(2, n_splines=n_sp_dys)
+            + te(0, 1, n_splines=[n_sp_dys, n_sp_dys])
+        )
+        gam_dys.gridsearch(X_dys, y_dys, lam=lam_search, progress=False)
+
+        residuals_dys = y_dys - gam_dys.predict(X_dys)
+        dys_r2 = gam_dys.statistics_["pseudo_r2"]["explained_deviance"]
+        logger.info(f"    Final dyslexic R²: {dys_r2:.3f}")
+        logger.info(
+            f"    Final dyslexic EDF: {np.sum(gam_dys.statistics_['edof']):.1f}"
         )
 
         # Store models
         self.duration_model = {"control": gam_ctrl, "dyslexic": gam_dys}
 
-        # Compute smearing factors (for log-transform)
+        # Compute smearing factors if log-transform used
         if use_log_transform:
             self.smearing_factors = {
                 "control": float(np.mean(np.exp(residuals_ctrl))),
@@ -233,13 +475,9 @@ class DyslexiaGAMModels:
         else:
             self.smearing_factors = {"control": 1.0, "dyslexic": 1.0}
 
-        # Compute R²
-        ctrl_r2 = gam_ctrl.statistics_["pseudo_r2"]["explained_deviance"]
-        dys_r2 = gam_dys.statistics_["pseudo_r2"]["explained_deviance"]
-
-        logger.info("Duration models fitted successfully")
-        logger.info(f"  Control pseudo-R²: {ctrl_r2:.3f}")
-        logger.info(f"  Dyslexic pseudo-R²: {dys_r2:.3f}")
+        logger.info("\n✓ Duration models fitted successfully")
+        logger.info(f"  Control: R²={ctrl_r2:.3f} (CV RMSE: {cv_rmse_ctrl:.3f})")
+        logger.info(f"  Dyslexic: R²={dys_r2:.3f} (CV RMSE: {cv_rmse_dys:.3f})")
 
         return {
             "family": "Gaussian (log)" if use_log_transform else "Gamma",
@@ -247,131 +485,262 @@ class DyslexiaGAMModels:
             "n_obs_dyslexic": int(len(X_dys)),
             "r2_control": float(ctrl_r2),
             "r2_dyslexic": float(dys_r2),
+            "cv_rmse_control": float(cv_rmse_ctrl),
+            "cv_rmse_dyslexic": float(cv_rmse_dys),
+            "n_splines_control": int(n_sp_ctrl),
+            "n_splines_dyslexic": int(n_sp_dys),
             "has_tensor_product": True,
             "uses_smearing_factor": use_log_transform,
+            "method": "two_stage_preselection",
         }
 
-    def _fit_duration_model_cv(self, X, y, subjects, n_splines_search, lam_search):
-        """Fit duration model with GroupKFold CV"""
+    def _preselect_hyperparameters(
+        self, X, y, subjects, n_splines_search, lam_search, model_type="skip"
+    ):
+        """
+        Pre-select hyperparameters on subject subsample (Stage 1)
+        Returns: (best_n_splines, best_lam)
+        """
+        logger.info("    Stage 1: Pre-selecting hyperparameters...")
 
-        best_rmse = np.inf
-        best_model = None
+        rng = np.random.default_rng(42)
 
-        for n_sp in n_splines_search:
-            gam = LinearGAM(
-                s(0, n_splines=n_sp)
-                + s(1, n_splines=n_sp)
-                + s(2, n_splines=n_sp)
-                + te(0, 1, n_splines=[n_sp, n_sp])
+        # Subsample subjects (30-120 subjects)
+        unique_subjects = np.unique(subjects)
+        n_subsample = min(120, max(30, len(unique_subjects) // 3))
+        subsample_subjects = rng.choice(unique_subjects, n_subsample, replace=False)
+        mask = np.isin(subjects, subsample_subjects)
+
+        X_sub, y_sub, subj_sub = X[mask], y[mask], subjects[mask]
+        logger.info(
+            f"      Using {len(subsample_subjects)} subjects ({len(X_sub):,} obs)"
+        )
+
+        # 3-fold CV on subsample
+        gkf = GroupKFold(n_splits=3)
+        results = []
+        lam_history = {}  # store per-fold best λ for each n_splines
+
+        for n_sp in tqdm(
+            n_splines_search, desc="      Pre-select n_splines", leave=False
+        ):
+            fold_scores, fold_lams = [], []
+
+            for tr, va in gkf.split(X_sub, y_sub, groups=subj_sub):
+                if model_type == "skip":
+                    gam = LogisticGAM(
+                        s(0, n_splines=n_sp)
+                        + s(1, n_splines=n_sp)
+                        + s(2, n_splines=n_sp)
+                        + te(0, 1, n_splines=[n_sp, n_sp])
+                    )
+                    gam.gridsearch(X_sub[tr], y_sub[tr], lam=lam_search, progress=False)
+                    p = gam.predict_proba(X_sub[va])
+                    fold_scores.append(roc_auc_score(y_sub[va], p))
+                else:  # duration
+                    gam = LinearGAM(
+                        s(0, n_splines=n_sp)
+                        + s(1, n_splines=n_sp)
+                        + s(2, n_splines=n_sp)
+                        + te(0, 1, n_splines=[n_sp, n_sp])
+                    )
+                    gam.gridsearch(X_sub[tr], y_sub[tr], lam=lam_search, progress=False)
+                    yhat = gam.predict(X_sub[va])
+                    fold_scores.append(np.sqrt(np.mean((y_sub[va] - yhat) ** 2)))
+
+                # record best λ chosen by gridsearch on this fold
+                lam_chosen = float(np.atleast_1d(gam.lam)[0])
+                fold_lams.append(lam_chosen)
+
+            lam_history[n_sp] = fold_lams
+
+            mean_score = np.mean(fold_scores)
+            se_score = np.std(fold_scores, ddof=1) / np.sqrt(len(fold_scores))
+            results.append({"n_sp": n_sp, "mean": mean_score, "se": se_score})
+
+            if model_type == "skip":
+                logger.info(
+                    f"        n_splines={n_sp}: AUC={mean_score:.4f} (±{se_score:.4f})"
+                )
+            else:
+                logger.info(
+                    f"        n_splines={n_sp}: RMSE={mean_score:.4f} (±{se_score:.4f})"
+                )
+
+        # 1-SE rule
+        if model_type == "skip":
+            best = max(results, key=lambda r: r["mean"])
+            threshold = best["mean"] - best["se"]
+            within = [r for r in results if r["mean"] >= threshold]
+        else:  # duration (minimize RMSE)
+            best = min(results, key=lambda r: r["mean"])
+            threshold = best["mean"] + best["se"]
+            within = [r for r in results if r["mean"] <= threshold]
+
+        selected = min(within, key=lambda r: r["n_sp"])
+        n_sp_star = selected["n_sp"]
+
+        # Aggregate λ across folds for the chosen n_splines:
+        # use the geometric median (median in log space), then snap to nearest grid value
+        lams = np.asarray(lam_history[n_sp_star], dtype=float)
+        # fallback to first grid value if something unexpected happens
+        if lams.size == 0:
+            lam_star = float(np.atleast_1d(lam_search)[0])
+        else:
+            target = float(np.exp(np.median(np.log(lams))))
+            lam_star = float(
+                lam_search[np.argmin(np.abs(np.log(lam_search) - np.log(target)))]
             )
 
-            gam.gridsearch(X, y, lam=lam_search, progress=False)
+        logger.info(f"      ✓ Selected: n_splines={n_sp_star}, λ≈{lam_star:.3g}")
 
-            # Cross-validate
-            gkf = GroupKFold(n_splits=min(10, len(np.unique(subjects))))
-            cv_rmses = []
+        return n_sp_star, lam_star
 
-            for train_idx, val_idx in gkf.split(X, y, groups=subjects):
-                X_train, X_val = X[train_idx], X[val_idx]
-                y_train, y_val = y[train_idx], y[val_idx]
+    def _validate_with_frozen_hyperparameters(
+        self, X, y, subjects, n_splines, lam_search, model_type="skip"
+    ):
+        """
+        Stage 2: Validate with 10-fold CV using pre-selected hyperparameters
 
-                gam_fold = LinearGAM(
+        Args:
+            X, y, subjects: Full data arrays
+            n_splines: Pre-selected n_splines (frozen)
+            lam_search: Array of lambda values (still optimized per fold)
+            model_type: 'skip' or 'duration'
+
+        Returns:
+            mean_cv_score: Mean cross-validation score
+        """
+        logger.info(
+            f"    Stage 2: 10-fold CV validation (n_splines={n_splines} frozen)..."
+        )
+
+        uniq_subj = np.unique(subjects).size
+        n_splits = max(2, min(10, uniq_subj))
+        gkf = GroupKFold(n_splits=n_splits)
+
+        # Get all fold indices upfront for parallel processing
+        fold_indices = list(gkf.split(X, y, groups=subjects))
+
+        # Parallel processing of folds (n_jobs=-1 uses all cores)
+        fold_scores = Parallel(n_jobs=-1, verbose=0, prefer="processes")(
+            delayed(self._fit_single_fold)(
+                X, y, tr, va, n_splines, lam_search, model_type
+            )
+            for tr, va in tqdm(
+                fold_indices, total=n_splits, desc="      CV folds", leave=False
+            )
+        )
+
+        mean_score = float(np.mean(fold_scores))
+        se_score = float(np.std(fold_scores, ddof=1) / np.sqrt(len(fold_scores)))
+
+        if model_type == "skip":
+            logger.info(f"      CV AUC: {mean_score:.4f} (±{se_score:.4f})")
+        else:
+            logger.info(f"      CV RMSE: {mean_score:.4f} (±{se_score:.4f})")
+
+        return mean_score
+
+    def _fit_duration_model_cv(self, X, y, subjects, n_splines_search, lam_search):
+        """
+        Linear (log-Gaussian) duration model — nested CV + 1-SE rule on RMSE.
+        Returns (final LinearGAM refit on all data, residuals on y) for smearing.
+        """
+        uniq_subj = np.unique(subjects).size
+        n_splits = max(2, min(10, uniq_subj))
+
+        results = []
+        for n_sp in tqdm(
+            n_splines_search, desc="    Grid search (duration)", leave=False
+        ):
+            gkf = GroupKFold(n_splits=n_splits)
+            fold_rmses, fold_edfs = [], []
+
+            for tr, va in tqdm(
+                gkf.split(X, y, groups=subjects),
+                total=n_splits,
+                desc=f"      CV folds (n_sp={n_sp})",
+                leave=False,
+            ):
+                gam = LinearGAM(
                     s(0, n_splines=n_sp)
                     + s(1, n_splines=n_sp)
                     + s(2, n_splines=n_sp)
                     + te(0, 1, n_splines=[n_sp, n_sp])
                 )
-                gam_fold.gridsearch(X_train, y_train, lam=lam_search, progress=False)
+                # λ tuned on TRAIN only
+                gam.gridsearch(X[tr], y[tr], lam=lam_search, progress=False)
 
-                pred_val = gam_fold.predict(X_val)
-                rmse = np.sqrt(np.mean((y_val - pred_val) ** 2))
-                cv_rmses.append(rmse)
+                yhat = gam.predict(X[va])
+                rmse = float(np.sqrt(np.mean((y[va] - yhat) ** 2)))
+                fold_rmses.append(rmse)
+                fold_edfs.append(float(np.sum(gam.statistics_["edof"])))
 
-            mean_rmse = np.mean(cv_rmses)
+            mean_rmse = float(np.mean(fold_rmses))
+            se_rmse = float(np.std(fold_rmses, ddof=1) / np.sqrt(len(fold_rmses)))
+            mean_edf = float(np.mean(fold_edfs))
 
-            if mean_rmse < best_rmse:
-                best_rmse = mean_rmse
-                best_model = gam
+            results.append(
+                dict(n_sp=n_sp, mean_rmse=mean_rmse, se_rmse=se_rmse, mean_edf=mean_edf)
+            )
+            logger.info(
+                f"        n_splines={n_sp}: CV RMSE={mean_rmse:.4f} (±{se_rmse:.4f}), EDF≈{mean_edf:.1f}"
+            )
 
-        # Compute residuals for smearing factor
-        predictions = best_model.predict(X)
-        residuals = y - predictions
+        # 1-SE rule on RMSE (pick smallest n_sp within 1-SE of the best/lowest RMSE)
+        best = min(results, key=lambda r: r["mean_rmse"])
+        threshold = best["mean_rmse"] + best["se_rmse"]
+        within = [r for r in results if r["mean_rmse"] <= threshold]
+        selected = min(within, key=lambda r: r["n_sp"])
 
-        logger.info(f"    Best CV RMSE: {best_rmse:.3f}")
+        approx_max_edf = selected["n_sp"] * 3 + selected["n_sp"] * selected["n_sp"]
+        if selected["mean_edf"] > 0.9 * approx_max_edf:
+            logger.warning(
+                f"      ⚠ EDF near saturation ({selected['mean_edf']:.1f} / {approx_max_edf})"
+            )
+        else:
+            logger.info(
+                f"      ✓ EDF OK ({selected['mean_edf']:.1f} / {approx_max_edf})"
+            )
 
-        return best_model, residuals
-
-    def _prepare_skip_data(
-        self, data: pd.DataFrame
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """Prepare skip data"""
-        X = data[["length", "zipf", "surprisal"]].values
-        y = data["skip"].values
-        group = data["group_numeric"].values
-        subjects = data["subject_id"].values
-
-        # Remove NaN
-        valid_mask = ~np.isnan(X).any(axis=1) & ~np.isnan(y)
-
-        return X[valid_mask], y[valid_mask], group[valid_mask], subjects[valid_mask]
-
-    def _prepare_duration_data(
-        self, data: pd.DataFrame, use_log: bool
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """Prepare duration data"""
-        X = data[["length", "zipf", "surprisal"]].values
-        y = data["TRT"].values
-
-        if use_log:
-            y = np.log(np.clip(y, 1, None))  # log transform
-
-        group = data["group_numeric"].values
-        subjects = data["subject_id"].values
-
-        valid_mask = (
-            ~np.isnan(X).any(axis=1) & ~np.isnan(y) & (y > 0 if not use_log else True)
+        logger.info(
+            f"    Refitting full-data duration model with n_splines={selected['n_sp']}..."
         )
+        final = LinearGAM(
+            s(0, n_splines=selected["n_sp"])
+            + s(1, n_splines=selected["n_sp"])
+            + s(2, n_splines=selected["n_sp"])
+            + te(0, 1, n_splines=[selected["n_sp"], selected["n_sp"]])
+        )
+        final.gridsearch(X, y, lam=lam_search, progress=False)
 
-        return X[valid_mask], y[valid_mask], group[valid_mask], subjects[valid_mask]
-
-    def predict_skip(self, X: np.ndarray, group: str) -> np.ndarray:
-        """Predict skip probability"""
-        if self.skip_model is None:
-            raise ValueError("Skip model not fitted")
-
-        return self.skip_model[group].predict_proba(X)
-
-    def predict_trt(self, X: np.ndarray, group: str) -> np.ndarray:
-        """Predict TRT (with smearing factor if log-transform used)"""
-        if self.duration_model is None:
-            raise ValueError("Duration model not fitted")
-
-        predictions = self.duration_model[group].predict(X)
-
-        # Apply smearing factor if log-transform was used
-        if self.smearing_factors is not None:
-            smearing = self.smearing_factors[group]
-            predictions = np.exp(predictions) * smearing
-
-        return predictions
+        residuals = y - final.predict(X)  # used for smearing if log-Gaussian
+        logger.info(
+            f"    Final duration EDF={np.sum(final.statistics_['edof']):.1f}, λ={final.lam}"
+        )
+        return final, residuals
 
 
 def fit_gam_models(
-    data: pd.DataFrame, use_log_duration: bool = True
+    data: pd.DataFrame, use_log_duration: bool = True, quick_mode: bool = False
 ) -> Tuple[Dict, Dict, DyslexiaGAMModels]:
     """
-    Fit both GAM models with tensor products
+    Fit both GAM models with two-stage hyperparameter selection.
 
     Args:
         data: Prepared data
         use_log_duration: Use log-Gaussian (True) or Gamma (False) for duration
+        quick_mode: Use faster settings for testing/development
 
     Returns:
         (skip_metadata, duration_metadata, gam_instance) tuple
     """
     gam = DyslexiaGAMModels()
 
-    skip_metadata = gam.fit_skip_model(data)
-    duration_metadata = gam.fit_duration_model(data, use_log_transform=use_log_duration)
+    skip_metadata = gam.fit_skip_model(data, quick_mode=quick_mode)
+    duration_metadata = gam.fit_duration_model(
+        data, use_log_transform=use_log_duration, quick_mode=quick_mode
+    )
 
     return skip_metadata, duration_metadata, gam
