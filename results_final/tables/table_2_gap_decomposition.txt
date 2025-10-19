@@ -1,0 +1,18 @@
+Table 2: Gap Decomposition & Counterfactuals
+====================================================================================================
+
+                 Component Gap (ms) 95% CI % of Total
+                 Total gap     93.6      —       100%
+                                                     
+    Shapley decomposition:                           
+         Skip contribution     34.9      —        35%
+     Duration contribution     64.3      —        65%
+                                                     
+Equal-ease counterfactual:                           
+            Dyslexic saved    105.7      —          —
+             Control saved     86.3      —          —
+           Gap shrink (ms)     19.4      —          —
+            Gap shrink (%)    20.4%      —          —
+
+Interpretation:
+Duration pathway drives 65% of the reading time gap. Equal-ease text (shorter, more frequent, more predictable words) reduces the gap by 20%, with dyslexics benefiting more (106ms saved) than controls (86ms saved).

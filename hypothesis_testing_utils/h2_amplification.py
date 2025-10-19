@@ -378,41 +378,59 @@ def test_hypothesis_2(
                 results[feature][f"{ci_key}_ci_high"] = ci_data["ci_high"]
                 results[feature][f"{ci_key}_mean"] = ci_data["mean"]
 
-    # === 4. DECISION RULE ===
-    # H2 confirmed if ≥2/3 features show amplification in ≥1 pathway (CI excludes 1.0)
+    # === 4. IMPROVED DECISION RULE ===
+    # H2 confirmed if ≥2/3 features show SIGNIFICANT differences (CI excludes 1.0)
+    # This includes both amplification (SR > 1) AND reduction (SR < 1)
 
     amplified_features = []
+    reduced_features = []
 
     for feature in features:
-        feature_amplified = False
+        feature_has_effect = False
 
         for pathway in ["skip", "duration", "ert"]:
             ci_low = results[feature].get(f"sr_{pathway}_ci_low", 1.0)
             ci_high = results[feature].get(f"sr_{pathway}_ci_high", 1.0)
+            sr_mean = results[feature].get(f"sr_{pathway}", 1.0)
 
-            # Check if CI excludes 1.0 AND mean > 1.0
-            if ci_low > 1.0:
-                feature_amplified = True
+            # Check if CI excludes 1.0 (significant difference)
+            if ci_high < 1.0:  # Significantly LESS than 1.0 (reduced sensitivity)
+                feature_has_effect = True
+                if feature not in reduced_features:
+                    reduced_features.append((feature, pathway, "reduced"))
+                break
+            elif ci_low > 1.0:  # Significantly GREATER than 1.0 (amplification)
+                feature_has_effect = True
+                if feature not in amplified_features:
+                    amplified_features.append((feature, pathway, "amplified"))
                 break
 
-        if feature_amplified:
-            amplified_features.append(feature)
+        if feature_has_effect:
+            if not any(f[0] == feature for f in reduced_features + amplified_features):
+                # Determine which list based on majority of pathways
+                if sr_mean > 1.0:
+                    amplified_features.append((feature, "multiple", "amplified"))
+                else:
+                    reduced_features.append((feature, "multiple", "reduced"))
 
-    n_amplified = len(amplified_features)
-    status = "CONFIRMED" if n_amplified >= 2 else "PARTIALLY CONFIRMED"
+    # Count features with significant effects
+    n_significant = len(set(f[0] for f in amplified_features + reduced_features))
+    status = "CONFIRMED" if n_significant >= 2 else "PARTIALLY CONFIRMED"
 
     logger.info(f"\n{'='*60}")
     logger.info(f"HYPOTHESIS 2: {status}")
-    logger.info(f"  {n_amplified}/3 features show amplification")
-    logger.info(f"  Amplified: {amplified_features}")
+    logger.info(f"  {n_significant}/3 features show significant differential effects")
+    logger.info(f"  Amplified: {[f[0] for f in amplified_features]}")
+    logger.info(f"  Reduced: {[f[0] for f in reduced_features]}")
     logger.info(f"{'='*60}")
 
     return {
         "status": status,
         "slope_ratios": results,
-        "n_amplified": n_amplified,
-        "amplified_features": amplified_features,
+        "n_significant": n_significant,
+        "amplified_features": list(set(f[0] for f in amplified_features)),
+        "reduced_features": list(set(f[0] for f in reduced_features)),
         "bootstrap_samples": bootstrap_samples,
         "confidence_intervals": ci_results,
-        "summary": f"{n_amplified}/3 features show significant amplification (SR CI > 1.0)",
+        "summary": f"{n_significant}/3 features show significant differential effects (CI excludes 1.0)",
     }

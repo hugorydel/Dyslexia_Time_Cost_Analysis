@@ -1,6 +1,7 @@
 """
 Visualization Utilities for Analysis Plan Figures
 Generates publication-quality figures as specified in the analysis plan
+FIXED: Unicode encoding issues, removed special characters
 """
 
 import logging
@@ -29,14 +30,14 @@ def create_figure_1_overall_effects(
     Figure 1: Overall Effects Overview
 
     Layout: 1 row × 2 columns
-    Panel A: ΔERT (Q1→Q3) by feature and group
+    Panel A: Delta ERT (Q1→Q3) by feature and group
     Panel B: Slope Ratios by pathway and feature
     """
     logger.info("Creating Figure 1: Overall Effects Overview...")
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
-    # === Panel A: ΔERT ===
+    # === Panel A: Delta ERT ===
     features = ["length", "zipf", "surprisal"]
     x = np.arange(len(features))
     width = 0.35
@@ -59,7 +60,7 @@ def create_figure_1_overall_effects(
     ax1.bar(x + width / 2, dys_amies, width, label="Dyslexic", color="coral", alpha=0.8)
 
     ax1.set_xlabel("Feature")
-    ax1.set_ylabel("ΔERT (ms, Q1→Q3)")
+    ax1.set_ylabel("Delta ERT (ms, Q1->Q3)")  # FIXED: replaced → with ->
     ax1.set_title("Panel A: Feature Effects on Expected Reading Time")
     ax1.set_xticks(x)
     ax1.set_xticklabels(["Length", "Zipf Frequency", "Surprisal"])
@@ -127,7 +128,7 @@ def create_figure_1_overall_effects(
                     # Mark unstable SRs
                     if feat == "zipf" and pathway == "skip":
                         ax2.text(
-                            sr, y_pos + 0.2, "†", ha="center", fontsize=12, color="red"
+                            sr, y_pos + 0.2, "*", ha="center", fontsize=12, color="red"
                         )
 
                 yticks.append(y_pos)
@@ -155,7 +156,7 @@ def create_figure_1_overall_effects(
     fig.text(
         0.99,
         0.01,
-        "† Flagged: unstable denominator (control Δp ≈ 0)",
+        "* Flagged: unstable denominator (control Delta_p ~= 0)",
         ha="right",
         fontsize=8,
         style="italic",
@@ -183,16 +184,16 @@ def create_figure_2_zipf_pathways(
 
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 4))
 
-    # FIXED: Use SMOOTH prediction grid (200 points, no bin conditioning for plotting)
+    # Use SMOOTH prediction grid
     zipf_q1 = quartiles["zipf"]["q1"]
     zipf_q3 = quartiles["zipf"]["q3"]
 
     # Extend range slightly for visualization
     zipf_min = data["zipf"].quantile(0.05)
     zipf_max = data["zipf"].quantile(0.95)
-    zipf_range = np.linspace(zipf_min, zipf_max, 200)  # High resolution
+    zipf_range = np.linspace(zipf_min, zipf_max, 200)
 
-    # Fix other features at POOLED medians (not means, more robust)
+    # Fix other features at POOLED medians
     length_median = data["length"].median()
     surprisal_median = data["surprisal"].median()
 
@@ -231,7 +232,7 @@ def create_figure_2_zipf_pathways(
     ax1.text(zipf_q1, 0.02, "Q1", ha="center", fontsize=9, color="gray")
     ax1.text(zipf_q3, 0.02, "Q3", ha="center", fontsize=9, color="gray")
 
-    ax1.set_xlabel("Zipf Frequency (rare → frequent)", fontsize=11)
+    ax1.set_xlabel("Zipf Frequency (rare -> frequent)", fontsize=11)  # FIXED
     ax1.set_ylabel("P(skip)", fontsize=11)
     ax1.set_title("Panel A: Skip Pathway", fontsize=12, fontweight="bold")
     ax1.legend(loc="upper left", fontsize=10)
@@ -244,7 +245,7 @@ def create_figure_2_zipf_pathways(
             ax1.text(
                 0.95,
                 0.95,
-                f"SR(skip) = {sr_skip:.2f}†",
+                f"SR(skip) = {sr_skip:.2f}*",
                 transform=ax1.transAxes,
                 fontsize=10,
                 verticalalignment="top",
@@ -266,7 +267,6 @@ def create_figure_2_zipf_pathways(
     ax2.axvline(zipf_q1, color="gray", linestyle="--", alpha=0.5, linewidth=1.5)
     ax2.axvline(zipf_q3, color="gray", linestyle="--", alpha=0.5, linewidth=1.5)
 
-    # Position labels at bottom
     ylim = ax2.get_ylim()
     ax2.text(
         zipf_q1,
@@ -285,7 +285,7 @@ def create_figure_2_zipf_pathways(
         color="gray",
     )
 
-    ax2.set_xlabel("Zipf Frequency (rare → frequent)", fontsize=11)
+    ax2.set_xlabel("Zipf Frequency (rare -> frequent)", fontsize=11)  # FIXED
     ax2.set_ylabel("TRT | fixated (ms)", fontsize=11)
     ax2.set_title(
         "Panel B: Duration Pathway\n(conditioned within length bins)",
@@ -343,7 +343,7 @@ def create_figure_2_zipf_pathways(
         color="gray",
     )
 
-    ax3.set_xlabel("Zipf Frequency (rare → frequent)", fontsize=11)
+    ax3.set_xlabel("Zipf Frequency (rare -> frequent)", fontsize=11)  # FIXED
     ax3.set_ylabel("ERT (ms)", fontsize=11)
     ax3.set_title("Panel C: Combined ERT", fontsize=12, fontweight="bold")
     ax3.legend(loc="upper right", fontsize=10)
@@ -368,14 +368,17 @@ def create_figure_2_zipf_pathways(
     fig.text(
         0.5,
         0.02,
-        "Frequency operates via opposing pathways: controls skip more frequent words (Panel A), while dyslexics show amplified\n"
-        "duration costs for rare words (Panel B). These opposing effects partially cancel in combined ERT (Panel C).",
         ha="center",
         fontsize=9,
         style="italic",
     )
     fig.text(
-        0.99, 0.01, "† Unstable: control Δp ≈ 0", ha="right", fontsize=8, color="red"
+        0.99,
+        0.01,
+        "* Unstable: control Delta_p ~= 0",
+        ha="right",
+        fontsize=8,
+        color="red",
     )
 
     plt.tight_layout(rect=[0, 0.05, 1, 1])
@@ -463,7 +466,7 @@ def create_figure_3_gap_decomposition(h3_results: Dict, output_path: Path):
     )
     ax.grid(axis="y", alpha=0.3)
 
-    # FIXED: Add equal-ease inset with NUMERIC x positions
+    # Add equal-ease inset with NUMERIC x positions
     inset = ax.inset_axes([0.65, 0.6, 0.3, 0.35])
 
     gap_shrink_pct = equal_ease["gap_shrink_pct"]
@@ -471,7 +474,7 @@ def create_figure_3_gap_decomposition(h3_results: Dict, output_path: Path):
     cf_gap = equal_ease["counterfactual_gap"]
 
     labels = ["Baseline", "Equal-Ease"]
-    x_pos = np.array([0, 1])  # NUMERIC positions
+    x_pos = np.array([0, 1])
 
     inset.bar(
         x_pos,
@@ -481,7 +484,6 @@ def create_figure_3_gap_decomposition(h3_results: Dict, output_path: Path):
         width=0.6,
     )
 
-    # Set ticks explicitly
     inset.set_xticks(x_pos)
     inset.set_xticklabels(labels, fontsize=9)
     inset.set_ylabel("Gap (ms)", fontsize=9)
@@ -541,11 +543,11 @@ def generate_supplementary_figures(
         supp_dir / "figure_s2_diagnostics.png",
     )
 
-    logger.info("✅ Supplementary figures complete!")
+    logger.info("All supplementary figures complete!")
 
 
 def create_figure_s1_gam_smooths(ert_predictor, data: pd.DataFrame, output_path: Path):
-    """Figure S1: GAM Smooth Effects (2×3 panel)"""
+    """Figure S1: GAM Smooth Effects (2x3 panel)"""
     logger.info("Creating Figure S1: GAM Smooth Effects...")
 
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
@@ -623,7 +625,7 @@ def create_figure_s1_gam_smooths(ert_predictor, data: pd.DataFrame, output_path:
 def create_figure_s2_diagnostics(
     gam_models, skip_metadata: Dict, duration_metadata: Dict, output_path: Path
 ):
-    """Figure S2: Model Diagnostics (2×2 panel)"""
+    """Figure S2: Model Diagnostics (2x2 panel)"""
     logger.info("Creating Figure S2: Model Diagnostics...")
 
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
@@ -656,7 +658,7 @@ def create_figure_s2_diagnostics(
     r2s = [duration_metadata["r2_control"], duration_metadata["r2_dyslexic"]]
 
     ax.bar(groups, r2s, color=["steelblue", "coral"], alpha=0.8)
-    ax.set_ylabel("Pseudo-R² (explained deviance)", fontsize=11)
+    ax.set_ylabel("Pseudo-R^2 (explained deviance)", fontsize=11)  # FIXED
     ax.set_title("Duration Model Performance", fontsize=12, fontweight="bold")
     ax.grid(axis="y", alpha=0.3)
     ax.set_ylim([0, 0.15])
@@ -767,9 +769,9 @@ def generate_all_figures(
     h2_results: Dict,
     h3_results: Dict,
     quartiles: Dict,
-    gam_models,  # NEW parameter
-    skip_metadata: Dict,  # NEW parameter
-    duration_metadata: Dict,  # NEW parameter
+    gam_models,
+    skip_metadata: Dict,
+    duration_metadata: Dict,
     output_dir: Path,
 ):
     """Generate all main AND supplementary figures"""
@@ -796,7 +798,7 @@ def generate_all_figures(
         h3_results, output_dir / "figure_3_gap_decomposition.png"
     )
 
-    logger.info("\n✅ Main figures complete!")
+    logger.info("\nMain figures complete!")
 
     # Supplementary Figures
     generate_supplementary_figures(
@@ -808,5 +810,5 @@ def generate_all_figures(
         output_dir,
     )
 
-    logger.info("\n✅ All figures generated successfully!")
+    logger.info("\nAll figures generated successfully!")
     logger.info(f"Figures saved to: {output_dir}")

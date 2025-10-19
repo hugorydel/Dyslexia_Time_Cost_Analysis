@@ -1,6 +1,7 @@
 """
 Table Generation for Analysis Plan Tables
 Generates formatted tables for publication
+FIXED: Unicode encoding issues on Windows
 """
 
 import logging
@@ -28,11 +29,11 @@ def generate_table_1_feature_effects(
 
     Columns:
     - Feature
-    - Δp(skip) C/D, Cohen's h
+    - Delta p(skip) C/D, Cohen's h
     - SR(skip) [95% CI]
-    - ΔTRT (ms) C/D
+    - Delta TRT (ms) C/D
     - SR(dur) [95% CI]
-    - ΔERT (ms) C/D
+    - Delta ERT (ms) C/D
     - SR(ERT) [95% CI]
     """
     logger.info("Generating Table 1: Feature Effects & Pathway Amplification...")
@@ -51,11 +52,11 @@ def generate_table_1_feature_effects(
         # Get H2 SR results
         h2_feat = h2_results["slope_ratios"].get(feat, {})
 
-        # Build row
+        # Build row - FIXED: Use "Delta" instead of Greek Δ
         row = {
             "Feature": feature_labels[feat],
             # Skip pathway
-            "Δp(skip) C/D": f"{ctrl_pathway['delta_p_skip']:.3f} / {dys_pathway['delta_p_skip']:.3f}",
+            "Delta_p(skip) C/D": f"{ctrl_pathway['delta_p_skip']:.3f} / {dys_pathway['delta_p_skip']:.3f}",
             "Cohen's h": f"{ctrl_pathway.get('cohens_h', 0):.3f}",
             "SR(skip) [95% CI]": format_ci(
                 h2_feat.get("sr_skip", np.nan),
@@ -64,7 +65,7 @@ def generate_table_1_feature_effects(
                 decimals=2,
             ),
             # Duration pathway
-            "ΔTRT (ms) C/D": f"{ctrl_pathway['delta_trt_ms']:.0f} / {dys_pathway['delta_trt_ms']:.0f}",
+            "Delta_TRT (ms) C/D": f"{ctrl_pathway['delta_trt_ms']:.0f} / {dys_pathway['delta_trt_ms']:.0f}",
             "SR(dur) [95% CI]": format_ci(
                 h2_feat.get("sr_duration", np.nan),
                 h2_feat.get("sr_duration_ci_low", np.nan),
@@ -72,7 +73,7 @@ def generate_table_1_feature_effects(
                 decimals=2,
             ),
             # ERT pathway
-            "ΔERT (ms) C/D": f"{ctrl_pathway['delta_ert_ms']:.0f} / {dys_pathway['delta_ert_ms']:.0f}",
+            "Delta_ERT (ms) C/D": f"{ctrl_pathway['delta_ert_ms']:.0f} / {dys_pathway['delta_ert_ms']:.0f}",
             "SR(ERT) [95% CI]": format_ci(
                 h2_feat.get("sr_ert", np.nan),
                 h2_feat.get("sr_ert_ci_low", np.nan),
@@ -88,20 +89,20 @@ def generate_table_1_feature_effects(
     # Save as CSV
     df.to_csv(output_path.with_suffix(".csv"), index=False)
 
-    # Save as formatted text
-    with open(output_path.with_suffix(".txt"), "w") as f:
+    # Save as formatted text - FIXED: Specify UTF-8 encoding
+    with open(output_path.with_suffix(".txt"), "w", encoding="utf-8") as f:
         f.write("Table 1: Feature Effects & Pathway Amplification\n")
         f.write("=" * 100 + "\n\n")
         f.write(df.to_string(index=False))
         f.write("\n\n")
         f.write("Notes:\n")
         f.write("* Zipf uses conditional evaluation (within length bins)\n")
-        f.write("† Flagged: unstable denominator (control Δp ≈ 0)\n")
+        f.write("† Flagged: unstable denominator (control Delta_p ≈ 0)\n")
         f.write("C/D = Control / Dyslexic\n")
         f.write("SR = Slope Ratio (Dyslexic / Control)\n")
 
-    # Save as LaTeX
-    with open(output_path.with_suffix(".tex"), "w") as f:
+    # Save as LaTeX - FIXED: Specify UTF-8 encoding
+    with open(output_path.with_suffix(".tex"), "w", encoding="utf-8") as f:
         f.write(df.to_latex(index=False, escape=False))
 
     logger.info(f"  Saved: {output_path.stem} (.csv, .txt, .tex)")
@@ -182,10 +183,10 @@ def generate_table_2_gap_decomposition(h3_results: Dict, output_path: Path):
 
     df = pd.DataFrame(rows)
 
-    # Save formats
+    # Save formats - FIXED: UTF-8 encoding
     df.to_csv(output_path.with_suffix(".csv"), index=False)
 
-    with open(output_path.with_suffix(".txt"), "w") as f:
+    with open(output_path.with_suffix(".txt"), "w", encoding="utf-8") as f:
         f.write("Table 2: Gap Decomposition & Counterfactuals\n")
         f.write("=" * 100 + "\n\n")
         f.write(df.to_string(index=False))
@@ -201,7 +202,7 @@ def generate_table_2_gap_decomposition(h3_results: Dict, output_path: Path):
         f.write(f"benefiting more ({equal_ease['dyslexic_saved']:.0f}ms saved) than ")
         f.write(f"controls ({equal_ease['control_saved']:.0f}ms saved).\n")
 
-    with open(output_path.with_suffix(".tex"), "w") as f:
+    with open(output_path.with_suffix(".tex"), "w", encoding="utf-8") as f:
         f.write(df.to_latex(index=False, escape=False))
 
     logger.info(f"  Saved: {output_path.stem} (.csv, .txt, .tex)")
@@ -246,9 +247,10 @@ def generate_table_3_model_performance(
 
     df = pd.DataFrame(rows)
 
+    # FIXED: UTF-8 encoding for all file operations
     df.to_csv(output_path.with_suffix(".csv"), index=False)
 
-    with open(output_path.with_suffix(".txt"), "w") as f:
+    with open(output_path.with_suffix(".txt"), "w", encoding="utf-8") as f:
         f.write("Table 3: Model Performance (Supplementary)\n")
         f.write("=" * 100 + "\n\n")
         f.write(df.to_string(index=False))
@@ -256,7 +258,7 @@ def generate_table_3_model_performance(
         f.write("Note: Separate models fitted for control and dyslexic groups.\n")
         f.write("Models include tensor product te(length, zipf) interaction.\n")
 
-    with open(output_path.with_suffix(".tex"), "w") as f:
+    with open(output_path.with_suffix(".tex"), "w", encoding="utf-8") as f:
         f.write(df.to_latex(index=False, escape=False))
 
     logger.info(f"  Saved: {output_path.stem} (.csv, .txt, .tex)")
@@ -315,7 +317,8 @@ def create_results_summary_markdown(
     """
     logger.info("Creating results summary (Markdown)...")
 
-    with open(output_path, "w") as f:
+    # FIXED: UTF-8 encoding
+    with open(output_path, "w", encoding="utf-8") as f:
         f.write("# Analysis Results Summary\n\n")
 
         # H1

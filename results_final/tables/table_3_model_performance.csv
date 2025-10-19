@@ -1,0 +1,5 @@
+Metric,Mean,SD,Note
+Skip AUC,0.689,—,Average of control and dyslexic models
+Duration R²,0.078,—,Pseudo-R² (explained deviance)
+N observations (skip),"322,776",—,Combined control + dyslexic
+N observations (duration),"200,504",—,Fixated words only

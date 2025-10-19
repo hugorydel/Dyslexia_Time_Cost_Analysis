@@ -17,8 +17,9 @@
       "sr_ert": 2.6059757479391954
     }
   },
-  "n_amplified": 0,
+  "n_significant": 0,
   "amplified_features": [],
+  "reduced_features": [],
   "bootstrap_samples": {
     "amie": {
       "length": {
@@ -1675,5 +1676,5 @@
       }
     }
   },
-  "summary": "0/3 features show significant amplification (SR CI > 1.0)"
+  "summary": "0/3 features show significant differential effects (CI excludes 1.0)"
 }

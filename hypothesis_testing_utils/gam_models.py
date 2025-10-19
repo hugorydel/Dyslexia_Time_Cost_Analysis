@@ -35,6 +35,31 @@ class DyslexiaGAMModels:
         self.smearing_factors = None
         logger.info("GAM Models initialized with tensor product support")
 
+    def to_cache_blob(self):
+        return {
+            "skip_control": self.skip_model["control"],
+            "skip_dyslexic": self.skip_model["dyslexic"],
+            "dur_control": self.duration_model["control"],
+            "dur_dyslexic": self.duration_model["dyslexic"],
+            "feature_means": self.feature_means,
+            "smearing_factors": self.smearing_factors,
+        }
+
+    @classmethod
+    def from_cache_blob(cls, blob):
+        obj = cls()
+        obj.skip_model = {
+            "control": blob["skip_control"],
+            "dyslexic": blob["skip_dyslexic"],
+        }
+        obj.duration_model = {
+            "control": blob["dur_control"],
+            "dyslexic": blob["dur_dyslexic"],
+        }
+        obj.feature_means = blob.get("feature_means")
+        obj.smearing_factors = blob.get("smearing_factors")
+        return obj
+
     def _fit_single_fold(self, X, y, tr, va, n_splines, lam_search, model_type):
         if model_type == "skip":
             gam = LogisticGAM(

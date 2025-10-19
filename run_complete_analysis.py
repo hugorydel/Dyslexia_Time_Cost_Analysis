@@ -13,13 +13,14 @@ import logging
 import sys
 from pathlib import Path
 
+import joblib
 import numpy as np
 import pandas as pd
 
 # Import all modules
 from hypothesis_testing_utils.data_preparation import prepare_data_pipeline
 from hypothesis_testing_utils.ert_predictor import create_ert_predictor
-from hypothesis_testing_utils.gam_models import fit_gam_models
+from hypothesis_testing_utils.gam_models import DyslexiaGAMModels, fit_gam_models
 from hypothesis_testing_utils.h1_feature_effects import test_hypothesis_1
 from hypothesis_testing_utils.h2_amplification import test_hypothesis_2
 from hypothesis_testing_utils.h3_gap_decomposition import test_hypothesis_3
@@ -110,13 +111,13 @@ class CompleteAnalysisPipeline:
             logger.info("=" * 80)
 
             if self.use_cache:
-                import joblib
 
                 cache_path = self.cache_dir / "gam_models.pkl"
 
                 if cache_path.exists():
                     logger.info("✓ Loading models from cache...")
-                    gam_models = joblib.load(cache_path)
+                    blob = joblib.load(cache_path)
+                    gam_models = DyslexiaGAMModels.from_cache_blob(blob)
                     skip_meta = joblib.load(self.cache_dir / "skip_metadata.pkl")
                     duration_meta = joblib.load(
                         self.cache_dir / "duration_metadata.pkl"
@@ -125,7 +126,8 @@ class CompleteAnalysisPipeline:
                     skip_meta, duration_meta, gam_models = fit_gam_models(
                         prepared_data, use_log_duration=True
                     )
-                    joblib.dump(gam_models, cache_path)
+                    blob = gam_models.to_cache_blob()
+                    joblib.dump(blob, cache_path)
                     joblib.dump(skip_meta, self.cache_dir / "skip_metadata.pkl")
                     joblib.dump(duration_meta, self.cache_dir / "duration_metadata.pkl")
                     logger.info("💾 Models saved to cache")
@@ -146,18 +148,30 @@ class CompleteAnalysisPipeline:
             logger.info("PHASE 3: HYPOTHESIS TESTING")
             logger.info("=" * 80)
 
-            # H1: Feature Effects
-            h1_results = test_hypothesis_1(
-                ert_predictor, prepared_data, quartiles, bin_edges, bin_weights
-            )
+            # H1: Feature Effects (cache)
+            if self.use_cache:
+                h1_cache = self.cache_dir / "h1_results.pkl"
+                if h1_cache.exists():
+                    logger.info("✓ Loading H1 results from cache...")
+                    h1_results = joblib.load(h1_cache)
+                else:
+                    h1_results = test_hypothesis_1(
+                        ert_predictor, prepared_data, quartiles, bin_edges, bin_weights
+                    )
+                    joblib.dump(h1_results, h1_cache, compress=3)
+                    logger.info("💾 H1 results saved to cache")
+            else:
+                h1_results = test_hypothesis_1(
+                    ert_predictor, prepared_data, quartiles, bin_edges, bin_weights
+                )
             self._save_json(h1_results, "h1_results.json")
 
-            # H2: Amplification (with bootstrap)
+            # H2: Amplification (with bootstrap) — cache keyed by n_bootstrap
             if self.use_cache:
-                cache_path = self.cache_dir / "h2_results.pkl"
-                if cache_path.exists():
+                h2_cache = self.cache_dir / f"h2_results_n{self.n_bootstrap}.pkl"
+                if h2_cache.exists():
                     logger.info("✓ Loading H2 results from cache...")
-                    h2_results = joblib.load(cache_path)
+                    h2_results = joblib.load(h2_cache)
                 else:
                     h2_results = test_hypothesis_2(
                         ert_predictor,
@@ -167,7 +181,7 @@ class CompleteAnalysisPipeline:
                         bin_weights,
                         n_bootstrap=self.n_bootstrap,
                     )
-                    joblib.dump(h2_results, cache_path)
+                    joblib.dump(h2_results, h2_cache, compress=3)
                     logger.info("💾 H2 results saved to cache")
             else:
                 h2_results = test_hypothesis_2(
@@ -178,11 +192,22 @@ class CompleteAnalysisPipeline:
                     bin_weights,
                     n_bootstrap=self.n_bootstrap,
                 )
-
             self._save_json(h2_results, "h2_results.json")
 
-            # H3: Gap Decomposition
-            h3_results = test_hypothesis_3(ert_predictor, prepared_data, quartiles)
+            # H3: Gap Decomposition (cache)
+            if self.use_cache:
+                h3_cache = self.cache_dir / "h3_results.pkl"
+                if h3_cache.exists():
+                    logger.info("✓ Loading H3 results from cache...")
+                    h3_results = joblib.load(h3_cache)
+                else:
+                    h3_results = test_hypothesis_3(
+                        ert_predictor, prepared_data, quartiles
+                    )
+                    joblib.dump(h3_results, h3_cache, compress=3)
+                    logger.info("💾 H3 results saved to cache")
+            else:
+                h3_results = test_hypothesis_3(ert_predictor, prepared_data, quartiles)
             self._save_json(h3_results, "h3_results.json")
 
             logger.info("✅ Phase 3 complete")
