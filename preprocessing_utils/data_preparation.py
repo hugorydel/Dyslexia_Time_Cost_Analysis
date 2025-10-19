@@ -10,7 +10,7 @@ from typing import Optional, Set
 import numpy as np
 import pandas as pd
 
-from column_mappings import apply_mapping
+from utils.column_mappings import apply_mapping
 
 logger = logging.getLogger(__name__)
 

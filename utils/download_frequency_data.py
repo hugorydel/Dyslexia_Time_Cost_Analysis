@@ -38,12 +38,14 @@ DANISH_CORPORA = {
     "dan_wiki_2021": "dan_wikipedia_2021_1M.tar.gz",
 }
 
-OUTPUT_DIR = Path("danish_frequencies")
-OUTPUT_DIR.mkdir(exist_ok=True)
+OUTPUT_DIR = (
+    Path(__file__).resolve().parent.parent / "input_data" / "danish_frequencies"
+)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Processing parameters
-TOP_N_WORDS = 1500000  # Keep top 1.5M words
-MIN_FREQUENCY = 2  # Minimum frequency threshold
+TOP_N_WORDS = 3000000  # Keep top 3M words
+MIN_FREQUENCY = 1  # Minimum frequency threshold
 REMOVE_PUNCT_ONLY = True  # Remove entries that are only punctuation
 ADD_LOG_TRANSFORM = True  # Add log-transformed frequency columns
 
@@ -77,7 +79,7 @@ def download_file(url, filename):
                     f.write(chunk)
                     progress = (downloaded / total_size) * 100
                     print(f"  Progress: {progress:.1f}%", end="\r")
-        print(f"  [OK] Downloaded: {filepath}")
+        print(f"  ✓ Downloaded: {filepath}")
         return filepath
     except requests.exceptions.RequestException as e:
         print(f"  [X] Failed to download: {e}")
@@ -104,7 +106,7 @@ def extract_tar_gz(filepath):
                 output_path = OUTPUT_DIR / f"{filepath.stem}_words.txt"
                 with open(output_path, "w", encoding="utf-8") as f:
                     f.write(content)
-                print(f"  [OK] Extracted: {output_path}")
+                print(f"  ✓ Extracted: {output_path}")
                 return output_path
             else:
                 print(f"  ✗ No words file found in archive")
@@ -126,7 +128,7 @@ def load_words_file(filepath):
             quoting=3,
             on_bad_lines="skip",
         )
-        print(f"  [OK] Loaded {len(df):,} words")
+        print(f"  ✓ Loaded {len(df):,} words")
         return df[["word", "freq"]]
     except Exception as e:
         print(f"  ✗ Failed to load: {e}")
@@ -147,15 +149,13 @@ def process_frequency_data(df):
     df = df.sort_values("freq", ascending=False).reset_index(drop=True)
     after_standardize = len(df)
     duplicates_merged = before_standardize - after_standardize
-    print(
-        f"  [OK] Standardized and merged {duplicates_merged:,} case-variant duplicates"
-    )
+    print(f"  ✓ Standardized and merged {duplicates_merged:,} case-variant duplicates")
     print(f"    {before_standardize:,} → {after_standardize:,} unique lowercase words")
 
     # Filter by minimum frequency
     if MIN_FREQUENCY > 1:
         df = df[df["freq"] >= MIN_FREQUENCY]
-        print(f"  [OK] Filtered by min frequency ({MIN_FREQUENCY}): {len(df):,} words")
+        print(f"  ✓ Filtered by min frequency ({MIN_FREQUENCY}): {len(df):,} words")
 
     # Remove punctuation-only entries
     if REMOVE_PUNCT_ONLY:
@@ -163,13 +163,13 @@ def process_frequency_data(df):
         df = df[~df["word"].apply(is_punctuation_only)]
         removed = before - len(df)
         print(
-            f"  [OK] Removed punctuation-only entries: {removed:,} removed, {len(df):,} remaining"
+            f"  ✓ Removed punctuation-only entries: {removed:,} removed, {len(df):,} remaining"
         )
 
     # Keep top N words
     if TOP_N_WORDS and len(df) > TOP_N_WORDS:
         df = df.nlargest(TOP_N_WORDS, "freq")
-        print(f"  [OK] Kept top {TOP_N_WORDS:,} words")
+        print(f"  ✓ Kept top {TOP_N_WORDS:,} words")
 
     # Recalculate rank and proportion after filtering
     df["rank"] = range(1, len(df) + 1)
@@ -182,10 +182,10 @@ def process_frequency_data(df):
         df["log_proportion"] = df["proportion"].apply(
             lambda x: math.log(x) if x > 0 else math.log(1e-10)
         )
-        print(f"  [OK] Added log-transformed columns")
+        print(f"  ✓ Added log-transformed columns")
 
     print(
-        f"  [OK] Final dataset: {len(df):,} words ({(len(df)/original_count)*100:.1f}% of original)"
+        f"  ✓ Final dataset: {len(df):,} words ({(len(df)/original_count)*100:.1f}% of original)"
     )
 
     return df
@@ -211,7 +211,7 @@ def main():
         archive_file = OUTPUT_DIR / filename
 
         if extracted_file.exists():
-            print(f"[OK] Found existing: {extracted_file.name}")
+            print(f"✓ Found existing: {extracted_file.name}")
             words_files.append(extracted_file)
         elif archive_file.exists():
             print(f"Found archive: {filename}, extracting...")
@@ -272,7 +272,7 @@ def main():
     freq = pd.concat(dfs).groupby("word", as_index=False)["freq"].sum()
     freq = freq.sort_values("freq", ascending=False).reset_index(drop=True)
 
-    print(f"[OK] Combined: {len(freq):,} unique words (mixed case)")
+    print(f"✓ Combined: {len(freq):,} unique words (mixed case)")
     print(f"  Total frequency: {freq['freq'].sum():,}")
 
     # Process the data (includes lowercase standardization and merging)
@@ -289,14 +289,14 @@ def main():
     # Save full version
     output_full = OUTPUT_DIR / "danish_leipzig_processed.csv"
     freq.to_csv(output_full, index=False)
-    print(f"\n[OK] Saved processed data: {output_full}")
+    print(f"\n✓ Saved processed data: {output_full}")
 
     # Save simple format for linguistic_features.py (word\tproportion)
     output_simple = OUTPUT_DIR / "danish_leipzig_for_analysis.txt"
     freq[["word", "proportion"]].to_csv(
         output_simple, sep="\t", index=False, header=False
     )
-    print(f"[OK] Saved simple format: {output_simple}")
+    print(f"✓ Saved simple format: {output_simple}")
 
     # Show statistics
     print("\n" + "=" * 70)

@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from scipy.stats import pearsonr, spearmanr
+from scipy.stats import pearsonr
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 def load_data():
     """Load the prepared data"""
     script_dir = Path(__file__).resolve().parent.parent
-    data_path = script_dir / "preprocessing_results" / "processed_data_full.csv"
+    data_path = script_dir / "preprocessing_results" / "preprocessed_data.csv"
 
     data = pd.read_csv(data_path)
     logger.info(f"Loaded {len(data):,} observations")

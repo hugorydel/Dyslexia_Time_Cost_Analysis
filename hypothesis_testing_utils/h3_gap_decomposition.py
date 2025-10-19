@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 ANALYSIS_SEED = 42
 
 
-def compute_total_gap(ert_predictor, data: pd.DataFrame) -> float:
+def compute_total_gap(data: pd.DataFrame) -> float:
     """
     Compute total observed gap: mean(ERT_dys) - mean(ERT_ctrl)
 
@@ -402,7 +402,7 @@ def test_hypothesis_3(
     logger.info(f"Random seed: {ANALYSIS_SEED}")
 
     # === 1. TOTAL GAP (on consistent sample) ===
-    total_gap_observed = compute_total_gap(ert_predictor, analysis_sample)
+    total_gap_observed = compute_total_gap(analysis_sample)
     logger.info(f"\nTotal observed gap: {total_gap_observed:.2f} ms")
 
     # === 2. SHAPLEY DECOMPOSITION (on same sample) ===

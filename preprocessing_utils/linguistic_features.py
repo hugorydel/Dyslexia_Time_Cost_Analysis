@@ -29,7 +29,7 @@ class DanishLinguisticFeatures:
 
     def __init__(
         self,
-        lemma_file: str = "danish_frequencies/danish_leipzig_for_analysis.txt",
+        lemma_file: str = "input_data/danish_frequencies/danish_leipzig_for_analysis.txt",
         use_proportions: bool = True,
         strip_punctuation: bool = True,
     ):
@@ -43,7 +43,7 @@ class DanishLinguisticFeatures:
                            If False, expects raw frequency counts
             strip_punctuation: If True, strip leading/trailing punctuation before lookup
         """
-        self.lemma_file = Path(lemma_file)
+        self.lemma_file = Path(__file__).resolve().parent.parent / lemma_file
         self.use_proportions = use_proportions
         self.strip_punctuation = strip_punctuation
         self.freq_dict = None
@@ -390,8 +390,10 @@ class DanishLinguisticFeatures:
         )
 
         # === STEP 2: Cache setup ===
-        surprisal_dir = Path("word_surprisal")
-        surprisal_dir.mkdir(exist_ok=True)
+        surprisal_dir = (
+            Path(__file__).resolve().parent.parent / "input_data" / "word_surprisal"
+        )
+        surprisal_dir.mkdir(parents=True, exist_ok=True)
 
         if cache_file is None:
             cache_file = surprisal_dir / "surprisal_cache_gpt2.pkl"

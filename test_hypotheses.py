@@ -12,12 +12,13 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from data_preparation import prepare_data_pipeline
-from ert_predictor import create_ert_predictor
-from gam_models import fit_gam_models
-from h1_feature_effects import test_hypothesis_1
-from h2_amplification import test_hypothesis_2
-from h3_gap_decomposition import test_hypothesis_3
+
+from hypothesis_testing_utils.data_preparation import prepare_data_pipeline
+from hypothesis_testing_utils.ert_predictor import create_ert_predictor
+from hypothesis_testing_utils.gam_models import fit_gam_models
+from hypothesis_testing_utils.h1_feature_effects import test_hypothesis_1
+from hypothesis_testing_utils.h2_amplification import test_hypothesis_2
+from hypothesis_testing_utils.h3_gap_decomposition import test_hypothesis_3
 
 # Configure logging
 logging.basicConfig(
@@ -88,8 +89,6 @@ class DyslexiaGAMPipeline:
         skip_metadata, duration_metadata, gam_instance = fit_gam_models(train_data)
 
         # Create ERT predictor
-        from ert_predictor import create_ert_predictor
-
         ert_predictor = create_ert_predictor(gam_instance)
 
         # Save model metadata (now safe for JSON)
@@ -246,7 +245,7 @@ class DyslexiaGAMPipeline:
 
         script_dir = Path(__file__).resolve().parent.parent
         data_path = (
-            script_dir / "preprocessing_results" / "processed_data_full.csv"
+            script_dir / "preprocessing_results" / "preprocessed_data.csv"
         )  # Default path; can be parameterized
 
         try:

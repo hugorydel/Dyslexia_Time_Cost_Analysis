@@ -214,50 +214,6 @@ def prepare_gam_data(
     return gam_data
 
 
-def prepare_data_pipeline(
-    data: pd.DataFrame,
-    residualize_zipf: bool = False,
-) -> Tuple[pd.DataFrame, pd.DataFrame, Dict]:
-    """
-    Full data preparation pipeline
-
-    Args:
-        data: Raw data with linguistic features
-        residualize_zipf: Whether to orthogonalize zipf against length
-
-    Returns:
-        (train_data, test_data, metadata) tuple
-    """
-    # Prepare data (with optional orthogonalization)
-    gam_data = prepare_gam_data(data, residualize_zipf=residualize_zipf)
-
-    # Compute quartiles
-    quartiles = compute_feature_quartiles(gam_data)
-
-    # Check balance
-    balance_stats = check_data_balance(gam_data)
-
-    # Train/test split
-    train_data, test_data = train_test_split_by_subject(gam_data, test_size=0.2)
-
-    # Package metadata
-    metadata = {
-        "quartiles": quartiles,
-        "balance_stats": balance_stats,
-        "n_total": len(gam_data),
-        "n_train": len(train_data),
-        "n_test": len(test_data),
-        "residualized": residualize_zipf,
-        "note": (
-            "zipf values are RESIDUALIZED (orthogonal to length)"
-            if residualize_zipf
-            else "zipf values are RAW (natural co-occurrence with length)"
-        ),
-    }
-
-    return train_data, test_data, metadata
-
-
 def compute_feature_quartiles(data: pd.DataFrame) -> Dict[str, Dict[str, float]]:
     """
     Compute Q1 (25th) and Q3 (75th) percentiles for each feature

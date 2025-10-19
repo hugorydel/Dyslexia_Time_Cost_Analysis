@@ -19,10 +19,10 @@ if sys.platform == "win32":
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
 
 # Import configuration
-import config
+import utils.config as config
 
 # Import utilities
-from utils.data_utils import (
+from preprocessing_utils.data_preparation import (
     clean_word_data,
     create_additional_measures,
     identify_dyslexic_subjects,
@@ -30,15 +30,21 @@ from utils.data_utils import (
     load_participant_stats,
     merge_with_participant_stats,
 )
-
-# Import linguistic features
-from utils.linguistic_features import DanishLinguisticFeatures
-from utils.misc_utils import save_json_results, setup_logging, validate_config
-from utils.quartile_analysis import run_quartile_analysis
-from utils.stats_utils import calculate_basic_statistics, calculate_group_summary_stats
-from utils.visualization_utils import (
+from preprocessing_utils.data_visualization import (
     create_exploratory_plots,
     create_group_summary_plots,
+)
+
+# Import linguistic features
+from preprocessing_utils.linguistic_features import DanishLinguisticFeatures
+from preprocessing_utils.misc import save_json_results, setup_logging, validate_config
+from preprocessing_utils.quartile_analysis import run_quartile_analysis
+from preprocessing_utils.skipping_calculation import (
+    calculate_skipping_from_extracted_features,
+)
+from preprocessing_utils.statistics_calculation import (
+    calculate_basic_statistics,
+    calculate_group_summary_stats,
 )
 
 # Set up logging
@@ -58,8 +64,13 @@ class DyslexiaTimeAnalysisPipeline:
         validate_config(self.config)
 
         # Create output directory
-        self.results_dir = Path("preprocessing_results")
-        self.results_dir.mkdir(exist_ok=True, parents=True)
+        OUTPUT_DIR = (
+            Path(__file__).resolve().parent / "input_data" / "preprocessing_summary"
+        )
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        self.results_dir = OUTPUT_DIR
+        self.results_dir_parent = self.results_dir.parent
+
         logger.debug(f"Created directory: {self.results_dir}")
 
         # Initialize linguistic features processor
@@ -131,8 +142,6 @@ class DyslexiaTimeAnalysisPipeline:
         # Calculate skipping probabilities
         logger.info("Calculating skipping probabilities...")
         try:
-            from utils.skipping_utils import calculate_skipping_from_extracted_features
-
             skipping_results = calculate_skipping_from_extracted_features(data)
 
             if skipping_results:
@@ -352,7 +361,7 @@ class DyslexiaTimeAnalysisPipeline:
         # Compute linguistic features
         data = self.compute_linguistic_features(data)
 
-        self.save_processed_data(data, "processed_data_full.csv")
+        self.save_processed_data(data, "preprocessed_data.csv")
 
         # Get skipping analysis results if available
         skipping_analysis = getattr(self, "_skipping_analysis", {})
@@ -558,7 +567,7 @@ class DyslexiaTimeAnalysisPipeline:
             data: Processed DataFrame with all features
             filename: Output filename
         """
-        output_path = self.results_dir / filename
+        output_path = self.results_dir_parent / filename
 
         logger.info(f"Saving processed data to {output_path}")
         logger.info(f"  Shape: {data.shape}")
