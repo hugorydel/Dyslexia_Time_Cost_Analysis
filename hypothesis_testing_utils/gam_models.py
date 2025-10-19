@@ -36,19 +36,6 @@ class DyslexiaGAMModels:
         logger.info("GAM Models initialized with tensor product support")
 
     def _fit_single_fold(self, X, y, tr, va, n_splines, lam_search, model_type):
-        """
-        Fit a single CV fold (for parallel processing)
-
-        Args:
-            X, y: Data arrays
-            tr, va: Train/validation indices
-            n_splines: Number of splines (frozen)
-            lam_search: Lambda grid
-            model_type: 'skip' or 'duration'
-
-        Returns:
-            Validation score (AUC or RMSE)
-        """
         if model_type == "skip":
             gam = LogisticGAM(
                 s(0, n_splines=n_splines)
@@ -56,17 +43,35 @@ class DyslexiaGAMModels:
                 + s(2, n_splines=n_splines)
                 + te(0, 1, n_splines=[n_splines, n_splines])
             )
-            gam.gridsearch(X[tr], y[tr], lam=lam_search, progress=False)
-            p = gam.predict_proba(X[va])
-            return roc_auc_score(y[va], p)
-        else:  # duration
+        else:
             gam = LinearGAM(
                 s(0, n_splines=n_splines)
                 + s(1, n_splines=n_splines)
                 + s(2, n_splines=n_splines)
                 + te(0, 1, n_splines=[n_splines, n_splines])
             )
+
+        # decide: fixed λ vs gridsearch
+        def _is_single_lam(lam):
+            if np.isscalar(lam):
+                return True
+            try:
+                seq = list(lam)
+            except TypeError:
+                return True
+            return len(seq) == 1 and not hasattr(seq[0], "__iter__")
+
+        if _is_single_lam(lam_search):
+            lam_val = float(np.atleast_1d(lam_search)[0])  # broadcast inside pyGAM
+            gam.lam = lam_val
+            gam.fit(X[tr], y[tr])
+        else:
             gam.gridsearch(X[tr], y[tr], lam=lam_search, progress=False)
+
+        if model_type == "skip":
+            p = gam.predict_proba(X[va])
+            return roc_auc_score(y[va], p)
+        else:
             yhat = gam.predict(X[va])
             return np.sqrt(np.mean((y[va] - yhat) ** 2))
 
@@ -80,7 +85,7 @@ class DyslexiaGAMModels:
         """
         Fit skip model with TWO-STAGE approach:
         Stage 1: Pre-select n_splines on subsample (3-fold CV)
-        Stage 2: Validate on full data (10-fold CV with frozen n_splines)
+        Stage 2: Validate on full data (10-fold CV with frozen n_splines & λ)
 
         skip ~ s(length) + s(zipf) + s(surprisal) + te(length, zipf)
         """
@@ -125,17 +130,20 @@ class DyslexiaGAMModels:
         # === CONTROL MODEL ===
         logger.info("\n  Fitting control model...")
 
-        # Stage 1: Pre-select hyperparameters
-        n_sp_ctrl = self._preselect_hyperparameters(
+        # Stage 1: Pre-select hyperparameters (n_splines & λ)
+        n_sp_ctrl, lam_ctrl = self._preselect_hyperparameters(
             X_ctrl, y_ctrl, subj_ctrl, n_splines_search, lam_search, "skip"
         )
 
         # Stage 2: Validate with frozen hyperparameters
+        # NOTE: pass a 2-length duplicate λ grid so pyGAM.gridsearch accepts it,
+        # even if _fit_single_fold still calls gridsearch internally.
+        lam_grid_dupe = np.array([lam_ctrl, lam_ctrl], dtype=float)
         cv_auc_ctrl = self._validate_with_frozen_hyperparameters(
-            X_ctrl, y_ctrl, subj_ctrl, n_sp_ctrl, lam_search, "skip"
+            X_ctrl, y_ctrl, subj_ctrl, n_sp_ctrl, lam_grid_dupe, "skip"
         )
 
-        # Final fit on all data
+        # Final fit on all data (freeze λ) -> set lam and .fit()
         logger.info("    Fitting final model on all control data...")
         gam_ctrl = LogisticGAM(
             s(0, n_splines=n_sp_ctrl)
@@ -143,7 +151,8 @@ class DyslexiaGAMModels:
             + s(2, n_splines=n_sp_ctrl)
             + te(0, 1, n_splines=[n_sp_ctrl, n_sp_ctrl])
         )
-        gam_ctrl.gridsearch(X_ctrl, y_ctrl, lam=lam_search, progress=False)
+        gam_ctrl.lam = float(lam_ctrl)
+        gam_ctrl.fit(X_ctrl, y_ctrl)
 
         ctrl_pred = gam_ctrl.predict_proba(X_ctrl)
         ctrl_auc = roc_auc_score(y_ctrl, ctrl_pred)
@@ -155,17 +164,18 @@ class DyslexiaGAMModels:
         # === DYSLEXIC MODEL ===
         logger.info("\n  Fitting dyslexic model...")
 
-        # Stage 1: Pre-select hyperparameters
-        n_sp_dys = self._preselect_hyperparameters(
+        # Stage 1: Pre-select hyperparameters (n_splines & λ)
+        n_sp_dys, lam_dys = self._preselect_hyperparameters(
             X_dys, y_dys, subj_dys, n_splines_search, lam_search, "skip"
         )
 
-        # Stage 2: Validate with frozen hyperparameters
+        # Stage 2: Validate with frozen hyperparameters (duplicate λ trick again)
+        lam_grid_dupe = np.array([lam_dys, lam_dys], dtype=float)
         cv_auc_dys = self._validate_with_frozen_hyperparameters(
-            X_dys, y_dys, subj_dys, n_sp_dys, lam_search, "skip"
+            X_dys, y_dys, subj_dys, n_sp_dys, lam_grid_dupe, "skip"
         )
 
-        # Final fit on all data
+        # Final fit on all data (freeze λ)
         logger.info("    Fitting final model on all dyslexic data...")
         gam_dys = LogisticGAM(
             s(0, n_splines=n_sp_dys)
@@ -173,7 +183,8 @@ class DyslexiaGAMModels:
             + s(2, n_splines=n_sp_dys)
             + te(0, 1, n_splines=[n_sp_dys, n_sp_dys])
         )
-        gam_dys.gridsearch(X_dys, y_dys, lam=lam_search, progress=False)
+        gam_dys.lam = float(lam_dys)
+        gam_dys.fit(X_dys, y_dys)
 
         dys_pred = gam_dys.predict_proba(X_dys)
         dys_auc = roc_auc_score(y_dys, dys_pred)
@@ -346,7 +357,7 @@ class DyslexiaGAMModels:
         """
         Fit duration model with TWO-STAGE approach:
         Stage 1: Pre-select n_splines on subsample (3-fold CV)
-        Stage 2: Validate on full data (10-fold CV with frozen n_splines)
+        Stage 2: Validate on full data (10-fold CV with frozen n_splines & λ)
 
         log(TRT) ~ s(length) + s(zipf) + s(surprisal) + te(length, zipf)
         """
@@ -402,17 +413,18 @@ class DyslexiaGAMModels:
         # === CONTROL MODEL ===
         logger.info("\n  Fitting control model...")
 
-        # Stage 1: Pre-select hyperparameters
-        n_sp_ctrl = self._preselect_hyperparameters(
+        # Stage 1: Pre-select hyperparameters (n_splines & λ)
+        n_sp_ctrl, lam_ctrl = self._preselect_hyperparameters(
             X_ctrl, y_ctrl, subj_ctrl, n_splines_search, lam_search, "duration"
         )
 
         # Stage 2: Validate with frozen hyperparameters
+        lam_grid_dupe = np.array([lam_ctrl, lam_ctrl], dtype=float)
         cv_rmse_ctrl = self._validate_with_frozen_hyperparameters(
-            X_ctrl, y_ctrl, subj_ctrl, n_sp_ctrl, lam_search, "duration"
+            X_ctrl, y_ctrl, subj_ctrl, n_sp_ctrl, lam_grid_dupe, "duration"
         )
 
-        # Final fit on all data
+        # Final fit on all data (freeze λ)
         logger.info("    Fitting final model on all control data...")
         gam_ctrl = LinearGAM(
             s(0, n_splines=n_sp_ctrl)
@@ -420,7 +432,8 @@ class DyslexiaGAMModels:
             + s(2, n_splines=n_sp_ctrl)
             + te(0, 1, n_splines=[n_sp_ctrl, n_sp_ctrl])
         )
-        gam_ctrl.gridsearch(X_ctrl, y_ctrl, lam=lam_search, progress=False)
+        gam_ctrl.lam = float(lam_ctrl)
+        gam_ctrl.fit(X_ctrl, y_ctrl)
 
         residuals_ctrl = y_ctrl - gam_ctrl.predict(X_ctrl)
         ctrl_r2 = gam_ctrl.statistics_["pseudo_r2"]["explained_deviance"]
@@ -432,17 +445,18 @@ class DyslexiaGAMModels:
         # === DYSLEXIC MODEL ===
         logger.info("\n  Fitting dyslexic model...")
 
-        # Stage 1: Pre-select hyperparameters
-        n_sp_dys = self._preselect_hyperparameters(
+        # Stage 1: Pre-select hyperparameters (n_splines & λ)
+        n_sp_dys, lam_dys = self._preselect_hyperparameters(
             X_dys, y_dys, subj_dys, n_splines_search, lam_search, "duration"
         )
 
         # Stage 2: Validate with frozen hyperparameters
+        lam_grid_dupe = np.array([lam_dys, lam_dys], dtype=float)
         cv_rmse_dys = self._validate_with_frozen_hyperparameters(
-            X_dys, y_dys, subj_dys, n_sp_dys, lam_search, "duration"
+            X_dys, y_dys, subj_dys, n_sp_dys, lam_grid_dupe, "duration"
         )
 
-        # Final fit on all data
+        # Final fit on all data (freeze λ)
         logger.info("    Fitting final model on all dyslexic data...")
         gam_dys = LinearGAM(
             s(0, n_splines=n_sp_dys)
@@ -450,7 +464,8 @@ class DyslexiaGAMModels:
             + s(2, n_splines=n_sp_dys)
             + te(0, 1, n_splines=[n_sp_dys, n_sp_dys])
         )
-        gam_dys.gridsearch(X_dys, y_dys, lam=lam_search, progress=False)
+        gam_dys.lam = float(lam_dys)
+        gam_dys.fit(X_dys, y_dys)
 
         residuals_dys = y_dys - gam_dys.predict(X_dys)
         dys_r2 = gam_dys.statistics_["pseudo_r2"]["explained_deviance"]
@@ -494,6 +509,24 @@ class DyslexiaGAMModels:
             "method": "two_stage_preselection",
         }
 
+    def _flatten_lams(self, lam):
+        """Recursively flatten a possibly nested lam structure into a list of floats."""
+        out = []
+        stack = [lam]
+        while stack:
+            x = stack.pop()
+            if isinstance(x, (list, tuple, np.ndarray)):
+                stack.extend(list(x))
+            else:
+                out.append(float(x))
+        return out
+
+    def _geomean(self, vals):
+        """Geometric mean with a tiny epsilon for numerical safety."""
+        vals = np.asarray(vals, dtype=float)
+        eps = 1e-12
+        return float(np.exp(np.mean(np.log(vals + eps))))
+
     def _preselect_hyperparameters(
         self, X, y, subjects, n_splines_search, lam_search, model_type="skip"
     ):
@@ -505,19 +538,29 @@ class DyslexiaGAMModels:
 
         rng = np.random.default_rng(42)
 
-        # Subsample subjects (30-120 subjects)
         unique_subjects = np.unique(subjects)
-        n_subsample = min(120, max(30, len(unique_subjects) // 3))
+        n_total = unique_subjects.size
+
+        # target ~ max(30, n_total//3), capped in [3, 120], but never > n_total
+        target = max(30, n_total // 3)
+        n_subsample = min(n_total, max(3, min(120, target)))
+
         subsample_subjects = rng.choice(unique_subjects, n_subsample, replace=False)
         mask = np.isin(subjects, subsample_subjects)
 
         X_sub, y_sub, subj_sub = X[mask], y[mask], subjects[mask]
         logger.info(
-            f"      Using {len(subsample_subjects)} subjects ({len(X_sub):,} obs)"
+            f"      Using {len(subsample_subjects)} of {n_total} subjects ({len(X_sub):,} obs)"
         )
 
-        # 3-fold CV on subsample
-        gkf = GroupKFold(n_splits=3)
+        # CV folds must not exceed number of groups; need at least 2
+        n_splits = max(2, min(3, np.unique(subj_sub).size))
+        if n_splits < 2:
+            raise ValueError(
+                f"Not enough subjects for CV in this group (got {np.unique(subj_sub).size})."
+            )
+        gkf = GroupKFold(n_splits=n_splits)
+
         results = []
         lam_history = {}  # store per-fold best λ for each n_splines
 
@@ -549,7 +592,8 @@ class DyslexiaGAMModels:
                     fold_scores.append(np.sqrt(np.mean((y_sub[va] - yhat) ** 2)))
 
                 # record best λ chosen by gridsearch on this fold
-                lam_chosen = float(np.atleast_1d(gam.lam)[0])
+                lam_values = self._flatten_lams(gam.lam)
+                lam_chosen = self._geomean(lam_values)
                 fold_lams.append(lam_chosen)
 
             lam_history[n_sp] = fold_lams
@@ -581,13 +625,14 @@ class DyslexiaGAMModels:
         n_sp_star = selected["n_sp"]
 
         # Aggregate λ across folds for the chosen n_splines:
-        # use the geometric median (median in log space), then snap to nearest grid value
-        lams = np.asarray(lam_history[n_sp_star], dtype=float)
-        # fallback to first grid value if something unexpected happens
-        if lams.size == 0:
-            lam_star = float(np.atleast_1d(lam_search)[0])
+        lams_raw = lam_history.get(n_sp_star, [])
+        if len(lams_raw) == 0:
+            lam_star = float(np.asarray(lam_search).flatten()[0])
         else:
-            target = float(np.exp(np.median(np.log(lams))))
+            flat = []
+            for lam_val in lams_raw:
+                flat.extend(self._flatten_lams(lam_val))
+            target = self._geomean(flat)  # geometric “center” in log-space
             lam_star = float(
                 lam_search[np.argmin(np.abs(np.log(lam_search) - np.log(target)))]
             )
@@ -600,12 +645,12 @@ class DyslexiaGAMModels:
         self, X, y, subjects, n_splines, lam_search, model_type="skip"
     ):
         """
-        Stage 2: Validate with 10-fold CV using pre-selected hyperparameters
+        Stage 2: Validate with 10-fold CV using pre-selected hyperparameters.
 
         Args:
             X, y, subjects: Full data arrays
             n_splines: Pre-selected n_splines (frozen)
-            lam_search: Array of lambda values (still optimized per fold)
+            lam_search: Array of lambda values (typically single pre-selected value)
             model_type: 'skip' or 'duration'
 
         Returns:

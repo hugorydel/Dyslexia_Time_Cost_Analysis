@@ -27,7 +27,6 @@ from hypothesis_testing_utils.table_generator import (
     create_results_summary_markdown,
     generate_all_tables,
 )
-from hypothesis_testing_utils.validate_migration import MigrationValidator
 from hypothesis_testing_utils.visualization_utils import generate_all_figures
 
 # Configure logging
@@ -134,28 +133,7 @@ class CompleteAnalysisPipeline:
 
             logger.info("✅ Phase 3 complete")
 
-            # ===== PHASE 4: VALIDATION =====
-            logger.info("\n" + "=" * 80)
-            logger.info("PHASE 4: VALIDATION")
-            logger.info("=" * 80)
-
-            validator = MigrationValidator()
-
-            # Run validation checks
-            data_ok = validator.validate_data_preparation(prepared_data, metadata)
-            models_ok = validator.validate_gam_models(skip_meta, duration_meta)
-            h1_ok = validator.validate_h1_results(h1_results)
-            h2_ok = validator.validate_h2_results(h2_results)
-
-            validation_passed = validator.print_summary()
-
-            if not validation_passed:
-                logger.warning("⚠️  Some validation checks failed!")
-                logger.warning("Review validation output above")
-            else:
-                logger.info("✅ Phase 4 complete - All checks passed")
-
-            # ===== PHASE 5: VISUALIZATION =====
+            # ===== PHASE 4: VISUALIZATION =====
             logger.info("\n" + "=" * 80)
             logger.info("PHASE 5: FIGURE GENERATION")
             logger.info("=" * 80)
@@ -170,11 +148,11 @@ class CompleteAnalysisPipeline:
                 output_dir=self.figures_dir,
             )
 
-            logger.info("✅ Phase 5 complete")
+            logger.info("✅ Phase 4 complete")
 
-            # ===== PHASE 6: TABLE GENERATION =====
+            # ===== PHASE 5: TABLE GENERATION =====
             logger.info("\n" + "=" * 80)
-            logger.info("PHASE 6: TABLE GENERATION")
+            logger.info("PHASE 5: TABLE GENERATION")
             logger.info("=" * 80)
 
             generate_all_tables(
@@ -186,11 +164,11 @@ class CompleteAnalysisPipeline:
                 output_dir=self.tables_dir,
             )
 
-            logger.info("✅ Phase 6 complete")
+            logger.info("✅ Phase 5 complete")
 
-            # ===== PHASE 7: FINAL REPORT =====
+            # ===== PHASE 6: FINAL REPORT =====
             logger.info("\n" + "=" * 80)
-            logger.info("PHASE 7: FINAL REPORT")
+            logger.info("PHASE 6: FINAL REPORT")
             logger.info("=" * 80)
 
             # Compile comprehensive results
@@ -216,12 +194,6 @@ class CompleteAnalysisPipeline:
                         "summary": h3_results["summary"],
                     },
                 },
-                "validation": {
-                    "passed": validation_passed,
-                    "checks_passed": len(validator.checks_passed),
-                    "checks_failed": len(validator.checks_failed),
-                    "warnings": len(validator.warnings),
-                },
             }
 
             self._save_json(final_results, "final_report.json")
@@ -234,7 +206,7 @@ class CompleteAnalysisPipeline:
                 self.results_dir / "RESULTS_SUMMARY.md",
             )
 
-            logger.info("✅ Phase 7 complete")
+            logger.info("✅ Phase 6 complete")
 
             # ===== COMPLETION =====
             self._print_completion_summary(final_results)

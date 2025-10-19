@@ -419,19 +419,25 @@ def create_figure_3_gap_decomposition(h3_results: Dict, output_path: Path):
     )
     ax.grid(axis="y", alpha=0.3)
 
-    # Add equal-ease inset
+    # Add equal-ease inset (use numeric x positions to avoid categorical conversion errors)
     inset = ax.inset_axes([0.65, 0.6, 0.3, 0.35])
+    inset.cla()  # ensure a fresh axis without prior categorical state
 
     gap_shrink_pct = equal_ease["gap_shrink_pct"]
     baseline_gap = equal_ease["baseline_gap"]
     cf_gap = equal_ease["counterfactual_gap"]
 
+    labels = ["Baseline", "Equal-Ease"]
+    x = np.arange(len(labels))  # [0, 1]
+
     inset.bar(
-        ["Baseline", "Equal-Ease"],
+        x,
         [baseline_gap, cf_gap],
         color=["coral", "lightgreen"],
         alpha=0.7,
     )
+    inset.set_xticks(x)
+    inset.set_xticklabels(labels, fontsize=9)
     inset.set_ylabel("Gap (ms)", fontsize=9)
     inset.set_title(f"Equal-Ease: {gap_shrink_pct:.0f}% Reduction", fontsize=9)
     inset.grid(axis="y", alpha=0.3)
@@ -439,17 +445,18 @@ def create_figure_3_gap_decomposition(h3_results: Dict, output_path: Path):
     # Add shrink annotation
     inset.annotate(
         "",
-        xy=(1, cf_gap),
-        xytext=(1, baseline_gap),
+        xy=(x[1], cf_gap),
+        xytext=(x[1], baseline_gap),
         arrowprops=dict(arrowstyle="<->", color="red", lw=2),
     )
     inset.text(
-        1.1,
+        x[1] + 0.1,
         (baseline_gap + cf_gap) / 2,
         f'{equal_ease["gap_shrink_ms"]:.0f} ms\nsaved',
         fontsize=8,
         color="red",
         weight="bold",
+        va="center",
     )
 
     plt.tight_layout()
