@@ -1,6 +1,6 @@
 """
-Data Preparation with Orthogonalized Zipf (Option 2B)
-Keeps length raw, residualizes zipf to remove collinearity
+Data Preparation with Optional Orthogonalized Zipf
+Supports both raw zipf and residualized zipf modes
 """
 
 import logging
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 def orthogonalize_zipf(data: pd.DataFrame) -> pd.DataFrame:
     """
-    Orthogonalize zipf with respect to length (Option 2B)
+    Orthogonalize zipf with respect to length
 
     Keep length as-is, residualize zipf to get "frequency beyond length"
 
@@ -228,7 +228,7 @@ def prepare_data_pipeline(
     Returns:
         (train_data, test_data, metadata) tuple
     """
-    # Prepare data
+    # Prepare data (with optional orthogonalization)
     gam_data = prepare_gam_data(data, residualize_zipf=residualize_zipf)
 
     # Compute quartiles
@@ -262,8 +262,6 @@ def compute_feature_quartiles(data: pd.DataFrame) -> Dict[str, Dict[str, float]]
     """
     Compute Q1 (25th) and Q3 (75th) percentiles for each feature
 
-    NOTE: For zipf, we use the RESIDUALIZED values since that's what the model sees
-
     Args:
         data: Prepared data
 
@@ -286,9 +284,8 @@ def compute_feature_quartiles(data: pd.DataFrame) -> Dict[str, Dict[str, float]]
 
     logger.info("\nFeature quartiles:")
     for feat, vals in quartiles.items():
-        label = f"{feat} (resid)" if feat == "zipf" else feat
         logger.info(
-            f"  {label}: Q1={vals['q1']:.2f}, Q3={vals['q3']:.2f}, IQR={vals['iqr']:.2f}"
+            f"  {feat}: Q1={vals['q1']:.2f}, Q3={vals['q3']:.2f}, IQR={vals['iqr']:.2f}"
         )
 
     return quartiles
@@ -399,20 +396,22 @@ def check_data_balance(data: pd.DataFrame) -> Dict:
 
 def prepare_data_pipeline(
     data: pd.DataFrame,
+    residualize_zipf: bool = False,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, Dict]:
     """
     Full data preparation pipeline
 
     Args:
         data: Raw data with linguistic features
+        residualize_zipf: Whether to orthogonalize zipf against length
 
     Returns:
         (train_data, test_data, metadata) tuple
     """
-    # Prepare data (including orthogonalization)
-    gam_data = prepare_gam_data(data)
+    # Prepare data (with optional orthogonalization)
+    gam_data = prepare_gam_data(data, residualize_zipf=residualize_zipf)
 
-    # Compute quartiles (on residualized zipf)
+    # Compute quartiles
     quartiles = compute_feature_quartiles(gam_data)
 
     # Check balance
@@ -428,7 +427,12 @@ def prepare_data_pipeline(
         "n_total": len(gam_data),
         "n_train": len(train_data),
         "n_test": len(test_data),
-        "note": "zipf values are RESIDUALIZED (orthogonal to length)",
+        "residualized": residualize_zipf,
+        "note": (
+            "zipf values are RESIDUALIZED (orthogonal to length)"
+            if residualize_zipf
+            else "zipf values are RAW (natural co-occurrence with length)"
+        ),
     }
 
     return train_data, test_data, metadata

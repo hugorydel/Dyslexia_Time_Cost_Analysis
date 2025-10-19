@@ -36,7 +36,7 @@ class DyslexiaGAMPipeline:
     Complete GAM-based analysis pipeline
     """
 
-    def __init__(self, results_dir: str = "results_gam"):
+    def __init__(self, results_dir: str = "hypothesis_testing_results"):
         self.results_dir = Path(results_dir)
         self.results_dir.mkdir(exist_ok=True, parents=True)
 
@@ -343,7 +343,7 @@ def main():
     parser.add_argument(
         "--results-dir",
         type=str,
-        default="results_gam",
+        default="hypothesis_testing_results",
         help="Directory to save results",
     )
 

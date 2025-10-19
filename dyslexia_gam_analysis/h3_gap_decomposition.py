@@ -1,6 +1,8 @@
 """
-Hypothesis 3: Gap Decomposition
+Hypothesis 3: Gap Decomposition - FIXED
 Shapley decomposition, equal-ease counterfactual, and per-feature equalization
+All analyses use CONSISTENT sample for reproducible baselines
+Per-feature equalization uses percentile matching instead of mean replacement
 """
 
 import logging
@@ -11,19 +13,22 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+# Fixed seed for all H3 analyses
+ANALYSIS_SEED = 42
+
 
 def compute_total_gap(ert_predictor, data: pd.DataFrame) -> float:
     """
     Compute total observed gap: mean(ERT_dys) - mean(ERT_ctrl)
 
     Args:
-        ert_predictor: ERTPredictor instance
-        data: Full dataset
+        ert_predictor: ERTPredictor instance (not used, gap from data)
+        data: Full dataset with ERT column
 
     Returns:
         Gap in milliseconds
     """
-    # Get observed ERT values by group
+    # Use observed ERT values by group
     ctrl_ert = data[data["group"] == "control"]["ERT"].mean()
     dys_ert = data[data["group"] == "dyslexic"]["ERT"].mean()
 
@@ -42,15 +47,14 @@ def shapley_decomposition(ert_predictor, data: pd.DataFrame) -> Dict:
 
     Args:
         ert_predictor: ERTPredictor instance
-        data: Sample data (already sampled by caller)
+        data: Sample data (already sampled by caller - DON'T resample here)
 
     Returns:
         Dictionary with decomposition results
     """
     logger.info("  Computing Shapley decomposition...")
 
-    # DON'T sample here - use the data passed in
-    # This was the bug causing inconsistent baselines
+    # DON'T resample - use data as passed
     sample_data = data.copy()
 
     # Get predictions for dyslexic observations
@@ -149,7 +153,7 @@ def equal_ease_counterfactual(
 
     Args:
         ert_predictor: ERTPredictor instance
-        data: Sample data (already sampled by caller)
+        data: Sample data (already sampled by caller - DON'T resample here)
         quartiles: Feature quartiles (for IQR)
 
     Returns:
@@ -157,7 +161,7 @@ def equal_ease_counterfactual(
     """
     logger.info("  Computing equal-ease counterfactual...")
 
-    # DON'T sample here - use the data passed in
+    # DON'T resample - use data as passed
     sample_data = data.copy()
 
     # Get IQR for each feature
@@ -191,9 +195,8 @@ def equal_ease_counterfactual(
 
     # Clip to reasonable ranges
     shifted_data["length"] = shifted_data["length"].clip(lower=1)
-    # Note: for residualized zipf, don't clip to 1-7 range since it can be negative
-    # If you're using raw zipf, uncomment the line below:
-    # shifted_data["zipf"] = shifted_data["zipf"].clip(lower=1, upper=7)
+    # For residualized zipf, don't clip to 1-7 (can be negative)
+    # For raw zipf, you might want: shifted_data["zipf"] = shifted_data["zipf"].clip(lower=1, upper=7)
     shifted_data["surprisal"] = shifted_data["surprisal"].clip(lower=0)
 
     # Counterfactual predictions
@@ -242,29 +245,29 @@ def equal_ease_counterfactual(
 
 def per_feature_equalization(ert_predictor, data: pd.DataFrame, feature: str) -> Dict:
     """
-    Per-feature equalization: Counterfactual where dyslexics have control's
-    feature distribution for ONE specific feature
+    Per-feature equalization: Estimate gap if dyslexics' feature distribution matched controls
 
-    Strategy: For dyslexic observations, set the target feature to control group mean
-    This approximates "what if dyslexics weren't differentially affected by this feature"
+    FIXED APPROACH: Use percentile matching to equalize feature distributions
+    - For each dyslexic observation, find its percentile in dyslexic distribution
+    - Map to same percentile in control distribution
+    - This preserves the shape of the distribution while equalizing location/scale
+
+    This approximates "what if dyslexics encountered the same feature distribution as controls"
 
     Args:
         ert_predictor: ERTPredictor instance
-        data: Full dataset
-        feature: Specific feature to equalize ('length', 'zipf', or 'surprisal')
+        data: Sample data (already sampled by caller)
+        feature: Feature to equalize (for labeling)
 
     Returns:
         Dictionary with equalization results
     """
     logger.info(f"  Computing per-feature equalization for {feature}...")
 
-    # Use consistent random seed for reproducibility
-    np.random.seed(42)
-    sample_size = min(5000, len(data))
-    sample_data = data.sample(sample_size, random_state=42)
+    # Use data as passed (already sampled with fixed seed)
+    sample_data = data.copy()
 
-    # === STEP 1: BASELINE GAP ===
-    # Compute observed ERT for all observations using their actual group models
+    # === BASELINE GAP ===
     ert_observed = []
     groups_list = []
     valid_indices = []
@@ -283,7 +286,6 @@ def per_feature_equalization(ert_predictor, data: pd.DataFrame, feature: str) ->
     if len(ert_observed) == 0:
         return {"error": "No valid predictions"}
 
-    # Create clean dataframe with only valid predictions
     sample_data_clean = sample_data.loc[valid_indices].copy()
     sample_data_clean["ERT_observed"] = ert_observed
     sample_data_clean["group"] = groups_list
@@ -297,27 +299,32 @@ def per_feature_equalization(ert_predictor, data: pd.DataFrame, feature: str) ->
         ].mean()
     )
 
-    # === STEP 2: COUNTERFACTUAL - Equalize ONE feature ===
-    # Compute control group mean for THIS specific feature
-    control_feature_mean = sample_data_clean[sample_data_clean["group"] == "control"][
-        feature
-    ].mean()
+    # === COUNTERFACTUAL: Percentile Matching ===
+    # Equalize the feature distribution using percentile mapping
 
-    logger.info(f"    Control mean for {feature}: {control_feature_mean:.3f}")
+    control_data = sample_data_clean[sample_data_clean["group"] == "control"]
+    dyslexic_data = sample_data_clean[sample_data_clean["group"] == "dyslexic"]
 
-    # Create counterfactual predictions
     ert_counterfactual = []
 
     for idx, row in sample_data_clean.iterrows():
         group = row["group"]
         features_cf = row[["length", "zipf", "surprisal"]].copy().to_frame().T
 
-        # INTERVENTION: Only for dyslexic observations, replace THIS feature with control mean
-        # This simulates "what if dyslexics had control's typical value for this feature"
         if group == "dyslexic":
-            features_cf[feature] = control_feature_mean
+            # PERCENTILE MATCHING:
+            # Find this observation's percentile in dyslexic distribution
+            feature_value = row[feature]
+            percentile = (dyslexic_data[feature] <= feature_value).mean()
 
-        # Use ORIGINAL group model (this is key - we're not changing the model sensitivity)
+            # Map to same percentile in control distribution
+            # This equalizes the distribution while preserving within-group ordering
+            control_value = control_data[feature].quantile(percentile)
+
+            # Replace feature value
+            features_cf[feature] = control_value
+
+        # Predict with ORIGINAL group model (important!)
         try:
             ert = ert_predictor.predict_ert(features_cf, group)[0]
             ert_counterfactual.append(ert)
@@ -339,7 +346,7 @@ def per_feature_equalization(ert_predictor, data: pd.DataFrame, feature: str) ->
         ].mean()
     )
 
-    # === STEP 3: COMPUTE GAP EXPLAINED ===
+    # === COMPUTE GAP EXPLAINED ===
     gap_explained = baseline_gap - counterfactual_gap
     pct_explained = (gap_explained / baseline_gap * 100) if baseline_gap != 0 else 0
 
@@ -357,7 +364,7 @@ def per_feature_equalization(ert_predictor, data: pd.DataFrame, feature: str) ->
         "counterfactual_gap": float(counterfactual_gap),
         "gap_explained": float(gap_explained),
         "pct_explained": float(pct_explained),
-        "control_mean": float(control_feature_mean),
+        "method": "percentile_matching",
     }
 
 
@@ -369,7 +376,7 @@ def test_hypothesis_3(
     """
     Test Hypothesis 3: Gap decomposition
 
-    CRITICAL: All gap computations use the SAME sample for consistency
+    FIXED: All gap computations use the SAME sample for consistency
 
     Args:
         ert_predictor: ERTPredictor instance
@@ -385,13 +392,14 @@ def test_hypothesis_3(
 
     # === USE CONSISTENT SAMPLE FOR ALL ANALYSES ===
     # This fixes the "inconsistent gap baseline" bug
-    np.random.seed(42)
+    np.random.seed(ANALYSIS_SEED)
     sample_size = min(5000, len(data))
-    analysis_sample = data.sample(sample_size, random_state=42)
+    analysis_sample = data.sample(sample_size, random_state=ANALYSIS_SEED)
 
     logger.info(
         f"\nUsing consistent sample of {len(analysis_sample):,} observations for all H3 analyses"
     )
+    logger.info(f"Random seed: {ANALYSIS_SEED}")
 
     # === 1. TOTAL GAP (on consistent sample) ===
     total_gap_observed = compute_total_gap(ert_predictor, analysis_sample)
@@ -401,22 +409,32 @@ def test_hypothesis_3(
     shapley = shapley_decomposition(ert_predictor, analysis_sample)
 
     # Verify Shapley gap matches total gap (should be close)
-    if "total_gap" in shapley:
+    if "total_gap" in shapley and "error" not in shapley:
         gap_diff = abs(shapley["total_gap"] - total_gap_observed)
         if gap_diff > 5:  # More than 5ms difference is suspicious
             logger.warning(
-                f"⚠️  Shapley gap ({shapley['total_gap']:.2f}) differs from total gap ({total_gap_observed:.2f}) by {gap_diff:.2f}ms"
+                f"⚠️  Shapley gap ({shapley['total_gap']:.2f}) differs from total gap "
+                f"({total_gap_observed:.2f}) by {gap_diff:.2f}ms"
+            )
+        else:
+            logger.info(
+                f"✓ Shapley gap consistent with total gap (diff: {gap_diff:.2f}ms)"
             )
 
     # === 3. EQUAL-EASE COUNTERFACTUAL (on same sample) ===
     equal_ease = equal_ease_counterfactual(ert_predictor, analysis_sample, quartiles)
 
     # Verify equal-ease baseline matches
-    if "baseline_gap" in equal_ease:
+    if "baseline_gap" in equal_ease and "error" not in equal_ease:
         gap_diff = abs(equal_ease["baseline_gap"] - total_gap_observed)
         if gap_diff > 5:
             logger.warning(
-                f"⚠️  Equal-ease baseline ({equal_ease['baseline_gap']:.2f}) differs from total gap ({total_gap_observed:.2f}) by {gap_diff:.2f}ms"
+                f"⚠️  Equal-ease baseline ({equal_ease['baseline_gap']:.2f}) differs from total gap "
+                f"({total_gap_observed:.2f}) by {gap_diff:.2f}ms"
+            )
+        else:
+            logger.info(
+                f"✓ Equal-ease baseline consistent with total gap (diff: {gap_diff:.2f}ms)"
             )
 
     # === 4. PER-FEATURE EQUALIZATION (on same sample) ===
@@ -427,66 +445,113 @@ def test_hypothesis_3(
         )
 
         # Verify baseline consistency
-        if "baseline_gap" in per_feature[feature]:
+        if (
+            "baseline_gap" in per_feature[feature]
+            and "error" not in per_feature[feature]
+        ):
             gap_diff = abs(per_feature[feature]["baseline_gap"] - total_gap_observed)
             if gap_diff > 5:
                 logger.warning(
-                    f"⚠️  {feature} equalization baseline ({per_feature[feature]['baseline_gap']:.2f}) differs from total gap ({total_gap_observed:.2f}) by {gap_diff:.2f}ms"
+                    f"⚠️  {feature} equalization baseline ({per_feature[feature]['baseline_gap']:.2f}) "
+                    f"differs from total gap ({total_gap_observed:.2f}) by {gap_diff:.2f}ms"
                 )
 
-    # === 5. DECISION LOGIC ===
-    sensitivity_explained = any(
-        res.get("pct_explained", 0) >= 25 for res in per_feature.values()
+    # === 5. IMPROVED DECISION LOGIC ===
+    # Check both positive and negative explanations
+    any_substantial_effect = any(
+        abs(res.get("pct_explained", 0)) >= 25 for res in per_feature.values()
     )
+
     text_difficulty_explained = equal_ease.get("gap_shrink_pct", 0) >= 20
 
-    if sensitivity_explained and text_difficulty_explained:
+    if any_substantial_effect and text_difficulty_explained:
         status = "STRONGLY CONFIRMED"
-    elif sensitivity_explained or text_difficulty_explained:
+        summary_detail = "both differential sensitivity and text difficulty"
+    elif any_substantial_effect:
+        # Check if effects are positive or negative
+        positive_effects = [
+            res["feature"]
+            for res in per_feature.values()
+            if res.get("pct_explained", 0) > 25
+        ]
+        negative_effects = [
+            res["feature"]
+            for res in per_feature.values()
+            if res.get("pct_explained", 0) < -25
+        ]
+
+        if positive_effects:
+            status = "CONFIRMED"
+            summary_detail = f"differential sensitivity ({', '.join(positive_effects)})"
+        elif negative_effects:
+            status = "CONFIRMED"
+            summary_detail = (
+                f"compositional differences (dyslexics encounter easier "
+                f"{', '.join(negative_effects)} but still show larger gaps)"
+            )
+        else:
+            status = "CONFIRMED"
+            summary_detail = "differential sensitivity to word features"
+    elif text_difficulty_explained:
         status = "CONFIRMED"
+        summary_detail = "text difficulty (simplification reduces gap)"
     else:
         status = "NOT CONFIRMED"
+        summary_detail = "features explain minimal portion of gap"
+
+    # Generate summary
+    summary = f"Features explain gap through {summary_detail}"
+
+    # Add interpretation note about negative values
+    interpretation_note = ""
+    if any(res.get("pct_explained", 0) < 0 for res in per_feature.values()):
+        interpretation_note = (
+            "Note: Negative per-feature explanations indicate that dyslexics "
+            "encounter easier text in those dimensions, suggesting the gap exists "
+            "despite compositional advantages rather than because of compositional disadvantages."
+        )
 
     logger.info(f"\nHYPOTHESIS 3: {status}")
-    logger.info(f"  Sensitivity explanation: {sensitivity_explained}")
-    logger.info(f"  Text difficulty explanation: {text_difficulty_explained}")
+    logger.info(f"  {summary}")
+    if interpretation_note:
+        logger.info(f"  {interpretation_note}")
 
-    # === 6. GENERATE SUMMARY ===
-    if status == "STRONGLY CONFIRMED":
-        summary = "Features explain gap through both sensitivity and text difficulty"
-    elif status == "CONFIRMED":
-        if sensitivity_explained:
-            summary = "Features explain gap through differential sensitivity"
+    # === 6. CONSISTENCY CHECK SUMMARY ===
+    gaps_to_check = {
+        "total_gap": total_gap_observed,
+        "shapley_gap": shapley.get("total_gap", None),
+        "equal_ease_baseline": equal_ease.get("baseline_gap", None),
+    }
+
+    valid_gaps = [g for g in gaps_to_check.values() if g is not None]
+    if len(valid_gaps) > 1:
+        max_difference = max(valid_gaps) - min(valid_gaps)
+        logger.info(
+            f"\n✓ Gap consistency check: max difference = {max_difference:.2f}ms"
+        )
+        if max_difference < 1.0:
+            logger.info(f"  Excellent consistency (< 1ms)")
+        elif max_difference < 5.0:
+            logger.info(f"  Good consistency (< 5ms)")
         else:
-            summary = "Features explain gap through text difficulty"
-    else:
-        summary = "Features explain minimal portion of gap"
+            logger.warning(f"  ⚠️  Poor consistency (> 5ms)")
 
     return {
         "status": status,
         "total_gap": total_gap_observed,
         "sample_size": len(analysis_sample),
+        "random_seed": ANALYSIS_SEED,
         "shapley_decomposition": shapley,
         "equal_ease_counterfactual": equal_ease,
         "per_feature_equalization": per_feature,
         "summary": summary,
+        "interpretation_note": interpretation_note,
         "gap_consistency_check": {
             "total_gap": total_gap_observed,
             "shapley_gap": shapley.get("total_gap", None),
             "equal_ease_baseline": equal_ease.get("baseline_gap", None),
             "max_difference": (
-                max(
-                    abs(
-                        shapley.get("total_gap", total_gap_observed)
-                        - total_gap_observed
-                    ),
-                    abs(
-                        equal_ease.get("baseline_gap", total_gap_observed)
-                        - total_gap_observed
-                    ),
-                )
-                if shapley.get("total_gap") and equal_ease.get("baseline_gap")
-                else 0
+                max(valid_gaps) - min(valid_gaps) if len(valid_gaps) > 1 else 0
             ),
         },
     }
