@@ -24,7 +24,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler("dyslexia_gam_analysis.log", encoding="utf-8"),
+        logging.FileHandler("hypothesis_testing_output.log", encoding="utf-8"),
         logging.StreamHandler(sys.stdout),
     ],
 )
