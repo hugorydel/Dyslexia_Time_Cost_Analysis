@@ -1,7 +1,10 @@
 """
-Hypothesis 1: Feature Effects Testing
-Tests whether length, frequency, and surprisal affect reading time
-Uses AMIE, quartile contrasts, and permutation importance
+Hypothesis 1: Feature Effects with CONDITIONAL Zipf Evaluation
+Key changes:
+- Added conditional AMIE for zipf (within length bins)
+- Added pathway decomposition (skip, duration, ERT) for ALL features
+- Added Cohen's h for skip pathway
+- Uses pooled bins and weights
 """
 
 import logging
@@ -9,55 +12,41 @@ from typing import Dict
 
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
 
-def compute_amie(
-    ert_predictor,
-    data: pd.DataFrame,
-    feature: str,
-    group: str,
-    quartiles: Dict[str, float],
+def cohens_h(p1: float, p2: float) -> float:
+    """
+    Compute Cohen's h effect size for two proportions
+
+    h = 2 * (arcsin(sqrt(p1)) - arcsin(sqrt(p2)))
+    """
+    return 2 * (np.arcsin(np.sqrt(p1)) - np.arcsin(np.sqrt(p2)))
+
+
+def compute_amie_standard(
+    ert_predictor, data: pd.DataFrame, feature: str, group: str, quartiles: Dict
 ) -> Dict:
     """
-    Compute Average Marginal Importance Effect (AMIE)
-    Q1→Q3 shift in ERT with other features at mean
-
-    Args:
-        ert_predictor: ERTPredictor instance
-        data: Original data (for computing means)
-        feature: Feature to test ('length', 'zipf', 'surprisal')
-        group: "control" or "dyslexic"
-        quartiles: Dictionary with Q1 and Q3 values for each feature
-
-    Returns:
-        Dictionary with AMIE results
+    Standard AMIE for length and surprisal
+    Q1→Q3 shift with other features at mean
     """
-    logger.info(f"  Computing AMIE for {feature} ({group})...")
-
-    # Get Q1 and Q3 for this feature
     q1 = quartiles[feature]["q1"]
     q3 = quartiles[feature]["q3"]
 
-    # Get mean values for other features
+    # Mean values for other features
     other_features = [f for f in ["length", "zipf", "surprisal"] if f != feature]
     means = {f: data[f].mean() for f in other_features}
 
-    # Create prediction grids
-    grid_q1 = pd.DataFrame({feature: [q1]})
-    grid_q3 = pd.DataFrame({feature: [q3]})
+    # Grids
+    grid_q1 = pd.DataFrame({feature: [q1], **means})
+    grid_q3 = pd.DataFrame({feature: [q3], **means})
 
-    for other_feat in other_features:
-        grid_q1[other_feat] = means[other_feat]
-        grid_q3[other_feat] = means[other_feat]
-
-    # Predict ERT at Q1 and Q3
+    # Predict
     ert_q1 = ert_predictor.predict_ert(grid_q1, group)[0]
     ert_q3 = ert_predictor.predict_ert(grid_q3, group)[0]
 
-    # AMIE = Q3 - Q1
     amie = ert_q3 - ert_q1
 
     return {
@@ -68,187 +57,170 @@ def compute_amie(
         "ert_q1": float(ert_q1),
         "ert_q3": float(ert_q3),
         "amie_ms": float(amie),
+        "method": "standard",
     }
 
 
-def compute_quartile_contrasts(
+def compute_amie_conditional_zipf(
     ert_predictor,
     data: pd.DataFrame,
-    feature: str,
-    quartiles: Dict[str, float],
+    group: str,
+    quartiles: Dict,
+    bin_edges: np.ndarray,
+    bin_weights: pd.Series,
 ) -> Dict:
     """
-    Compute discrete ΔERT for Control vs Dyslexic at Q1 and Q3
+    Conditional AMIE for zipf (within length bins)
 
-    Args:
-        ert_predictor: ERTPredictor instance
-        data: Original data
-        feature: Feature to test
-        quartiles: Quartile values
+    CRITICAL: Uses pooled bins and weights to avoid composition confounds
 
-    Returns:
-        Dictionary with quartile contrasts
+    Steps:
+    1. For each length bin, compute zipf Q1→Q3 effect
+    2. Weight by POOLED bin distribution
+    3. Average across bins
     """
-    logger.info(f"  Computing quartile contrasts for {feature}...")
+    logger.info(f"    Computing conditional zipf AMIE for {group}...")
 
-    # Get Q1 and Q3
+    group_data = data[data["group"] == group].copy()
+
+    # Ensure bins are assigned
+    if "length_bin" not in group_data.columns:
+        group_data["length_bin"] = pd.cut(
+            group_data["length"], bins=bin_edges, labels=False, include_lowest=True
+        )
+
+    bin_effects = []
+    bin_indices_used = []
+
+    n_bins = len(bin_weights)
+
+    for bin_idx in range(n_bins):
+        bin_data = group_data[group_data["length_bin"] == bin_idx]
+
+        if len(bin_data) < 10:  # Skip bins with too few observations
+            logger.warning(f"      Bin {bin_idx}: only {len(bin_data)} obs, skipping")
+            continue
+
+        # Compute zipf Q1→Q3 WITHIN this bin
+        zipf_q1_bin = bin_data["zipf"].quantile(0.25)
+        zipf_q3_bin = bin_data["zipf"].quantile(0.75)
+
+        # Fix other features at bin means
+        length_mean = bin_data["length"].mean()
+        surprisal_mean = bin_data["surprisal"].mean()
+
+        # Predict at Q1 and Q3 within bin
+        grid_q1 = pd.DataFrame(
+            {
+                "length": [length_mean],
+                "zipf": [zipf_q1_bin],
+                "surprisal": [surprisal_mean],
+            }
+        )
+
+        grid_q3 = pd.DataFrame(
+            {
+                "length": [length_mean],
+                "zipf": [zipf_q3_bin],
+                "surprisal": [surprisal_mean],
+            }
+        )
+
+        ert_q1 = ert_predictor.predict_ert(grid_q1, group)[0]
+        ert_q3 = ert_predictor.predict_ert(grid_q3, group)[0]
+
+        effect = ert_q3 - ert_q1
+        bin_effects.append(effect)
+        bin_indices_used.append(bin_idx)
+
+        logger.info(
+            f"      Bin {bin_idx}: zipf Q1={zipf_q1_bin:.2f}→Q3={zipf_q3_bin:.2f}, "
+            f"effect={effect:.2f}ms (n={len(bin_data)})"
+        )
+
+    if len(bin_effects) == 0:
+        logger.warning(f"    No valid bins for {group}")
+        return {"error": "No valid bins"}
+
+    # Weight by POOLED distribution
+    weights_used = bin_weights.iloc[bin_indices_used].values
+    weights_normalized = weights_used / weights_used.sum()
+
+    amie_conditional = np.average(bin_effects, weights=weights_normalized)
+
+    logger.info(
+        f"    Conditional AMIE ({group}): {amie_conditional:.2f}ms "
+        f"(averaged over {len(bin_effects)} bins)"
+    )
+
+    return {
+        "feature": "zipf",
+        "group": group,
+        "amie_ms": float(amie_conditional),
+        "method": "conditional_within_length_bins",
+        "n_bins_used": len(bin_effects),
+        "bin_effects": [float(e) for e in bin_effects],
+    }
+
+
+def compute_pathway_effects(
+    ert_predictor, data: pd.DataFrame, feature: str, group: str, quartiles: Dict
+) -> Dict:
+    """
+    Compute effects for all three pathways: skip, duration, ERT
+
+    Returns Q1 and Q3 values for each pathway plus deltas
+    """
     q1 = quartiles[feature]["q1"]
     q3 = quartiles[feature]["q3"]
 
-    # Mean values for other features
     other_features = [f for f in ["length", "zipf", "surprisal"] if f != feature]
     means = {f: data[f].mean() for f in other_features}
 
-    # Prediction grids
-    grid_q1 = pd.DataFrame({feature: [q1]})
-    grid_q3 = pd.DataFrame({feature: [q3]})
+    grid_q1 = pd.DataFrame({feature: [q1], **means})
+    grid_q3 = pd.DataFrame({feature: [q3], **means})
 
-    for other_feat in other_features:
-        grid_q1[other_feat] = means[other_feat]
-        grid_q3[other_feat] = means[other_feat]
+    # Get components
+    ert_q1, p_skip_q1, trt_q1 = ert_predictor.predict_ert(
+        grid_q1, group, return_components=True
+    )
+    ert_q3, p_skip_q3, trt_q3 = ert_predictor.predict_ert(
+        grid_q3, group, return_components=True
+    )
 
-    # Predictions for both groups
-    results = {}
-    for group in ["control", "dyslexic"]:
-        ert_q1 = ert_predictor.predict_ert(grid_q1, group)[0]
-        ert_q3 = ert_predictor.predict_ert(grid_q3, group)[0]
-        delta_ert = ert_q3 - ert_q1
-
-        results[group] = {
-            "ert_q1": float(ert_q1),
-            "ert_q3": float(ert_q3),
-            "delta_ert": float(delta_ert),
-        }
-
-    # Group difference in effect
-    diff_in_diffs = results["dyslexic"]["delta_ert"] - results["control"]["delta_ert"]
+    # Cohen's h for skip
+    h = cohens_h(p_skip_q1[0], p_skip_q3[0])
 
     return {
         "feature": feature,
-        "control": results["control"],
-        "dyslexic": results["dyslexic"],
-        "difference_in_differences": float(diff_in_diffs),
+        "group": group,
+        "p_skip_q1": float(p_skip_q1[0]),
+        "p_skip_q3": float(p_skip_q3[0]),
+        "delta_p_skip": float(p_skip_q3[0] - p_skip_q1[0]),
+        "cohens_h": float(h),
+        "trt_q1": float(trt_q1[0]),
+        "trt_q3": float(trt_q3[0]),
+        "delta_trt_ms": float(trt_q3[0] - trt_q1[0]),
+        "ert_q1": float(ert_q1[0]),
+        "ert_q3": float(ert_q3[0]),
+        "delta_ert_ms": float(ert_q3[0] - ert_q1[0]),
     }
-
-
-def compute_permutation_importance(
-    ert_predictor,
-    test_data: pd.DataFrame,
-    feature: str,
-    n_permutations: int = 100,
-) -> Dict:
-    """
-    Compute ΔQ² (permutation importance)
-    Permute feature and measure drop in prediction accuracy
-
-    Args:
-        ert_predictor: ERTPredictor instance
-        test_data: Test set with observed ERT values
-        feature: Feature to permute
-        n_permutations: Number of permutations
-
-    Returns:
-        Dictionary with permutation importance
-    """
-    logger.info(f"  Computing permutation importance for {feature}...")
-
-    # Compute baseline Q²
-    baseline_q2 = compute_q2(ert_predictor, test_data)
-
-    # Permute feature and recompute Q²
-    q2_permuted = []
-    for i in range(n_permutations):
-        # Permute the feature
-        test_permuted = test_data.copy()
-        test_permuted[feature] = np.random.permutation(test_permuted[feature].values)
-
-        # Compute Q² on permuted data
-        q2_perm = compute_q2(ert_predictor, test_permuted)
-        q2_permuted.append(q2_perm)
-
-    # ΔQ² = baseline - mean(permuted)
-    mean_q2_permuted = np.mean(q2_permuted)
-    delta_q2 = baseline_q2 - mean_q2_permuted
-
-    return {
-        "feature": feature,
-        "baseline_q2": float(baseline_q2),
-        "mean_q2_permuted": float(mean_q2_permuted),
-        "delta_q2": float(delta_q2),
-        "importance_pct": (
-            float(delta_q2 / baseline_q2 * 100) if baseline_q2 > 0 else 0.0
-        ),
-    }
-
-
-def compute_q2(ert_predictor, data: pd.DataFrame) -> float:
-    """
-    Compute Q² (proportion of variance explained)
-
-    Args:
-        ert_predictor: ERTPredictor instance
-        data: Data with observed ERT values and group column
-
-    Returns:
-        Q² value (0-1)
-    """
-    if "ERT" not in data.columns or "group" not in data.columns:
-        logger.warning("Missing ERT or group column, returning 0")
-        return 0.0
-
-    # Predict ERT for each observation
-    predictions = []
-    observed = []
-
-    for group_name in ["control", "dyslexic"]:
-        group_data = data[data["group"] == group_name]
-
-        if len(group_data) == 0:
-            continue
-
-        try:
-            pred = ert_predictor.predict_ert(group_data, group_name)
-            predictions.extend(pred)
-            observed.extend(group_data["ERT"].values)
-        except Exception as e:
-            logger.warning(f"Prediction failed for {group_name}: {e}")
-            continue
-
-    if len(predictions) == 0:
-        return 0.0
-
-    predictions = np.array(predictions)
-    observed = np.array(observed)
-
-    # Q² = 1 - SS_res / SS_tot
-    ss_res = np.sum((observed - predictions) ** 2)
-    ss_tot = np.sum((observed - observed.mean()) ** 2)
-
-    if ss_tot == 0:
-        return 0.0
-
-    q2 = 1 - (ss_res / ss_tot)
-
-    return float(q2)
 
 
 def test_hypothesis_1(
     ert_predictor,
-    train_data: pd.DataFrame,
-    test_data: pd.DataFrame,
-    quartiles: Dict[str, Dict[str, float]],
+    data: pd.DataFrame,
+    quartiles: Dict,
+    bin_edges: np.ndarray,
+    bin_weights: pd.Series,
 ) -> Dict:
     """
-    Test Hypothesis 1: Feature effects on reading time
+    Test Hypothesis 1: Feature Effects
 
-    Args:
-        ert_predictor: ERTPredictor instance
-        train_data: Training data (for computing means)
-        test_data: Test data (for permutation importance)
-        quartiles: Dictionary of quartile values for each feature
-
-    Returns:
-        Dictionary with H1 test results
+    For each feature:
+    - Compute AMIE (conditional for zipf)
+    - Compute pathway decomposition (skip, duration, ERT)
+    - Check expected directions
     """
     logger.info("=" * 60)
     logger.info("HYPOTHESIS 1: FEATURE EFFECTS")
@@ -257,68 +229,80 @@ def test_hypothesis_1(
     features = ["length", "zipf", "surprisal"]
     results = {}
 
+    # Expected directions
+    expected_directions = {
+        "length": "+",  # Longer → more time
+        "zipf": "-",  # More frequent → less time
+        "surprisal": "+",  # More surprising → more time
+    }
+
     for feature in features:
         logger.info(f"\nTesting {feature}...")
+        logger.info(f"  Expected direction: {expected_directions[feature]}")
 
-        # 1. AMIE for both groups
-        amie_control = compute_amie(
-            ert_predictor, train_data, feature, "control", quartiles
+        # === 1. AMIE ===
+        if feature == "zipf":
+            # Conditional evaluation within length bins
+            amie_control = compute_amie_conditional_zipf(
+                ert_predictor, data, "control", quartiles, bin_edges, bin_weights
+            )
+            amie_dyslexic = compute_amie_conditional_zipf(
+                ert_predictor, data, "dyslexic", quartiles, bin_edges, bin_weights
+            )
+        else:
+            # Standard evaluation
+            amie_control = compute_amie_standard(
+                ert_predictor, data, feature, "control", quartiles
+            )
+            amie_dyslexic = compute_amie_standard(
+                ert_predictor, data, feature, "dyslexic", quartiles
+            )
+
+        # === 2. PATHWAY DECOMPOSITION ===
+        pathway_control = compute_pathway_effects(
+            ert_predictor, data, feature, "control", quartiles
         )
-        amie_dyslexic = compute_amie(
-            ert_predictor, train_data, feature, "dyslexic", quartiles
+        pathway_dyslexic = compute_pathway_effects(
+            ert_predictor, data, feature, "dyslexic", quartiles
         )
 
-        # 2. Quartile contrasts
-        contrasts = compute_quartile_contrasts(
-            ert_predictor, train_data, feature, quartiles
-        )
-
-        # 3. Permutation importance
-        perm_importance = compute_permutation_importance(
-            ert_predictor, test_data, feature, n_permutations=100
-        )
-
-        # Expected directions
-        expected_directions = {
-            "length": "positive",  # Longer words → more time
-            "zipf": "negative",  # Higher frequency → less time
-            "surprisal": "positive",  # Higher surprisal → more time
-        }
-
-        # Check if effects are in expected direction
+        # === 3. CHECK DIRECTION ===
         expected = expected_directions[feature]
-        control_correct = (
-            amie_control["amie_ms"] > 0
-            if expected == "positive"
-            else amie_control["amie_ms"] < 0
-        )
-        dyslexic_correct = (
-            amie_dyslexic["amie_ms"] > 0
-            if expected == "positive"
-            else amie_dyslexic["amie_ms"] < 0
-        )
 
-        # Status
-        status = (
-            "CONFIRMED" if (control_correct and dyslexic_correct) else "NOT CONFIRMED"
-        )
+        ctrl_amie = amie_control.get("amie_ms", np.nan)
+        dys_amie = amie_dyslexic.get("amie_ms", np.nan)
+
+        ctrl_correct = (ctrl_amie > 0) if expected == "+" else (ctrl_amie < 0)
+        dys_correct = (dys_amie > 0) if expected == "+" else (dys_amie < 0)
+
+        status = "CONFIRMED" if (ctrl_correct and dys_correct) else "NOT CONFIRMED"
+
+        # === 4. SPECIAL NOTE FOR ZIPF ===
+        note = ""
+        if feature == "zipf":
+            note = (
+                "Zipf uses conditional evaluation within length bins to "
+                "respect length-frequency coupling. Check duration pathway "
+                "for amplification (may differ from combined ERT due to "
+                "opposing skip effects)."
+            )
 
         results[feature] = {
             "amie_control": amie_control,
             "amie_dyslexic": amie_dyslexic,
-            "quartile_contrasts": contrasts,
-            "permutation_importance": perm_importance,
+            "pathway_control": pathway_control,
+            "pathway_dyslexic": pathway_dyslexic,
             "expected_direction": expected,
-            "correct_direction": control_correct and dyslexic_correct,
+            "correct_direction": ctrl_correct and dys_correct,
             "status": status,
+            "note": note,
         }
 
-        logger.info(f"  AMIE Control: {amie_control['amie_ms']:.2f} ms")
-        logger.info(f"  AMIE Dyslexic: {amie_dyslexic['amie_ms']:.2f} ms")
-        logger.info(f"  ΔQ²: {perm_importance['delta_q2']:.4f}")
+        logger.info(f"  AMIE Control: {ctrl_amie:.2f} ms")
+        logger.info(f"  AMIE Dyslexic: {dys_amie:.2f} ms")
         logger.info(f"  Status: {status}")
 
-    # Overall H1 status
+    # Overall status
     all_confirmed = all(r["status"] == "CONFIRMED" for r in results.values())
     overall_status = "CONFIRMED" if all_confirmed else "PARTIALLY CONFIRMED"
 
@@ -327,5 +311,5 @@ def test_hypothesis_1(
     return {
         "status": overall_status,
         "features": results,
-        "summary": f"{'All' if all_confirmed else 'Some'} features show expected effects on reading time",
+        "summary": f"{'All' if all_confirmed else 'Some'} features show expected effects",
     }

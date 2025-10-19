@@ -1,6 +1,10 @@
 """
-GAM Model Fitting for Dyslexia Analysis - FIXED
-Uses pygam for GAM fitting with group-specific smooths
+GAM Models with Tensor Product Interactions - REVISED
+Key changes:
+- Added te(length, zipf) tensor product interaction
+- Grid search over n_splines and lambda
+- Proper GroupKFold CV
+- Smearing factor for log-Gaussian duration model
 """
 
 import logging
@@ -9,8 +13,9 @@ from typing import Dict, Tuple
 
 import numpy as np
 import pandas as pd
-from pygam import GammaGAM, LogisticGAM, s
+from pygam import LinearGAM, LogisticGAM, s, te
 from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import GroupKFold
 
 warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
@@ -18,27 +23,35 @@ logger = logging.getLogger(__name__)
 
 class DyslexiaGAMModels:
     """
-    Fits skip and duration GAMs with group-specific smooths using pygam
+    GAM models with tensor product interactions
     """
 
     def __init__(self):
-        """Initialize"""
         self.skip_model = None
         self.duration_model = None
         self.feature_means = None
-        logger.info("GAM Models initialized (pygam)")
+        self.smearing_factors = None  # For log-Gaussian duration
+        logger.info("GAM Models initialized with tensor product support")
 
-    def fit_skip_model(self, data: pd.DataFrame) -> Dict:
+    def fit_skip_model(
+        self,
+        data: pd.DataFrame,
+        n_splines_search: list = [8, 10, 12],
+        lam_search: np.ndarray = None,
+    ) -> Dict:
         """
-        Fit skip model (logistic GAM):
-        skip ~ group + s(length, by=group) + s(zipf, by=group) + s(surprisal, by=group)
+        Fit skip model with tensor product interaction
+        skip ~ s(length) + s(zipf) + s(surprisal) + te(length, zipf)
         """
         logger.info("=" * 60)
-        logger.info("FITTING SKIP MODEL (Logistic GAM)")
+        logger.info("FITTING SKIP MODEL (Logistic GAM + Tensor Product)")
         logger.info("=" * 60)
+
+        if lam_search is None:
+            lam_search = np.logspace(-3, 3, 11)
 
         # Prepare data
-        X, y, group = self._prepare_skip_data(data)
+        X, y, group, subjects = self._prepare_skip_data(data)
 
         # Store feature means
         self.feature_means = {
@@ -47,93 +60,145 @@ class DyslexiaGAMModels:
             "surprisal": X[:, 2].mean(),
         }
 
-        logger.info("Fitting skip model...")
-        try:
-            # Split by group
-            ctrl_mask = group == 0
-            dys_mask = group == 1
+        # Split by group
+        ctrl_mask = group == 0
+        dys_mask = group == 1
 
-            X_ctrl, y_ctrl = X[ctrl_mask], y[ctrl_mask]
-            X_dys, y_dys = X[dys_mask], y[dys_mask]
+        X_ctrl, y_ctrl, subj_ctrl = X[ctrl_mask], y[ctrl_mask], subjects[ctrl_mask]
+        X_dys, y_dys, subj_dys = X[dys_mask], y[dys_mask], subjects[dys_mask]
 
-            logger.info(
-                f"  Control: {len(X_ctrl):,} obs, skip rate: {y_ctrl.mean():.3f}"
+        logger.info(f"  Control: {len(X_ctrl):,} obs, skip rate: {y_ctrl.mean():.3f}")
+        logger.info(f"  Dyslexic: {len(X_dys):,} obs, skip rate: {y_dys.mean():.3f}")
+
+        # Fit control model with grid search
+        logger.info("  Fitting control model (with CV grid search)...")
+        gam_ctrl = self._fit_skip_model_cv(
+            X_ctrl, y_ctrl, subj_ctrl, n_splines_search, lam_search
+        )
+
+        # Fit dyslexic model
+        logger.info("  Fitting dyslexic model (with CV grid search)...")
+        gam_dys = self._fit_skip_model_cv(
+            X_dys, y_dys, subj_dys, n_splines_search, lam_search
+        )
+
+        # Store models
+        self.skip_model = {"control": gam_ctrl, "dyslexic": gam_dys}
+
+        # Compute metrics
+        ctrl_pred = gam_ctrl.predict_proba(X_ctrl)
+        dys_pred = gam_dys.predict_proba(X_dys)
+
+        ctrl_auc = roc_auc_score(y_ctrl, ctrl_pred)
+        dys_auc = roc_auc_score(y_dys, dys_pred)
+
+        logger.info("Skip models fitted successfully")
+        logger.info(f"  Control AUC: {ctrl_auc:.3f}")
+        logger.info(f"  Dyslexic AUC: {dys_auc:.3f}")
+
+        return {
+            "family": "binomial",
+            "n_obs_control": int(len(X_ctrl)),
+            "n_obs_dyslexic": int(len(X_dys)),
+            "auc_control": float(ctrl_auc),
+            "auc_dyslexic": float(dys_auc),
+            "has_tensor_product": True,
+        }
+
+    def _fit_skip_model_cv(self, X, y, subjects, n_splines_search, lam_search):
+        """Fit skip model with GroupKFold CV"""
+
+        # Model specification with tensor product
+        # s(0) = length, s(1) = zipf, s(2) = surprisal, te(0,1) = length × zipf
+        best_auc = -np.inf
+        best_model = None
+
+        # Grid search
+        for n_sp in n_splines_search:
+            gam = LogisticGAM(
+                s(0, n_splines=n_sp)  # length
+                + s(1, n_splines=n_sp)  # zipf
+                + s(2, n_splines=n_sp)  # surprisal
+                + te(0, 1, n_splines=[n_sp, n_sp])  # length × zipf interaction
             )
-            logger.info(
-                f"  Dyslexic: {len(X_dys):,} obs, skip rate: {y_dys.mean():.3f}"
-            )
 
-            # Fit control model
-            logger.info("  Fitting control model...")
-            gam_ctrl = LogisticGAM(
-                s(0, n_splines=5) + s(1, n_splines=5) + s(2, n_splines=5)
-            )
-            gam_ctrl.gridsearch(X_ctrl, y_ctrl, progress=False)
+            # Grid search over lambda
+            gam.gridsearch(X, y, lam=lam_search, progress=False)
 
-            # Fit dyslexic model
-            logger.info("  Fitting dyslexic model...")
-            gam_dys = LogisticGAM(
-                s(0, n_splines=5) + s(1, n_splines=5) + s(2, n_splines=5)
-            )
-            gam_dys.gridsearch(X_dys, y_dys, progress=False)
+            # Cross-validate with GroupKFold
+            gkf = GroupKFold(n_splits=min(10, len(np.unique(subjects))))
+            cv_aucs = []
 
-            # Store both models
-            self.skip_model = {
-                "control": gam_ctrl,
-                "dyslexic": gam_dys,
-            }
+            for train_idx, val_idx in gkf.split(X, y, groups=subjects):
+                X_train, X_val = X[train_idx], X[val_idx]
+                y_train, y_val = y[train_idx], y[val_idx]
 
-            # Compute proper metrics (AUC instead of accuracy)
-            ctrl_pred_proba = gam_ctrl.predict_proba(X_ctrl)
-            dys_pred_proba = gam_dys.predict_proba(X_dys)
+                # Refit on fold
+                gam_fold = LogisticGAM(
+                    s(0, n_splines=n_sp)
+                    + s(1, n_splines=n_sp)
+                    + s(2, n_splines=n_sp)
+                    + te(0, 1, n_splines=[n_sp, n_sp])
+                )
+                gam_fold.gridsearch(X_train, y_train, lam=lam_search, progress=False)
 
-            ctrl_auc = roc_auc_score(y_ctrl, ctrl_pred_proba)
-            dys_auc = roc_auc_score(y_dys, dys_pred_proba)
+                # Evaluate
+                pred_val = gam_fold.predict_proba(X_val)
+                auc_val = roc_auc_score(y_val, pred_val)
+                cv_aucs.append(auc_val)
 
-            logger.info("Skip models fitted successfully")
-            logger.info(f"  Control AUC: {ctrl_auc:.3f}")
-            logger.info(f"  Dyslexic AUC: {dys_auc:.3f}")
+            mean_auc = np.mean(cv_aucs)
 
-            return {
-                # Don't include model objects - just metadata
-                "family": "binomial",
-                "n_obs_control": int(len(X_ctrl)),
-                "n_obs_dyslexic": int(len(X_dys)),
-                "skip_rate_control": float(y_ctrl.mean()),
-                "skip_rate_dyslexic": float(y_dys.mean()),
-                "auc_control": float(ctrl_auc),
-                "auc_dyslexic": float(dys_auc),
-                "n_splines": 5,
-            }
+            if mean_auc > best_auc:
+                best_auc = mean_auc
+                best_model = gam
 
-        except Exception as e:
-            logger.error(f"Skip model fitting failed: {e}")
-            raise
+        logger.info(f"    Best CV AUC: {best_auc:.3f}")
 
-    def fit_duration_model(self, data: pd.DataFrame) -> Dict:
+        return best_model
+
+    def fit_duration_model(
+        self,
+        data: pd.DataFrame,
+        n_splines_search: list = [8, 10, 12],
+        lam_search: np.ndarray = None,
+        use_log_transform: bool = True,
+    ) -> Dict:
         """
-        Fit duration model (Gamma GAM)
+        Fit duration model (log-Gaussian with smearing factor)
+        log(TRT) ~ s(length) + s(zipf) + s(surprisal) + te(length, zipf)
         """
         logger.info("=" * 60)
-        logger.info("FITTING DURATION MODEL (Gamma GAM)")
+        logger.info(
+            f"FITTING DURATION MODEL ({'Log-Gaussian' if use_log_transform else 'Gamma'} GAM)"
+        )
         logger.info("=" * 60)
 
-        # Filter to fixated words only
+        if lam_search is None:
+            lam_search = np.logspace(-3, 3, 11)
+
+        # Filter to fixated words
         fixated = data[data["skip"] == 0].copy()
         logger.info(f"Fitting on {len(fixated):,} fixated words")
 
         # Prepare data
-        X, y, group = self._prepare_duration_data(fixated)
+        X, y, group, subjects = self._prepare_duration_data(fixated, use_log_transform)
 
-        logger.info("Fitting duration model...")
-        try:
-            # Split by group
-            ctrl_mask = group == 0
-            dys_mask = group == 1
+        # Split by group
+        ctrl_mask = group == 0
+        dys_mask = group == 1
 
-            X_ctrl, y_ctrl = X[ctrl_mask], y[ctrl_mask]
-            X_dys, y_dys = X[dys_mask], y[dys_mask]
+        X_ctrl, y_ctrl, subj_ctrl = X[ctrl_mask], y[ctrl_mask], subjects[ctrl_mask]
+        X_dys, y_dys, subj_dys = X[dys_mask], y[dys_mask], subjects[dys_mask]
 
+        if use_log_transform:
+            logger.info(
+                f"  Control: {len(X_ctrl):,} obs, mean log(TRT): {y_ctrl.mean():.3f}"
+            )
+            logger.info(
+                f"  Dyslexic: {len(X_dys):,} obs, mean log(TRT): {y_dys.mean():.3f}"
+            )
+        else:
             logger.info(
                 f"  Control: {len(X_ctrl):,} obs, mean TRT: {y_ctrl.mean():.1f}ms"
             )
@@ -141,135 +206,172 @@ class DyslexiaGAMModels:
                 f"  Dyslexic: {len(X_dys):,} obs, mean TRT: {y_dys.mean():.1f}ms"
             )
 
-            # Fit control model
-            logger.info("  Fitting control model...")
-            gam_ctrl = GammaGAM(
-                s(0, n_splines=5) + s(1, n_splines=5) + s(2, n_splines=5)
-            )
-            gam_ctrl.gridsearch(X_ctrl, y_ctrl, progress=False)
+        # Fit models
+        logger.info("  Fitting control model...")
+        gam_ctrl, residuals_ctrl = self._fit_duration_model_cv(
+            X_ctrl, y_ctrl, subj_ctrl, n_splines_search, lam_search
+        )
 
-            # Fit dyslexic model
-            logger.info("  Fitting dyslexic model...")
-            gam_dys = GammaGAM(
-                s(0, n_splines=5) + s(1, n_splines=5) + s(2, n_splines=5)
-            )
-            gam_dys.gridsearch(X_dys, y_dys, progress=False)
+        logger.info("  Fitting dyslexic model...")
+        gam_dys, residuals_dys = self._fit_duration_model_cv(
+            X_dys, y_dys, subj_dys, n_splines_search, lam_search
+        )
 
-            # Store both models
-            self.duration_model = {
-                "control": gam_ctrl,
-                "dyslexic": gam_dys,
+        # Store models
+        self.duration_model = {"control": gam_ctrl, "dyslexic": gam_dys}
+
+        # Compute smearing factors (for log-transform)
+        if use_log_transform:
+            self.smearing_factors = {
+                "control": float(np.mean(np.exp(residuals_ctrl))),
+                "dyslexic": float(np.mean(np.exp(residuals_dys))),
             }
+            logger.info(
+                f"  Smearing factors: Control={self.smearing_factors['control']:.4f}, "
+                f"Dyslexic={self.smearing_factors['dyslexic']:.4f}"
+            )
+        else:
+            self.smearing_factors = {"control": 1.0, "dyslexic": 1.0}
 
-            # Compute pseudo-R²
-            ctrl_r2 = gam_ctrl.statistics_["pseudo_r2"]["explained_deviance"]
-            dys_r2 = gam_dys.statistics_["pseudo_r2"]["explained_deviance"]
+        # Compute R²
+        ctrl_r2 = gam_ctrl.statistics_["pseudo_r2"]["explained_deviance"]
+        dys_r2 = gam_dys.statistics_["pseudo_r2"]["explained_deviance"]
 
-            logger.info("Duration models fitted successfully")
-            logger.info(f"  Control pseudo-R²: {ctrl_r2:.3f}")
-            logger.info(f"  Dyslexic pseudo-R²: {dys_r2:.3f}")
+        logger.info("Duration models fitted successfully")
+        logger.info(f"  Control pseudo-R²: {ctrl_r2:.3f}")
+        logger.info(f"  Dyslexic pseudo-R²: {dys_r2:.3f}")
 
-            return {
-                # Don't include model objects
-                "family": "Gamma",
-                "n_obs_control": int(len(X_ctrl)),
-                "n_obs_dyslexic": int(len(X_dys)),
-                "mean_trt_control": float(y_ctrl.mean()),
-                "mean_trt_dyslexic": float(y_dys.mean()),
-                "r2_control": float(ctrl_r2),
-                "r2_dyslexic": float(dys_r2),
-                "n_splines": 5,
-            }
+        return {
+            "family": "Gaussian (log)" if use_log_transform else "Gamma",
+            "n_obs_control": int(len(X_ctrl)),
+            "n_obs_dyslexic": int(len(X_dys)),
+            "r2_control": float(ctrl_r2),
+            "r2_dyslexic": float(dys_r2),
+            "has_tensor_product": True,
+            "uses_smearing_factor": use_log_transform,
+        }
 
-        except Exception as e:
-            logger.error(f"Duration model fitting failed: {e}")
-            raise
+    def _fit_duration_model_cv(self, X, y, subjects, n_splines_search, lam_search):
+        """Fit duration model with GroupKFold CV"""
+
+        best_rmse = np.inf
+        best_model = None
+
+        for n_sp in n_splines_search:
+            gam = LinearGAM(
+                s(0, n_splines=n_sp)
+                + s(1, n_splines=n_sp)
+                + s(2, n_splines=n_sp)
+                + te(0, 1, n_splines=[n_sp, n_sp])
+            )
+
+            gam.gridsearch(X, y, lam=lam_search, progress=False)
+
+            # Cross-validate
+            gkf = GroupKFold(n_splits=min(10, len(np.unique(subjects))))
+            cv_rmses = []
+
+            for train_idx, val_idx in gkf.split(X, y, groups=subjects):
+                X_train, X_val = X[train_idx], X[val_idx]
+                y_train, y_val = y[train_idx], y[val_idx]
+
+                gam_fold = LinearGAM(
+                    s(0, n_splines=n_sp)
+                    + s(1, n_splines=n_sp)
+                    + s(2, n_splines=n_sp)
+                    + te(0, 1, n_splines=[n_sp, n_sp])
+                )
+                gam_fold.gridsearch(X_train, y_train, lam=lam_search, progress=False)
+
+                pred_val = gam_fold.predict(X_val)
+                rmse = np.sqrt(np.mean((y_val - pred_val) ** 2))
+                cv_rmses.append(rmse)
+
+            mean_rmse = np.mean(cv_rmses)
+
+            if mean_rmse < best_rmse:
+                best_rmse = mean_rmse
+                best_model = gam
+
+        # Compute residuals for smearing factor
+        predictions = best_model.predict(X)
+        residuals = y - predictions
+
+        logger.info(f"    Best CV RMSE: {best_rmse:.3f}")
+
+        return best_model, residuals
 
     def _prepare_skip_data(
         self, data: pd.DataFrame
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Prepare data for skip model"""
-        required = ["length", "zipf", "surprisal", "skip", "group_numeric"]
-        missing = [col for col in required if col not in data.columns]
-        if missing:
-            raise ValueError(f"Missing required columns: {missing}")
-
-        # Features: length, zipf, surprisal
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Prepare skip data"""
         X = data[["length", "zipf", "surprisal"]].values
         y = data["skip"].values
         group = data["group_numeric"].values
+        subjects = data["subject_id"].values
 
-        # Check for any issues before filtering
-        n_before = len(X)
+        # Remove NaN
+        valid_mask = ~np.isnan(X).any(axis=1) & ~np.isnan(y)
 
-        # Remove any NaN rows
-        valid_mask = ~np.isnan(X).any(axis=1) & ~np.isnan(y) & ~np.isnan(group)
-        X = X[valid_mask]
-        y = y[valid_mask]
-        group = group[valid_mask]
-
-        n_after = len(X)
-        if n_after < n_before:
-            logger.warning(f"  Dropped {n_before - n_after} rows with NaN values")
-
-        logger.info(f"  Skip data prepared: {len(X):,} observations")
-        logger.info(f"    Control: {(group==0).sum():,}")
-        logger.info(f"    Dyslexic: {(group==1).sum():,}")
-
-        return X, y, group
+        return X[valid_mask], y[valid_mask], group[valid_mask], subjects[valid_mask]
 
     def _prepare_duration_data(
-        self, data: pd.DataFrame
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Prepare data for duration model"""
-        required = ["length", "zipf", "surprisal", "TRT", "group_numeric"]
-        missing = [col for col in required if col not in data.columns]
-        if missing:
-            raise ValueError(f"Missing required columns: {missing}")
-
+        self, data: pd.DataFrame, use_log: bool
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Prepare duration data"""
         X = data[["length", "zipf", "surprisal"]].values
         y = data["TRT"].values
+
+        if use_log:
+            y = np.log(np.clip(y, 1, None))  # log transform
+
         group = data["group_numeric"].values
+        subjects = data["subject_id"].values
 
-        # Remove any NaN rows and ensure TRT > 0
-        valid_mask = ~np.isnan(X).any(axis=1) & ~np.isnan(y) & (y > 0)
-        X = X[valid_mask]
-        y = y[valid_mask]
-        group = group[valid_mask]
+        valid_mask = (
+            ~np.isnan(X).any(axis=1) & ~np.isnan(y) & (y > 0 if not use_log else True)
+        )
 
-        logger.info(f"  Duration data prepared: {len(X):,} observations")
-        logger.info(f"    Control: {(group==0).sum():,}")
-        logger.info(f"    Dyslexic: {(group==1).sum():,}")
-
-        return X, y, group
+        return X[valid_mask], y[valid_mask], group[valid_mask], subjects[valid_mask]
 
     def predict_skip(self, X: np.ndarray, group: str) -> np.ndarray:
         """Predict skip probability"""
         if self.skip_model is None:
-            raise ValueError("Skip model not fitted yet")
+            raise ValueError("Skip model not fitted")
 
-        model = self.skip_model[group]
-        predictions = model.predict_proba(X)
-        return predictions
+        return self.skip_model[group].predict_proba(X)
 
     def predict_trt(self, X: np.ndarray, group: str) -> np.ndarray:
-        """Predict TRT (given fixation)"""
+        """Predict TRT (with smearing factor if log-transform used)"""
         if self.duration_model is None:
-            raise ValueError("Duration model not fitted yet")
+            raise ValueError("Duration model not fitted")
 
-        model = self.duration_model[group]
-        predictions = model.predict(X)
+        predictions = self.duration_model[group].predict(X)
+
+        # Apply smearing factor if log-transform was used
+        if self.smearing_factors is not None:
+            smearing = self.smearing_factors[group]
+            predictions = np.exp(predictions) * smearing
+
         return predictions
 
 
-def fit_gam_models(data: pd.DataFrame) -> Tuple[Dict, Dict, DyslexiaGAMModels]:
+def fit_gam_models(
+    data: pd.DataFrame, use_log_duration: bool = True
+) -> Tuple[Dict, Dict, DyslexiaGAMModels]:
     """
-    Convenience function to fit both models
-    Returns metadata only (not model objects)
+    Fit both GAM models with tensor products
+
+    Args:
+        data: Prepared data
+        use_log_duration: Use log-Gaussian (True) or Gamma (False) for duration
+
+    Returns:
+        (skip_metadata, duration_metadata, gam_instance) tuple
     """
     gam = DyslexiaGAMModels()
 
-    skip_model_metadata = gam.fit_skip_model(data)
-    duration_model_metadata = gam.fit_duration_model(data)
+    skip_metadata = gam.fit_skip_model(data)
+    duration_metadata = gam.fit_duration_model(data, use_log_transform=use_log_duration)
 
-    return skip_model_metadata, duration_model_metadata, gam
+    return skip_metadata, duration_metadata, gam

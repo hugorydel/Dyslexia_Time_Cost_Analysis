@@ -1,5 +1,5 @@
 """
-Hypothesis 3: Gap Decomposition - FIXED
+Hypothesis 3: Gap Decomposition
 Shapley decomposition, equal-ease counterfactual, and per-feature equalization
 All analyses use CONSISTENT sample for reproducible baselines
 Per-feature equalization uses percentile matching instead of mean replacement
@@ -13,7 +13,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-# Fixed seed for all H3 analyses
+# Seed for all H3 analyses
 ANALYSIS_SEED = 42
 
 
@@ -195,8 +195,7 @@ def equal_ease_counterfactual(
 
     # Clip to reasonable ranges
     shifted_data["length"] = shifted_data["length"].clip(lower=1)
-    # For residualized zipf, don't clip to 1-7 (can be negative)
-    # For raw zipf, you might want: shifted_data["zipf"] = shifted_data["zipf"].clip(lower=1, upper=7)
+    shifted_data["zipf"] = shifted_data["zipf"].clip(lower=1, upper=7)
     shifted_data["surprisal"] = shifted_data["surprisal"].clip(lower=0)
 
     # Counterfactual predictions
