@@ -25,7 +25,7 @@ def permutation_test_gap_component(
     observed_value: float,
     data: pd.DataFrame,
     computation_fn,
-    n_permutations: int = 1000,
+    n_permutations: int = 200,  # Reduced default
     **kwargs,
 ) -> Dict:
     """
@@ -38,7 +38,9 @@ def permutation_test_gap_component(
 
     bootstrap_values = []
 
-    for i in range(n_permutations):
+    print(f"      Permutation test (n={n_permutations})...", flush=True)
+
+    for i in tqdm(range(n_permutations), desc="      Permutation", leave=False):
         np.random.seed(i + 3000)
         boot_subjects = np.random.choice(subjects, size=n_subjects, replace=True)
         boot_data = pd.concat(
@@ -79,10 +81,11 @@ def permutation_test_gap_component(
 
 
 def shapley_decomposition(
-    ert_predictor, data: pd.DataFrame, canonical_gap: float
+    ert_predictor, data: pd.DataFrame, canonical_gap: float, n_permutations: int = 200
 ) -> Dict:
     """Shapley decomposition with statistics"""
     logger.info("  Computing Shapley decomposition...")
+    print("  Shapley decomposition...", flush=True)
 
     sample_data = data.copy()
     dys_data = sample_data[sample_data["group"] == "dyslexic"]
@@ -186,8 +189,9 @@ def shapley_decomposition(
         return (skip_1 + skip_2) / 2
 
     logger.info("    Computing permutation tests for Shapley components...")
+    print("    Shapley permutation tests...", flush=True)
     stats_skip = permutation_test_gap_component(
-        delta_skip, data, compute_skip_contrib, n_permutations=1000
+        delta_skip, data, compute_skip_contrib, n_permutations=n_permutations
     )
 
     # Duration is just the complement
@@ -211,10 +215,15 @@ def shapley_decomposition(
 
 
 def equal_ease_counterfactual(
-    ert_predictor, data: pd.DataFrame, quartiles: Dict, canonical_gap: float
+    ert_predictor,
+    data: pd.DataFrame,
+    quartiles: Dict,
+    canonical_gap: float,
+    n_permutations: int = 200,
 ) -> Dict:
     """Equal-ease counterfactual with statistics"""
     logger.info("  Computing equal-ease counterfactual...")
+    print("  Equal-ease counterfactual...", flush=True)
 
     sample_data = data.copy()
 
@@ -325,8 +334,9 @@ def equal_ease_counterfactual(
         return baseline_gap_b - counterfactual_gap_b
 
     logger.info("    Computing permutation test for gap shrinkage...")
+    print("    Gap shrinkage permutation test...", flush=True)
     stats_gap_shrink = permutation_test_gap_component(
-        gap_shrink, data, compute_gap_shrink, n_permutations=1000
+        gap_shrink, data, compute_gap_shrink, n_permutations=n_permutations
     )
 
     return {
@@ -461,9 +471,12 @@ def equal_ease_feature_contributions(
     }
 
 
-def per_feature_equalization(ert_predictor, data: pd.DataFrame, feature: str) -> Dict:
+def per_feature_equalization(
+    ert_predictor, data: pd.DataFrame, feature: str, n_permutations: int = 200
+) -> Dict:
     """Per-feature equalization with statistics"""
     logger.info(f"  Computing per-feature equalization for {feature}...")
+    print(f"  Per-feature equalization: {feature}...", flush=True)
 
     sample_data = data.copy()
 
@@ -596,8 +609,9 @@ def per_feature_equalization(ert_predictor, data: pd.DataFrame, feature: str) ->
         return baseline_gap_b - cf_gap_b
 
     logger.info(f"    Computing permutation test for {feature} equalization...")
+    print(f"    {feature} equalization permutation test...", flush=True)
     stats_explained = permutation_test_gap_component(
-        gap_explained, data, compute_gap_explained_feat, n_permutations=1000
+        gap_explained, data, compute_gap_explained_feat, n_permutations=n_permutations
     )
 
     return {
@@ -615,14 +629,20 @@ def test_hypothesis_3(
     ert_predictor,
     data: pd.DataFrame,
     quartiles: Dict[str, Dict[str, float]],
+    n_permutations: int = 200,  # Reduced default
 ) -> Dict:
     """
     Test Hypothesis 3: Gap decomposition
     FULLY REVISED: Added p-values for all components
+
+    Args:
+        n_permutations: Number of permutations for p-value estimation (default: 200)
     """
     logger.info("=" * 60)
     logger.info("HYPOTHESIS 3: GAP DECOMPOSITION")
     logger.info("=" * 60)
+    logger.info(f"Using {n_permutations} permutations for p-value estimation")
+    print(f"\n=== H3: Gap Decomposition (n_perm={n_permutations}) ===\n", flush=True)
 
     np.random.seed(ANALYSIS_SEED)
     sample_size = min(5000, len(data))
@@ -634,11 +654,13 @@ def test_hypothesis_3(
     logger.info(f"\nCanonical gap: {canonical_gap:.2f} ms")
 
     # Shapley decomposition
-    shapley = shapley_decomposition(ert_predictor, analysis_sample, canonical_gap)
+    shapley = shapley_decomposition(
+        ert_predictor, analysis_sample, canonical_gap, n_permutations
+    )
 
     # Equal-ease counterfactual
     equal_ease = equal_ease_counterfactual(
-        ert_predictor, analysis_sample, quartiles, canonical_gap
+        ert_predictor, analysis_sample, quartiles, canonical_gap, n_permutations
     )
 
     # Feature contributions
@@ -650,7 +672,7 @@ def test_hypothesis_3(
     per_feature = {}
     for feature in ["length", "zipf", "surprisal"]:
         per_feature[feature] = per_feature_equalization(
-            ert_predictor, analysis_sample, feature
+            ert_predictor, analysis_sample, feature, n_permutations
         )
 
     # Decision logic

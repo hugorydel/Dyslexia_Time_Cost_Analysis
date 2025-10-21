@@ -54,7 +54,7 @@ def setup_logging(results_dir: Path):
     )
 
     ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.WARNING)
+    ch.setLevel(logging.INFO)  # Changed from WARNING to INFO for visibility
     ch.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
 
     logger.addHandler(fh)
@@ -73,6 +73,7 @@ class CompleteAnalysisPipeline:
         self,
         results_dir: str = "results_final",
         n_bootstrap: int = 1000,
+        n_permutations: int = 200,  # New parameter for H1 and H3
         use_cache: bool = True,
         quick_mode: bool = False,
     ):
@@ -94,13 +95,15 @@ class CompleteAnalysisPipeline:
         self.cache_dir.mkdir(exist_ok=True)
 
         self.n_bootstrap = n_bootstrap
+        self.n_permutations = n_permutations  # Store permutations parameter
         self.use_cache = use_cache
 
         logger.info("=" * 80)
         logger.info("COMPLETE DYSLEXIA GAM ANALYSIS PIPELINE - FULLY REVISED")
         logger.info("=" * 80)
         logger.info(f"Results directory: {self.results_dir}")
-        logger.info(f"Bootstrap iterations: {n_bootstrap}")
+        logger.info(f"Bootstrap iterations (H2): {n_bootstrap}")
+        logger.info(f"Permutation iterations (H1, H3): {n_permutations}")
         logger.info(f"Cache directory: {self.cache_dir}")
         logger.info(f"Quick mode: {quick_mode}")
         logger.info(f"Model caching: DISABLED (always recompute for reproducibility)")
@@ -119,6 +122,9 @@ class CompleteAnalysisPipeline:
             logger.info("\n" + "=" * 80)
             logger.info("PHASE 1: DATA PREPARATION")
             logger.info("=" * 80)
+            print("\n" + "=" * 80, flush=True)
+            print("PHASE 1: DATA PREPARATION", flush=True)
+            print("=" * 80 + "\n", flush=True)
 
             data = pd.read_csv(data_path)
             logger.info(f"Loaded data: {len(data):,} observations")
@@ -137,6 +143,9 @@ class CompleteAnalysisPipeline:
             logger.info("\n" + "=" * 80)
             logger.info("PHASE 2: GAM MODEL FITTING")
             logger.info("=" * 80)
+            print("\n" + "=" * 80, flush=True)
+            print("PHASE 2: GAM MODEL FITTING", flush=True)
+            print("=" * 80 + "\n", flush=True)
             logger.info(
                 "⚠️ Model caching DISABLED - always recomputing for reproducibility"
             )
@@ -156,13 +165,25 @@ class CompleteAnalysisPipeline:
             logger.info("\n" + "=" * 80)
             logger.info("PHASE 3: HYPOTHESIS TESTING (with comprehensive statistics)")
             logger.info("=" * 80)
+            print("\n" + "=" * 80, flush=True)
+            print("PHASE 3: HYPOTHESIS TESTING", flush=True)
+            print(f"  Bootstrap (H2): {self.n_bootstrap} iterations", flush=True)
+            print(
+                f"  Permutations (H1, H3): {self.n_permutations} iterations", flush=True
+            )
+            print("=" * 80 + "\n", flush=True)
 
             # H1: Feature Effects (with p-values and CIs)
-            h1_cache = self.cache_dir / "h1_results.pkl"
+            h1_cache = self.cache_dir / f"h1_results_n{self.n_permutations}.pkl"
 
             def compute_h1():
                 return test_hypothesis_1(
-                    ert_predictor, prepared_data, quartiles, bin_edges, bin_weights
+                    ert_predictor,
+                    prepared_data,
+                    quartiles,
+                    bin_edges,
+                    bin_weights,
+                    n_permutations=self.n_permutations,
                 )
 
             h1_results = load_or_recompute(h1_cache, compute_h1, reuse=self.use_cache)
@@ -185,10 +206,15 @@ class CompleteAnalysisPipeline:
             self._save_json(h2_results, "h2_results.json")
 
             # H3: Gap Decomposition (with p-values for all components)
-            h3_cache = self.cache_dir / "h3_results.pkl"
+            h3_cache = self.cache_dir / f"h3_results_n{self.n_permutations}.pkl"
 
             def compute_h3():
-                return test_hypothesis_3(ert_predictor, prepared_data, quartiles)
+                return test_hypothesis_3(
+                    ert_predictor,
+                    prepared_data,
+                    quartiles,
+                    n_permutations=self.n_permutations,
+                )
 
             h3_results = load_or_recompute(h3_cache, compute_h3, reuse=self.use_cache)
             self._save_json(h3_results, "h3_results.json")
@@ -404,25 +430,33 @@ def main():
         "--n-bootstrap",
         type=int,
         default=1000,
-        help="Number of bootstrap iterations (default: 1000)",
+        help="Number of bootstrap iterations for H2 (default: 1000)",
+    )
+    parser.add_argument(
+        "--n-permutations",
+        type=int,
+        default=200,
+        help="Number of permutations for H1 and H3 p-values (default: 200)",
     )
     parser.add_argument(
         "--quick",
         action="store_true",
-        help="Quick mode: 100 bootstrap iterations for testing",
+        help="Quick mode: 100 bootstrap, 50 permutations for testing",
     )
 
     args = parser.parse_args()
 
     use_cache = args.use_cache and not args.no_cache
     n_bootstrap = 100 if args.quick else args.n_bootstrap
+    n_permutations = 50 if args.quick else args.n_permutations
 
     if args.quick:
-        print("⚡ QUICK MODE: Using 100 bootstrap iterations")
+        print("⚡ QUICK MODE: Using 100 bootstrap + 50 permutation iterations")
 
     pipeline = CompleteAnalysisPipeline(
         results_dir=args.results_dir,
         n_bootstrap=n_bootstrap,
+        n_permutations=n_permutations,
         use_cache=use_cache,
         quick_mode=args.quick,
     )

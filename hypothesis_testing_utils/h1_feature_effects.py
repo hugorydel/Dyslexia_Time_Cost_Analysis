@@ -68,7 +68,11 @@ def permutation_test_amie(
     n_subjects = len(subjects)
     bootstrap_amies = []
 
-    for i in range(n_permutations):
+    print(f"      Bootstrap AMIE ({feature}, {group}, {method})...", flush=True)
+
+    for i in tqdm(
+        range(n_permutations), desc=f"      AMIE {feature[:3]}-{group[:3]}", leave=False
+    ):
         np.random.seed(i + 1000)
         boot_subjects = np.random.choice(subjects, size=n_subjects, replace=True)
         boot_data = pd.concat(
@@ -177,7 +181,13 @@ def permutation_test_pathway_effect(
     n_subjects = len(subjects)
     bootstrap_deltas = []
 
-    for i in range(n_permutations):
+    print(f"      Bootstrap {pathway} ({feature}, {group})...", flush=True)
+
+    for i in tqdm(
+        range(n_permutations),
+        desc=f"      {pathway[:3]} {feature[:3]}-{group[:3]}",
+        leave=False,
+    ):
         np.random.seed(i + 2000)
         boot_subjects = np.random.choice(subjects, size=n_subjects, replace=True)
         boot_data = pd.concat(
@@ -402,14 +412,20 @@ def test_hypothesis_1(
     quartiles: Dict,
     bin_edges: np.ndarray,
     bin_weights: pd.Series,
+    n_permutations: int = 200,  # Reduced default for speed
 ) -> Dict:
     """
     Test Hypothesis 1: Feature Effects
     FULLY REVISED: Added p-values and comprehensive statistics for all effects
+
+    Args:
+        n_permutations: Number of bootstrap iterations for p-values (default: 200)
     """
     logger.info("=" * 60)
     logger.info("HYPOTHESIS 1: FEATURE EFFECTS")
     logger.info("=" * 60)
+    logger.info(f"Using {n_permutations} permutations for p-value estimation")
+    print(f"\n=== H1: Feature Effects (n_perm={n_permutations}) ===\n", flush=True)
 
     features = ["length", "zipf", "surprisal"]
     results = {}
@@ -435,13 +451,14 @@ def test_hypothesis_1(
 
             # P-values for conditional zipf
             logger.info(f"  Computing permutation tests for {feature}...")
+            print(f"  Testing {feature} (conditional)...", flush=True)
             stats_ctrl = permutation_test_amie(
                 ert_predictor,
                 data,
                 feature,
                 "control",
                 quartiles,
-                n_permutations=1000,
+                n_permutations=n_permutations,
                 method="conditional",
                 bin_edges=bin_edges,
                 bin_weights=bin_weights,
@@ -452,7 +469,7 @@ def test_hypothesis_1(
                 feature,
                 "dyslexic",
                 quartiles,
-                n_permutations=1000,
+                n_permutations=n_permutations,
                 method="conditional",
                 bin_edges=bin_edges,
                 bin_weights=bin_weights,
@@ -467,13 +484,14 @@ def test_hypothesis_1(
 
             # P-values for standard AMIE
             logger.info(f"  Computing permutation tests for {feature}...")
+            print(f"  Testing {feature} (standard)...", flush=True)
             stats_ctrl = permutation_test_amie(
                 ert_predictor,
                 data,
                 feature,
                 "control",
                 quartiles,
-                n_permutations=1000,
+                n_permutations=n_permutations,
                 method="standard",
             )
             stats_dys = permutation_test_amie(
@@ -482,7 +500,7 @@ def test_hypothesis_1(
                 feature,
                 "dyslexic",
                 quartiles,
-                n_permutations=1000,
+                n_permutations=n_permutations,
                 method="standard",
             )
 
@@ -515,10 +533,22 @@ def test_hypothesis_1(
             logger.info(f"    Testing {pathway} pathway...")
 
             stats_ctrl_path = permutation_test_pathway_effect(
-                ert_predictor, data, feature, "control", quartiles, pathway, 1000
+                ert_predictor,
+                data,
+                feature,
+                "control",
+                quartiles,
+                pathway,
+                n_permutations,
             )
             stats_dys_path = permutation_test_pathway_effect(
-                ert_predictor, data, feature, "dyslexic", quartiles, pathway, 1000
+                ert_predictor,
+                data,
+                feature,
+                "dyslexic",
+                quartiles,
+                pathway,
+                n_permutations,
             )
 
             pathway_control[f"{pathway}_p_value"] = stats_ctrl_path["p_value"]
