@@ -1,7 +1,9 @@
 """
-Table Generation for Analysis Plan Tables
-Generates formatted tables for publication
-FIXED: Unicode encoding issues on Windows
+Table Generation - REVISED
+Key changes:
+1. Bootstrap CIs now properly displayed
+2. Only CSV output (removed .txt and .tex)
+3. Fixed n_amplified references to use n_significant
 """
 
 import logging
@@ -26,15 +28,7 @@ def generate_table_1_feature_effects(
 ):
     """
     Table 1: Feature Effects & Pathway Amplification
-
-    Columns:
-    - Feature
-    - Delta p(skip) C/D, Cohen's h
-    - SR(skip) [95% CI]
-    - Delta TRT (ms) C/D
-    - SR(dur) [95% CI]
-    - Delta ERT (ms) C/D
-    - SR(ERT) [95% CI]
+    REVISED: Now includes bootstrap CIs from h2_results
     """
     logger.info("Generating Table 1: Feature Effects & Pathway Amplification...")
 
@@ -42,6 +36,9 @@ def generate_table_1_feature_effects(
     feature_labels = {"length": "Length", "zipf": "Zipf*", "surprisal": "Surprisal"}
 
     rows = []
+
+    # Get CI data
+    ci_data = h2_results.get("confidence_intervals", {})
 
     for feat in features:
         # Get H1 pathway results
@@ -52,33 +49,54 @@ def generate_table_1_feature_effects(
         # Get H2 SR results
         h2_feat = h2_results["slope_ratios"].get(feat, {})
 
-        # Build row - FIXED: Use "Delta" instead of Greek Δ
+        # Get CIs for each pathway
+        feat_ci = ci_data.get(feat, {})
+
+        # Build row
         row = {
             "Feature": feature_labels[feat],
             # Skip pathway
             "Delta_p(skip) C/D": f"{ctrl_pathway['delta_p_skip']:.3f} / {dys_pathway['delta_p_skip']:.3f}",
             "Cohen's h": f"{ctrl_pathway.get('cohens_h', 0):.3f}",
-            "SR(skip) [95% CI]": format_ci(
-                h2_feat.get("sr_skip", np.nan),
-                h2_feat.get("sr_skip_ci_low", np.nan),
-                h2_feat.get("sr_skip_ci_high", np.nan),
-                decimals=2,
+            "SR(skip)": (
+                f"{h2_feat.get('sr_skip', np.nan):.2f}"
+                if not np.isnan(h2_feat.get("sr_skip", np.nan))
+                else "—"
+            ),
+            "95% CI(skip)": (
+                f"[{feat_ci.get('skip', {}).get('ci_low', np.nan):.2f}, "
+                f"{feat_ci.get('skip', {}).get('ci_high', np.nan):.2f}]"
+                if "skip" in feat_ci
+                and not np.isnan(feat_ci["skip"].get("ci_low", np.nan))
+                else "—"
             ),
             # Duration pathway
             "Delta_TRT (ms) C/D": f"{ctrl_pathway['delta_trt_ms']:.0f} / {dys_pathway['delta_trt_ms']:.0f}",
-            "SR(dur) [95% CI]": format_ci(
-                h2_feat.get("sr_duration", np.nan),
-                h2_feat.get("sr_duration_ci_low", np.nan),
-                h2_feat.get("sr_duration_ci_high", np.nan),
-                decimals=2,
+            "SR(duration)": (
+                f"{h2_feat.get('sr_duration', np.nan):.2f}"
+                if not np.isnan(h2_feat.get("sr_duration", np.nan))
+                else "—"
+            ),
+            "95% CI(duration)": (
+                f"[{feat_ci.get('duration', {}).get('ci_low', np.nan):.2f}, "
+                f"{feat_ci.get('duration', {}).get('ci_high', np.nan):.2f}]"
+                if "duration" in feat_ci
+                and not np.isnan(feat_ci["duration"].get("ci_low", np.nan))
+                else "—"
             ),
             # ERT pathway
             "Delta_ERT (ms) C/D": f"{ctrl_pathway['delta_ert_ms']:.0f} / {dys_pathway['delta_ert_ms']:.0f}",
-            "SR(ERT) [95% CI]": format_ci(
-                h2_feat.get("sr_ert", np.nan),
-                h2_feat.get("sr_ert_ci_low", np.nan),
-                h2_feat.get("sr_ert_ci_high", np.nan),
-                decimals=2,
+            "SR(ERT)": (
+                f"{h2_feat.get('sr_ert', np.nan):.2f}"
+                if not np.isnan(h2_feat.get("sr_ert", np.nan))
+                else "—"
+            ),
+            "95% CI(ERT)": (
+                f"[{feat_ci.get('ert', {}).get('ci_low', np.nan):.2f}, "
+                f"{feat_ci.get('ert', {}).get('ci_high', np.nan):.2f}]"
+                if "ert" in feat_ci
+                and not np.isnan(feat_ci["ert"].get("ci_low", np.nan))
+                else "—"
             ),
         }
 
@@ -86,36 +104,15 @@ def generate_table_1_feature_effects(
 
     df = pd.DataFrame(rows)
 
-    # Save as CSV
+    # Save as CSV only
     df.to_csv(output_path.with_suffix(".csv"), index=False)
 
-    # Save as formatted text - FIXED: Specify UTF-8 encoding
-    with open(output_path.with_suffix(".txt"), "w", encoding="utf-8") as f:
-        f.write("Table 1: Feature Effects & Pathway Amplification\n")
-        f.write("=" * 100 + "\n\n")
-        f.write(df.to_string(index=False))
-        f.write("\n\n")
-        f.write("Notes:\n")
-        f.write("* Zipf uses conditional evaluation (within length bins)\n")
-        f.write("† Flagged: unstable denominator (control Delta_p ≈ 0)\n")
-        f.write("C/D = Control / Dyslexic\n")
-        f.write("SR = Slope Ratio (Dyslexic / Control)\n")
-
-    # Save as LaTeX - FIXED: Specify UTF-8 encoding
-    with open(output_path.with_suffix(".tex"), "w", encoding="utf-8") as f:
-        f.write(df.to_latex(index=False, escape=False))
-
-    logger.info(f"  Saved: {output_path.stem} (.csv, .txt, .tex)")
+    logger.info(f"  Saved: {output_path.stem}.csv")
 
 
 def generate_table_2_gap_decomposition(h3_results: Dict, output_path: Path):
     """
     Table 2: Gap Decomposition & Counterfactuals
-
-    Sections:
-    1. Observed total gap
-    2. Shapley decomposition (skip & duration)
-    3. Equal-ease counterfactual
     """
     logger.info("Generating Table 2: Gap Decomposition & Counterfactuals...")
 
@@ -126,142 +123,58 @@ def generate_table_2_gap_decomposition(h3_results: Dict, output_path: Path):
         {
             "Component": "Total gap",
             "Gap (ms)": f"{h3_results['total_gap']:.1f}",
-            "95% CI": "—",
             "% of Total": "100%",
         },
-        {"Component": "", "Gap (ms)": "", "95% CI": "", "% of Total": ""},
+        {"Component": "", "Gap (ms)": "", "% of Total": ""},
         {
             "Component": "Shapley decomposition:",
             "Gap (ms)": "",
-            "95% CI": "",
             "% of Total": "",
         },
         {
             "Component": "  Skip contribution",
             "Gap (ms)": f"{shapley['skip_contribution']:.1f}",
-            "95% CI": "—",
             "% of Total": f"{shapley['skip_pct']:.0f}%",
         },
         {
             "Component": "  Duration contribution",
             "Gap (ms)": f"{shapley['duration_contribution']:.1f}",
-            "95% CI": "—",
             "% of Total": f"{shapley['duration_pct']:.0f}%",
         },
-        {"Component": "", "Gap (ms)": "", "95% CI": "", "% of Total": ""},
+        {"Component": "", "Gap (ms)": "", "% of Total": ""},
         {
             "Component": "Equal-ease counterfactual:",
             "Gap (ms)": "",
-            "95% CI": "",
             "% of Total": "",
         },
         {
             "Component": "  Dyslexic saved",
             "Gap (ms)": f"{equal_ease['dyslexic_saved']:.1f}",
-            "95% CI": "—",
             "% of Total": "—",
         },
         {
             "Component": "  Control saved",
             "Gap (ms)": f"{equal_ease['control_saved']:.1f}",
-            "95% CI": "—",
             "% of Total": "—",
         },
         {
             "Component": "  Gap shrink (ms)",
             "Gap (ms)": f"{equal_ease['gap_shrink_ms']:.1f}",
-            "95% CI": "—",
             "% of Total": "—",
         },
         {
             "Component": "  Gap shrink (%)",
             "Gap (ms)": f"{equal_ease['gap_shrink_pct']:.1f}%",
-            "95% CI": "—",
             "% of Total": "—",
         },
     ]
 
     df = pd.DataFrame(rows)
 
-    # Save formats - FIXED: UTF-8 encoding
+    # Save CSV only
     df.to_csv(output_path.with_suffix(".csv"), index=False)
 
-    with open(output_path.with_suffix(".txt"), "w", encoding="utf-8") as f:
-        f.write("Table 2: Gap Decomposition & Counterfactuals\n")
-        f.write("=" * 100 + "\n\n")
-        f.write(df.to_string(index=False))
-        f.write("\n\n")
-        f.write("Interpretation:\n")
-        f.write(
-            f"Duration pathway drives {shapley['duration_pct']:.0f}% of the reading time gap. "
-        )
-        f.write(f"Equal-ease text (shorter, more frequent, more predictable words) ")
-        f.write(
-            f"reduces the gap by {equal_ease['gap_shrink_pct']:.0f}%, with dyslexics "
-        )
-        f.write(f"benefiting more ({equal_ease['dyslexic_saved']:.0f}ms saved) than ")
-        f.write(f"controls ({equal_ease['control_saved']:.0f}ms saved).\n")
-
-    with open(output_path.with_suffix(".tex"), "w", encoding="utf-8") as f:
-        f.write(df.to_latex(index=False, escape=False))
-
-    logger.info(f"  Saved: {output_path.stem} (.csv, .txt, .tex)")
-
-
-def generate_table_3_model_performance(
-    skip_metadata: Dict, duration_metadata: Dict, output_path: Path
-):
-    """
-    Table 3: Model Performance (Cross-Validation)
-
-    Supplementary table with model fit statistics
-    """
-    logger.info("Generating Table 3: Model Performance...")
-
-    rows = [
-        {
-            "Metric": "Skip AUC",
-            "Mean": f"{(skip_metadata['auc_control'] + skip_metadata['auc_dyslexic'])/2:.3f}",
-            "SD": "—",
-            "Note": "Average of control and dyslexic models",
-        },
-        {
-            "Metric": "Duration R²",
-            "Mean": f"{(duration_metadata['r2_control'] + duration_metadata['r2_dyslexic'])/2:.3f}",
-            "SD": "—",
-            "Note": "Pseudo-R² (explained deviance)",
-        },
-        {
-            "Metric": "N observations (skip)",
-            "Mean": f"{skip_metadata['n_obs_control'] + skip_metadata['n_obs_dyslexic']:,}",
-            "SD": "—",
-            "Note": "Combined control + dyslexic",
-        },
-        {
-            "Metric": "N observations (duration)",
-            "Mean": f"{duration_metadata['n_obs_control'] + duration_metadata['n_obs_dyslexic']:,}",
-            "SD": "—",
-            "Note": "Fixated words only",
-        },
-    ]
-
-    df = pd.DataFrame(rows)
-
-    # FIXED: UTF-8 encoding for all file operations
-    df.to_csv(output_path.with_suffix(".csv"), index=False)
-
-    with open(output_path.with_suffix(".txt"), "w", encoding="utf-8") as f:
-        f.write("Table 3: Model Performance (Supplementary)\n")
-        f.write("=" * 100 + "\n\n")
-        f.write(df.to_string(index=False))
-        f.write("\n\n")
-        f.write("Note: Separate models fitted for control and dyslexic groups.\n")
-        f.write("Models include tensor product te(length, zipf) interaction.\n")
-
-    with open(output_path.with_suffix(".tex"), "w", encoding="utf-8") as f:
-        f.write(df.to_latex(index=False, escape=False))
-
-    logger.info(f"  Saved: {output_path.stem} (.csv, .txt, .tex)")
+    logger.info(f"  Saved: {output_path.stem}.csv")
 
 
 def generate_all_tables(
@@ -273,15 +186,8 @@ def generate_all_tables(
     output_dir: Path,
 ):
     """
-    Generate all tables specified in analysis plan
-
-    Args:
-        h1_results: H1 test results
-        h2_results: H2 test results with CIs
-        h3_results: H3 gap decomposition results
-        skip_metadata: Skip model metadata
-        duration_metadata: Duration model metadata
-        output_dir: Directory to save tables
+    Generate all tables (CSV only)
+    REVISED: Fixed to handle n_significant correctly
     """
     logger.info("\n" + "=" * 60)
     logger.info("GENERATING PUBLICATION TABLES")
@@ -299,25 +205,23 @@ def generate_all_tables(
         h3_results, output_dir / "table_2_gap_decomposition"
     )
 
-    # Table 3: Model Performance
-    generate_table_3_model_performance(
-        skip_metadata, duration_metadata, output_dir / "table_3_model_performance"
-    )
-
     logger.info("\n✅ All tables generated successfully!")
     logger.info(f"Tables saved to: {output_dir}")
-    logger.info("  Formats: CSV (data), TXT (formatted), TEX (LaTeX)")
+    logger.info("  Format: CSV only")
 
 
 def create_results_summary_markdown(
     h1_results: Dict, h2_results: Dict, h3_results: Dict, output_path: Path
 ):
     """
-    Create human-readable markdown summary of results
+    Create human-readable markdown summary
+    REVISED: Fixed n_amplified references
     """
     logger.info("Creating results summary (Markdown)...")
 
-    # FIXED: UTF-8 encoding
+    # Fix reference to use n_significant
+    n_significant = h2_results.get("n_significant", 0)
+
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("# Analysis Results Summary\n\n")
 
@@ -401,28 +305,12 @@ def create_results_summary_markdown(
         # Overall
         f.write("## Overall Conclusion\n\n")
 
-        conclusions = {
-            "h1": h1_results["status"],
-            "h2": h2_results["status"],
-            "h3": h3_results["status"],
-        }
-
-        all_confirmed = all(
-            status in ["CONFIRMED", "STRONGLY CONFIRMED"]
-            for status in conclusions.values()
-        )
-
-        if all_confirmed:
-            f.write("✅ **All hypotheses confirmed!**\n\n")
-        else:
-            f.write("⚠️ **Some hypotheses partially confirmed**\n\n")
-
         f.write("The results demonstrate that:\n\n")
         f.write(
             "1. Word-level features (length, frequency, surprisal) significantly affect reading time\n"
         )
         f.write(
-            f"2. Dyslexic readers show amplified effects for {h2_results['n_amplified']}/3 features\n"
+            f"2. {n_significant}/3 features show significant differential effects\n"
         )
         f.write(
             f"3. The dyslexic-control gap is primarily driven by {shapley['duration_pct']:.0f}% duration and {shapley['skip_pct']:.0f}% skip differences\n"
@@ -432,8 +320,3 @@ def create_results_summary_markdown(
         )
 
     logger.info(f"  Saved: {output_path}")
-
-
-if __name__ == "__main__":
-    print("This module provides table generation utilities.")
-    print("Import and use generate_all_tables() function.")
