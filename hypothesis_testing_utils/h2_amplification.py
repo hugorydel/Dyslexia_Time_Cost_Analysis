@@ -1,6 +1,6 @@
 """
 Hypothesis 2: Amplification with Comprehensive Bootstrap
-REVISED: Fixed SR classification logic to properly detect significant effects
+FULLY REVISED: Fixed SR classification + Restored AMIE bootstrap
 """
 
 import logging
@@ -205,15 +205,18 @@ def bootstrap_all_metrics(
 ) -> Tuple[Dict, Dict]:
     """
     COMPREHENSIVE BOOTSTRAP: Resample subjects and recompute ALL metrics
-    FIXED: Proper nested structure for storing results
+    FULLY RESTORED: Includes both AMIEs and SRs with proper structure
     """
     logger.info(f"\nRunning comprehensive bootstrap ({n_bootstrap} iterations)...")
 
     subjects = data["subject_id"].unique()
     n_subjects = len(subjects)
 
-    # Proper nested structure
+    # Proper nested structure - INCLUDING AMIEs
     bootstrap_results = {
+        "amie": {
+            f: {"control": [], "dyslexic": []} for f in ["length", "zipf", "surprisal"]
+        },
         "slope_ratios": {
             "sr_skip": {f: [] for f in ["length", "zipf", "surprisal"]},
             "sr_duration": {f: [] for f in ["length", "zipf", "surprisal"]},
@@ -245,8 +248,42 @@ def bootstrap_all_metrics(
             for feat in ["length", "zipf", "surprisal"]
         }
 
-        # Compute SRs for all features × pathways
+        # === COMPUTE ALL METRICS ===
         for feature in ["length", "zipf", "surprisal"]:
+
+            # 1. AMIEs (for each group separately)
+            for group in ["control", "dyslexic"]:
+                try:
+                    if feature == "zipf":
+                        from hypothesis_testing_utils.h1_feature_effects import (
+                            compute_amie_conditional_zipf,
+                        )
+
+                        amie_result = compute_amie_conditional_zipf(
+                            ert_predictor,
+                            boot_data,
+                            group,
+                            boot_quartiles,
+                            bin_edges,
+                            bin_weights,
+                        )
+                        amie = amie_result.get("amie_ms", np.nan)
+                    else:
+                        from hypothesis_testing_utils.h1_feature_effects import (
+                            compute_amie_standard,
+                        )
+
+                        amie_result = compute_amie_standard(
+                            ert_predictor, boot_data, feature, group, boot_quartiles
+                        )
+                        amie = amie_result.get("amie_ms", np.nan)
+
+                    if not np.isnan(amie):
+                        bootstrap_results["amie"][feature][group].append(amie)
+                except Exception:
+                    pass
+
+            # 2. Slope Ratios
             for pathway in ["skip", "duration", "ert"]:
                 try:
                     if feature == "zipf":
@@ -270,11 +307,24 @@ def bootstrap_all_metrics(
                 except:
                     pass
 
-    # Compute confidence intervals
+    # === COMPUTE CONFIDENCE INTERVALS ===
     ci_results = {}
 
     for feature in ["length", "zipf", "surprisal"]:
         ci_results[feature] = {}
+
+        # CIs for AMIEs (both groups)
+        for group in ["control", "dyslexic"]:
+            samples = bootstrap_results["amie"][feature][group]
+            if len(samples) > 0:
+                ci_results[feature][f"amie_{group}"] = {
+                    "mean": float(np.mean(samples)),
+                    "ci_low": float(np.percentile(samples, 2.5)),
+                    "ci_high": float(np.percentile(samples, 97.5)),
+                    "n_samples": len(samples),
+                }
+
+        # CIs for SRs (all pathways)
         for pathway in ["skip", "duration", "ert"]:
             samples = bootstrap_results["slope_ratios"][f"sr_{pathway}"][feature]
             if len(samples) > 0:
@@ -286,6 +336,9 @@ def bootstrap_all_metrics(
                 }
 
     logger.info("Bootstrap complete!")
+    logger.info(
+        f"  AMIE samples: {sum(len(bootstrap_results['amie'][f][g]) for f in bootstrap_results['amie'] for g in bootstrap_results['amie'][f])}"
+    )
     logger.info(
         f"  SR samples: {sum(len(bootstrap_results['slope_ratios'][p][f]) for p in bootstrap_results['slope_ratios'] for f in bootstrap_results['slope_ratios'][p])}"
     )
@@ -303,7 +356,7 @@ def test_hypothesis_2(
 ) -> Dict:
     """
     Test Hypothesis 2: Dyslexic Amplification
-    REVISED: Fixed classification logic to properly detect significant effects
+    FULLY REVISED: Fixed classification + Restored AMIE bootstrap
     """
     logger.info("=" * 60)
     logger.info("HYPOTHESIS 2: DYSLEXIC AMPLIFICATION")
@@ -335,13 +388,23 @@ def test_hypothesis_2(
 
         results[feature] = feature_results
 
-    # === 2. BOOTSTRAP CONFIDENCE INTERVALS ===
+    # === 2. BOOTSTRAP CONFIDENCE INTERVALS (AMIEs + SRs) ===
     bootstrap_samples, ci_results = bootstrap_all_metrics(
         ert_predictor, data, quartiles, bin_edges, bin_weights, n_bootstrap
     )
 
     # === 3. MERGE CIs INTO RESULTS ===
     for feature in features:
+        # Add AMIE CIs
+        for group in ["control", "dyslexic"]:
+            ci_key = f"amie_{group}"
+            if ci_key in ci_results.get(feature, {}):
+                ci_data = ci_results[feature][ci_key]
+                results[feature][f"amie_{group}_mean"] = ci_data["mean"]
+                results[feature][f"amie_{group}_ci_low"] = ci_data["ci_low"]
+                results[feature][f"amie_{group}_ci_high"] = ci_data["ci_high"]
+
+        # Add SR CIs
         for pathway in ["skip", "duration", "ert"]:
             if feature in ci_results and pathway in ci_results[feature]:
                 ci_data = ci_results[feature][pathway]
