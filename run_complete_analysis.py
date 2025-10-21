@@ -30,6 +30,7 @@ from hypothesis_testing_utils.table_generator import (
     generate_all_tables,
 )
 from hypothesis_testing_utils.visualization_utils import generate_all_figures
+from hypothesis_testing_utils.zipf_diagnostic import run_zipf_diagnostic
 
 
 def setup_logging(results_dir: Path):
@@ -106,13 +107,7 @@ class CompleteAnalysisPipeline:
         logger.info(f"Permutation iterations (H1, H3): {n_permutations}")
         logger.info(f"Cache directory: {self.cache_dir}")
         logger.info(f"Quick mode: {quick_mode}")
-        logger.info(f"Model caching: DISABLED (always recompute for reproducibility)")
         logger.info(f"Result caching: {'ENABLED' if use_cache else 'DISABLED'}")
-        logger.info(f"Output enhancements:")
-        logger.info(f"  - P-values to 5 decimal places")
-        logger.info(f"  - Comprehensive 95% CIs")
-        logger.info(f"  - JSON exports for all figures")
-        logger.info(f"  - Cohen's h for skip effects")
 
     def run(self, data_path: str):
         """Execute complete analysis pipeline"""
@@ -138,6 +133,13 @@ class CompleteAnalysisPipeline:
             self._save_json(metadata, "data_metadata.json")
 
             logger.info("✅ Phase 1 complete")
+
+            # ===== DIAGNOSTIC: Zipf-Length Interaction =====
+            logger.info("\n" + "=" * 80)
+            logger.info("RUNNING ZIPF-LENGTH DIAGNOSTIC")
+            logger.info("=" * 80)
+
+            run_zipf_diagnostic(prepared_data, n_bins=10, results_dir=self.results_dir)
 
             # ===== PHASE 2: MODEL FITTING =====
             logger.info("\n" + "=" * 80)

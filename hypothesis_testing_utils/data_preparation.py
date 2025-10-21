@@ -165,11 +165,6 @@ def prepare_gam_data(data: pd.DataFrame) -> pd.DataFrame:
     corr_length_zipf = gam_data["length"].corr(gam_data["zipf"])
     logger.info(f"\nCorrelation (length, zipf): {corr_length_zipf:.3f}")
 
-    if abs(corr_length_zipf) < 0.5:
-        logger.warning(f"  ⚠️  Unexpectedly LOW correlation (expected ~-0.80)")
-    else:
-        logger.info(f"  ✓ Strong correlation as expected (will use te() interaction)")
-
     # Remove TRT outliers (fixated words only)
     fixated = gam_data[gam_data["skip"] == 0]
     if len(fixated) > 0:

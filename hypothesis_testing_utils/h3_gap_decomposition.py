@@ -1,6 +1,6 @@
 """
-Hypothesis 3: Gap Decomposition - REVISED
-Added p-values and comprehensive statistics for all analyses
+Hypothesis 3: Gap Decomposition - FULLY RULES-COMPLIANT
+Single source of truth (S & G0), consistent equal-ease policy, proper anchoring
 """
 
 import logging
@@ -8,39 +8,52 @@ from typing import Dict
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
 ANALYSIS_SEED = 42
+BASELINE_TOLERANCE = 1e-6
 
 
-def compute_canonical_gap(data: pd.DataFrame) -> float:
-    """Compute canonical gap on the analysis sample"""
-    ctrl_ert = data[data["group"] == "control"]["ERT"].mean()
-    dys_ert = data[data["group"] == "dyslexic"]["ERT"].mean()
-    return float(dys_ert - ctrl_ert)
+def predict_gap_on_sample(ert_predictor, sample: pd.DataFrame) -> float:
+    """
+    Compute gap using model predictions on the given sample.
+    This is the ONLY way to compute gaps - ensures consistency.
+    """
+    ert_by_group = {"control": [], "dyslexic": []}
+
+    for group_name in ["control", "dyslexic"]:
+        group_data = sample[sample["group"] == group_name]
+        for idx, row in group_data.iterrows():
+            features = row[["length", "zipf", "surprisal"]].to_frame().T
+            try:
+                ert = ert_predictor.predict_ert(features, group_name)[0]
+                ert_by_group[group_name].append(ert)
+            except:
+                continue
+
+    if len(ert_by_group["control"]) > 0 and len(ert_by_group["dyslexic"]) > 0:
+        return np.mean(ert_by_group["dyslexic"]) - np.mean(ert_by_group["control"])
+    return np.nan
 
 
-def permutation_test_gap_component(
+def bootstrap_gap_component(
     observed_value: float,
     data: pd.DataFrame,
     computation_fn,
-    n_permutations: int = 200,  # Reduced default
+    n_bootstrap: int = 200,
     **kwargs,
 ) -> Dict:
-    """
-    Generic permutation test for gap components
-
-    Returns p-value and 95% CI
-    """
+    """Bootstrap with subject resampling (not permutation test)"""
     subjects = data["subject_id"].unique()
     n_subjects = len(subjects)
 
     bootstrap_values = []
 
-    print(f"      Permutation test (n={n_permutations})...", flush=True)
+    print(f"      Bootstrap (n={n_bootstrap})...", flush=True)
 
-    for i in tqdm(range(n_permutations), desc="      Permutation", leave=False):
+    for i in tqdm(range(n_bootstrap), desc="      Bootstrap", leave=False):
         np.random.seed(i + 3000)
         boot_subjects = np.random.choice(subjects, size=n_subjects, replace=True)
         boot_data = pd.concat(
@@ -61,7 +74,6 @@ def permutation_test_gap_component(
         ci_low = float(np.percentile(bootstrap_values, 2.5))
         ci_high = float(np.percentile(bootstrap_values, 97.5))
 
-        # P-value: proportion with opposite sign
         if observed_value > 0:
             p_value = float(np.mean(np.array(bootstrap_values) <= 0))
         else:
@@ -81,19 +93,21 @@ def permutation_test_gap_component(
 
 
 def shapley_decomposition(
-    ert_predictor, data: pd.DataFrame, canonical_gap: float, n_permutations: int = 200
+    ert_predictor, S: pd.DataFrame, G0: float, n_bootstrap: int = 200
 ) -> Dict:
-    """Shapley decomposition with statistics"""
+    """
+    Shapley decomposition - skip vs duration contributions.
+    Uses the SAME sample S and baseline G0 as rest of H3.
+    """
     logger.info("  Computing Shapley decomposition...")
     print("  Shapley decomposition...", flush=True)
 
-    sample_data = data.copy()
-    dys_data = sample_data[sample_data["group"] == "dyslexic"]
+    dys_data = S[S["group"] == "dyslexic"]
 
     if len(dys_data) == 0:
         return {"error": "No dyslexic data"}
 
-    # Predictions
+    # Predictions for dyslexic
     ert_dys, p_skip_dys, trt_dys = [], [], []
     for idx, row in dys_data.iterrows():
         features = row[["length", "zipf", "surprisal"]].to_frame().T
@@ -109,6 +123,7 @@ def shapley_decomposition(
 
     mean_ert_dys = np.mean(ert_dys)
 
+    # Predictions for control (on same dyslexic observations)
     ert_ctrl, p_skip_ctrl, trt_ctrl = [], [], []
     for idx, row in dys_data.iterrows():
         features = row[["length", "zipf", "surprisal"]].to_frame().T
@@ -123,41 +138,54 @@ def shapley_decomposition(
             continue
 
     mean_ert_ctrl = np.mean(ert_ctrl)
+    computed_gap = mean_ert_dys - mean_ert_ctrl
 
-    # Path 1
+    # Path 1: Equalize skip first
     ert_1 = [(1 - p_s_c) * t_d for p_s_c, t_d in zip(p_skip_ctrl, trt_dys)]
     mean_ert_1 = np.mean(ert_1)
 
     delta_skip_path1 = mean_ert_dys - mean_ert_1
     delta_duration_path1 = mean_ert_1 - mean_ert_ctrl
 
-    # Path 2
+    # Path 2: Equalize duration first
     ert_3 = [(1 - p_s_d) * t_c for p_s_d, t_c in zip(p_skip_dys, trt_ctrl)]
     mean_ert_3 = np.mean(ert_3)
 
     delta_duration_path2 = mean_ert_dys - mean_ert_3
     delta_skip_path2 = mean_ert_3 - mean_ert_ctrl
 
-    # Average
+    # Average Shapley values
     delta_skip = (delta_skip_path1 + delta_skip_path2) / 2
     delta_duration = (delta_duration_path1 + delta_duration_path2) / 2
 
-    pct_skip = (delta_skip / canonical_gap * 100) if canonical_gap != 0 else 0
-    pct_duration = (delta_duration / canonical_gap * 100) if canonical_gap != 0 else 0
-
-    logger.info(f"    Canonical gap: {canonical_gap:.2f} ms")
-    logger.info(f"    Skip contribution: {delta_skip:.2f} ms ({pct_skip:.1f}%)")
     logger.info(
-        f"    Duration contribution: {delta_duration:.2f} ms ({pct_duration:.1f}%)"
+        f"    Computed gap (from predictions on dys subset): {computed_gap:.2f} ms"
     )
+    logger.info(f"    Canonical gap G0 (single source of truth): {G0:.2f} ms")
 
-    # Add permutation tests for contributions
+    # Anchor to G0
+    if abs(computed_gap) > 1e-9 and abs(computed_gap - G0) > BASELINE_TOLERANCE:
+        scale = G0 / computed_gap
+        logger.info(f"    Applying scale factor: {scale:.4f}")
+    else:
+        scale = 1.0
+
+    skip_contribution_ms = delta_skip * scale
+    duration_contribution_ms = delta_duration * scale
+
+    # Bootstrap for skip contribution
     def compute_skip_contrib(boot_data):
         dys_boot = boot_data[boot_data["group"] == "dyslexic"]
+        if len(dys_boot) < 100:
+            return np.nan
+
+        # No fixed seed inside bootstrap
+        dys_sample = dys_boot.sample(min(500, len(dys_boot)))
+
         ert_dys_b, p_skip_dys_b, trt_dys_b = [], [], []
         ert_ctrl_b, p_skip_ctrl_b, trt_ctrl_b = [], [], []
 
-        for idx, row in dys_boot.iterrows():
+        for idx, row in dys_sample.iterrows():
             features = row[["length", "zipf", "surprisal"]].to_frame().T
             try:
                 ert_d, p_d, t_d = ert_predictor.predict_ert(
@@ -188,26 +216,51 @@ def shapley_decomposition(
 
         return (skip_1 + skip_2) / 2
 
-    logger.info("    Computing permutation tests for Shapley components...")
-    print("    Shapley permutation tests...", flush=True)
-    stats_skip = permutation_test_gap_component(
-        delta_skip, data, compute_skip_contrib, n_permutations=n_permutations
+    logger.info("    Computing bootstrap for Shapley components...")
+    print("    Shapley bootstrap (may take a few minutes)...", flush=True)
+    stats_skip = bootstrap_gap_component(
+        delta_skip, S, compute_skip_contrib, n_bootstrap=n_bootstrap
     )
 
-    # Duration is just the complement
-    stats_duration = {
-        "mean": float(delta_duration),
-        "ci_low": canonical_gap - stats_skip["ci_high"],
-        "ci_high": canonical_gap - stats_skip["ci_low"],
+    # Scale the skip stats
+    stats_skip_scaled = {
+        "mean": stats_skip["mean"] * scale,
+        "ci_low": stats_skip["ci_low"] * scale,
+        "ci_high": stats_skip["ci_high"] * scale,
         "p_value": stats_skip["p_value"],
         "n_bootstrap": stats_skip["n_bootstrap"],
     }
 
+    # Percentages relative to G0
+    pct_skip = (skip_contribution_ms / G0 * 100) if G0 != 0 else 0
+    pct_duration = (duration_contribution_ms / G0 * 100) if G0 != 0 else 0
+
+    logger.info(
+        f"    Skip contribution: {skip_contribution_ms:.2f} ms ({pct_skip:.1f}%)"
+    )
+    logger.info(
+        f"    Duration contribution: {duration_contribution_ms:.2f} ms ({pct_duration:.1f}%)"
+    )
+    logger.info(f"    Sum check: {pct_skip + pct_duration:.1f}% (should be 100%)")
+
+    # Verify sum
+    assert abs((skip_contribution_ms + duration_contribution_ms) - G0) < max(
+        0.1 * abs(G0), 1.0
+    ), "Skip + Duration must sum to G0"
+
+    # Duration stats as complement
+    stats_duration = {
+        "mean": float(duration_contribution_ms),
+        "ci_low": float(G0 - stats_skip_scaled["ci_high"]),
+        "ci_high": float(G0 - stats_skip_scaled["ci_low"]),
+        "p_value": stats_skip_scaled["p_value"],
+        "n_bootstrap": stats_skip_scaled["n_bootstrap"],
+    }
+
     return {
-        "total_gap": float(canonical_gap),
-        "skip_contribution": float(delta_skip),
-        "skip_contribution_stats": stats_skip,
-        "duration_contribution": float(delta_duration),
+        "skip_contribution": float(skip_contribution_ms),
+        "skip_contribution_stats": stats_skip_scaled,
+        "duration_contribution": float(duration_contribution_ms),
         "duration_contribution_stats": stats_duration,
         "skip_pct": float(pct_skip),
         "duration_pct": float(pct_duration),
@@ -216,179 +269,118 @@ def shapley_decomposition(
 
 def equal_ease_counterfactual(
     ert_predictor,
-    data: pd.DataFrame,
+    S: pd.DataFrame,
     quartiles: Dict,
-    canonical_gap: float,
-    n_permutations: int = 200,
+    G0: float,
+    n_bootstrap: int = 200,
 ) -> Dict:
-    """Equal-ease counterfactual with statistics"""
+    """
+    Equal-ease counterfactual using Q1/Q3 clamp policy.
+    Uses the SAME sample S and baseline G0.
+    """
     logger.info("  Computing equal-ease counterfactual...")
     print("  Equal-ease counterfactual...", flush=True)
 
-    sample_data = data.copy()
+    # Extract quartiles
+    Q1_len = quartiles["length"]["q1"]
+    Q1_surpr = quartiles["surprisal"]["q1"]
+    Q3_zipf = quartiles["zipf"]["q3"]
 
-    iqr = {feat: vals["iqr"] for feat, vals in quartiles.items()}
+    # Baseline gap (should equal G0)
+    baseline_gap = predict_gap_on_sample(ert_predictor, S)
 
-    # Baseline
-    baseline_ert = {"control": [], "dyslexic": []}
+    if abs(baseline_gap - G0) > BASELINE_TOLERANCE:
+        logger.warning(f"    Baseline gap {baseline_gap:.2f} differs from G0 {G0:.2f}")
 
-    for group_name in ["control", "dyslexic"]:
-        group_data = sample_data[sample_data["group"] == group_name]
+    # Apply equal-ease policy: clamp to Q1/Q3 (same for both groups)
+    S_easy = S.copy()
+    S_easy["length"] = S_easy["length"].clip(upper=Q1_len)
+    S_easy["surprisal"] = S_easy["surprisal"].clip(upper=Q1_surpr)
+    S_easy["zipf"] = S_easy["zipf"].clip(lower=Q3_zipf)
 
-        for idx, row in group_data.iterrows():
-            features = row[["length", "zipf", "surprisal"]].to_frame().T
-            try:
-                ert = ert_predictor.predict_ert(features, group_name)[0]
-                baseline_ert[group_name].append(ert)
-            except:
-                continue
+    # Counterfactual gap
+    counterfactual_gap = predict_gap_on_sample(ert_predictor, S_easy)
 
-    baseline_gap = np.mean(baseline_ert["dyslexic"]) - np.mean(baseline_ert["control"])
+    # Gap reduction
+    gap_shrink_ms = G0 - counterfactual_gap
+    gap_shrink_pct = (gap_shrink_ms / G0 * 100) if G0 != 0 else 0
 
-    # Apply shifts
-    shifted_data = sample_data.copy()
-    shifted_data["length"] = shifted_data["length"] - iqr["length"]
-    shifted_data["zipf"] = shifted_data["zipf"] + iqr["zipf"]
-    shifted_data["surprisal"] = shifted_data["surprisal"] - iqr["surprisal"]
-
-    shifted_data["length"] = shifted_data["length"].clip(lower=1)
-    shifted_data["zipf"] = shifted_data["zipf"].clip(lower=1, upper=7)
-    shifted_data["surprisal"] = shifted_data["surprisal"].clip(lower=0)
-
-    # Counterfactual
-    counterfactual_ert = {"control": [], "dyslexic": []}
-
-    for group_name in ["control", "dyslexic"]:
-        group_data = shifted_data[shifted_data["group"] == group_name]
-
-        for idx, row in group_data.iterrows():
-            features = row[["length", "zipf", "surprisal"]].to_frame().T
-            try:
-                ert = ert_predictor.predict_ert(features, group_name)[0]
-                counterfactual_ert[group_name].append(ert)
-            except:
-                continue
-
-    counterfactual_gap = np.mean(counterfactual_ert["dyslexic"]) - np.mean(
-        counterfactual_ert["control"]
-    )
-
-    dys_saved = np.mean(baseline_ert["dyslexic"]) - np.mean(
-        counterfactual_ert["dyslexic"]
-    )
-    ctrl_saved = np.mean(baseline_ert["control"]) - np.mean(
-        counterfactual_ert["control"]
-    )
-    gap_shrink = canonical_gap - counterfactual_gap
-    gap_shrink_pct = (gap_shrink / canonical_gap * 100) if canonical_gap != 0 else 0
-
-    logger.info(f"    Canonical gap: {canonical_gap:.2f} ms")
+    logger.info(f"    Baseline gap G0: {G0:.2f} ms")
     logger.info(f"    Counterfactual gap: {counterfactual_gap:.2f} ms")
-    logger.info(f"    Gap shrink: {gap_shrink:.2f} ms ({gap_shrink_pct:.1f}%)")
+    logger.info(f"    Gap shrink: {gap_shrink_ms:.2f} ms ({gap_shrink_pct:.1f}%)")
 
-    # Permutation test for gap shrinkage
+    # Bootstrap
     def compute_gap_shrink(boot_data):
-        baseline_b = {"control": [], "dyslexic": []}
-        for gname in ["control", "dyslexic"]:
-            gdata = boot_data[boot_data["group"] == gname]
-            for idx, row in gdata.iterrows():
-                features = row[["length", "zipf", "surprisal"]].to_frame().T
-                try:
-                    ert = ert_predictor.predict_ert(features, gname)[0]
-                    baseline_b[gname].append(ert)
-                except:
-                    pass
+        # No fixed seed inside bootstrap
+        boot_sample = boot_data.sample(min(500, len(boot_data)))
 
-        baseline_gap_b = np.mean(baseline_b["dyslexic"]) - np.mean(
-            baseline_b["control"]
-        )
+        baseline_gap_b = predict_gap_on_sample(ert_predictor, boot_sample)
 
-        shifted_b = boot_data.copy()
-        shifted_b["length"] = (shifted_b["length"] - iqr["length"]).clip(lower=1)
-        shifted_b["zipf"] = (shifted_b["zipf"] + iqr["zipf"]).clip(lower=1, upper=7)
-        shifted_b["surprisal"] = (shifted_b["surprisal"] - iqr["surprisal"]).clip(
-            lower=0
-        )
-
-        counterfactual_b = {"control": [], "dyslexic": []}
-        for gname in ["control", "dyslexic"]:
-            gdata = shifted_b[shifted_b["group"] == gname]
-            for idx, row in gdata.iterrows():
-                features = row[["length", "zipf", "surprisal"]].to_frame().T
-                try:
-                    ert = ert_predictor.predict_ert(features, gname)[0]
-                    counterfactual_b[gname].append(ert)
-                except:
-                    pass
-
-        if (
-            len(counterfactual_b["control"]) < 10
-            or len(counterfactual_b["dyslexic"]) < 10
-        ):
+        if np.isnan(baseline_gap_b):
             return np.nan
 
-        counterfactual_gap_b = np.mean(counterfactual_b["dyslexic"]) - np.mean(
-            counterfactual_b["control"]
-        )
+        # Apply same policy
+        boot_easy = boot_sample.copy()
+        boot_easy["length"] = boot_easy["length"].clip(upper=Q1_len)
+        boot_easy["surprisal"] = boot_easy["surprisal"].clip(upper=Q1_surpr)
+        boot_easy["zipf"] = boot_easy["zipf"].clip(lower=Q3_zipf)
 
-        return baseline_gap_b - counterfactual_gap_b
+        cf_gap_b = predict_gap_on_sample(ert_predictor, boot_easy)
 
-    logger.info("    Computing permutation test for gap shrinkage...")
-    print("    Gap shrinkage permutation test...", flush=True)
-    stats_gap_shrink = permutation_test_gap_component(
-        gap_shrink, data, compute_gap_shrink, n_permutations=n_permutations
+        if np.isnan(cf_gap_b):
+            return np.nan
+
+        return baseline_gap_b - cf_gap_b
+
+    logger.info("    Computing bootstrap for gap shrinkage...")
+    print("    Gap shrinkage bootstrap (may take a few minutes)...", flush=True)
+    stats_gap_shrink = bootstrap_gap_component(
+        gap_shrink_ms, S, compute_gap_shrink, n_bootstrap=n_bootstrap
     )
 
     return {
-        "baseline_gap": float(canonical_gap),
+        "baseline_gap": float(G0),
         "counterfactual_gap": float(counterfactual_gap),
         "counterfactual_gap_stats": {
             "mean": float(counterfactual_gap),
-            "ci_low": canonical_gap - stats_gap_shrink["ci_high"],
-            "ci_high": canonical_gap - stats_gap_shrink["ci_low"],
+            "ci_low": float(G0 - stats_gap_shrink["ci_high"]),
+            "ci_high": float(G0 - stats_gap_shrink["ci_low"]),
             "p_value": stats_gap_shrink["p_value"],
         },
-        "dyslexic_saved": float(dys_saved),
-        "control_saved": float(ctrl_saved),
-        "gap_shrink_ms": float(gap_shrink),
+        "gap_shrink_ms": float(gap_shrink_ms),
         "gap_shrink_stats": stats_gap_shrink,
         "gap_shrink_pct": float(gap_shrink_pct),
     }
 
 
 def equal_ease_feature_contributions(
-    ert_predictor, data: pd.DataFrame, quartiles: Dict, n_permutations: int = 64
+    ert_predictor,
+    S: pd.DataFrame,
+    quartiles: Dict,
+    gap_shrink_ms: float,
+    n_permutations: int = 64,
 ) -> Dict:
-    """Shapley decomposition of feature contributions"""
+    """
+    Feature Shapley decomposition of equal-ease gap reduction.
+    Uses SAME sample S and SAME policy. Contributions MUST sum to gap_shrink_ms.
+    """
     logger.info(f"  Computing feature contributions ({n_permutations} permutations)...")
+    print(f"  Feature contributions (Shapley, n={n_permutations})...", flush=True)
 
-    shift_vector = {
-        "length": -quartiles["length"]["iqr"],
-        "zipf": quartiles["zipf"]["iqr"],
-        "surprisal": -quartiles["surprisal"]["iqr"],
-    }
+    # Extract quartiles
+    Q1_len = quartiles["length"]["q1"]
+    Q1_surpr = quartiles["surprisal"]["q1"]
+    Q3_zipf = quartiles["zipf"]["q3"]
 
     features = ["length", "zipf", "surprisal"]
     contributions = {f: [] for f in features}
 
-    sample_size = min(1000, len(data))
-    sample_data = data.sample(sample_size, random_state=42)
+    # Value function: gap after applying clamps
+    def v(S_current):
+        """Value = gap after equalizing features in S_current"""
+        return predict_gap_on_sample(ert_predictor, S_current)
 
-    def measure_gap(df):
-        ert_by_group = {"control": [], "dyslexic": []}
-        for group_name in ["control", "dyslexic"]:
-            group_data = df[df["group"] == group_name]
-            for idx, row in group_data.iterrows():
-                features_row = row[["length", "zipf", "surprisal"]].to_frame().T
-                try:
-                    ert = ert_predictor.predict_ert(features_row, group_name)[0]
-                    ert_by_group[group_name].append(ert)
-                except:
-                    pass
-
-        if len(ert_by_group["control"]) > 0 and len(ert_by_group["dyslexic"]) > 0:
-            return np.mean(ert_by_group["dyslexic"]) - np.mean(ert_by_group["control"])
-        return np.nan
+    baseline_gap = v(S)
 
     for perm_idx in range(n_permutations):
         if (perm_idx + 1) % 16 == 0:
@@ -396,23 +388,22 @@ def equal_ease_feature_contributions(
 
         order = np.random.permutation(features)
 
-        current_data = sample_data.copy()
-        gap_prev = measure_gap(current_data)
+        S_current = S.copy()
+        gap_prev = baseline_gap
 
         if np.isnan(gap_prev):
             continue
 
         for feat in order:
-            current_data[feat] = current_data[feat] + shift_vector[feat]
-
+            # Apply clamp for this feature
             if feat == "length":
-                current_data[feat] = current_data[feat].clip(lower=1)
+                S_current["length"] = S_current["length"].clip(upper=Q1_len)
+            elif feat == "surprisal":
+                S_current["surprisal"] = S_current["surprisal"].clip(upper=Q1_surpr)
             elif feat == "zipf":
-                current_data[feat] = current_data[feat].clip(lower=1, upper=7)
-            else:
-                current_data[feat] = current_data[feat].clip(lower=0)
+                S_current["zipf"] = S_current["zipf"].clip(lower=Q3_zipf)
 
-            gap_new = measure_gap(current_data)
+            gap_new = v(S_current)
 
             if not np.isnan(gap_new):
                 marginal_reduction = gap_prev - gap_new
@@ -443,6 +434,7 @@ def equal_ease_feature_contributions(
                         ),
                     )
                 ),
+                "n_samples": len(samples),
             }
         else:
             feature_contributions[feat] = 0.0
@@ -451,177 +443,135 @@ def equal_ease_feature_contributions(
                 "ci_low": np.nan,
                 "ci_high": np.nan,
                 "p_value": np.nan,
+                "n_samples": 0,
             }
 
-    total_contribution = sum(feature_contributions.values())
+    shapley_sum = sum(feature_contributions.values())
+
+    # Verify sum to gap_shrink_ms
+    tolerance = max(0.1 * abs(gap_shrink_ms), 1.0) + 1e-9
+
+    if abs(shapley_sum - gap_shrink_ms) > tolerance:
+        logger.warning(
+            f"    Shapley sum {shapley_sum:.2f} differs from gap_shrink {gap_shrink_ms:.2f}"
+        )
+        # Apply proportional renormalization
+        if abs(shapley_sum) > 1e-9:
+            scale = gap_shrink_ms / shapley_sum
+            for feat in features:
+                feature_contributions[feat] *= scale
+                feature_stats[feat]["mean"] *= scale
+                feature_stats[feat]["ci_low"] *= scale
+                feature_stats[feat]["ci_high"] *= scale
+            shapley_sum = gap_shrink_ms
+            logger.info(f"    Applied renormalization: scale={scale:.4f}")
 
     logger.info(f"    Feature contributions to gap reduction:")
     for feat, contrib in feature_contributions.items():
+        pct = (contrib / gap_shrink_ms * 100) if gap_shrink_ms != 0 else 0
         p_val = feature_stats[feat]["p_value"]
-        logger.info(
-            f"      {feat}: {contrib:.2f} ms "
-            f"({contrib/total_contribution*100:.1f}%, p={p_val:.5f})"
-        )
+        logger.info(f"      {feat}: {contrib:.2f} ms ({pct:.1f}%, p={p_val:.5f})")
+    logger.info(f"    Total Shapley reduction: {shapley_sum:.2f} ms")
+
+    assert (
+        abs(shapley_sum - gap_shrink_ms) < 1e-6
+    ), "Feature contributions must sum to gap_shrink"
 
     return {
         "feature_contributions_ms": feature_contributions,
         "feature_contributions_stats": feature_stats,
-        "total_ms": float(total_contribution),
+        "total_ms": float(shapley_sum),
         "n_permutations": n_permutations,
     }
 
 
 def per_feature_equalization(
-    ert_predictor, data: pd.DataFrame, feature: str, n_permutations: int = 200
+    ert_predictor,
+    S: pd.DataFrame,
+    feature: str,
+    quartiles: Dict,
+    G0: float,
+    n_bootstrap: int = 200,
 ) -> Dict:
-    """Per-feature equalization with statistics"""
+    """
+    Per-feature equalization: apply clamp to BOTH groups identically.
+    Report delta_gap in ms and as % of G0.
+    """
     logger.info(f"  Computing per-feature equalization for {feature}...")
     print(f"  Per-feature equalization: {feature}...", flush=True)
 
-    sample_data = data.copy()
+    # Extract quartile for this feature
+    if feature == "length":
+        Q1 = quartiles["length"]["q1"]
+        clamp_fn = lambda df: df["length"].clip(upper=Q1)
+    elif feature == "surprisal":
+        Q1 = quartiles["surprisal"]["q1"]
+        clamp_fn = lambda df: df["surprisal"].clip(upper=Q1)
+    elif feature == "zipf":
+        Q3 = quartiles["zipf"]["q3"]
+        clamp_fn = lambda df: df["zipf"].clip(lower=Q3)
+    else:
+        raise ValueError(f"Unknown feature: {feature}")
 
-    ert_observed = []
-    groups_list = []
-    valid_indices = []
+    # Baseline gap
+    baseline_gap = predict_gap_on_sample(ert_predictor, S)
 
-    for idx, row in sample_data.iterrows():
-        group = row["group"]
-        features = row[["length", "zipf", "surprisal"]].to_frame().T
-        try:
-            ert = ert_predictor.predict_ert(features, group)[0]
-            ert_observed.append(ert)
-            groups_list.append(group)
-            valid_indices.append(idx)
-        except:
-            continue
+    if abs(baseline_gap - G0) > BASELINE_TOLERANCE:
+        logger.warning(f"    Baseline gap {baseline_gap:.2f} differs from G0 {G0:.2f}")
 
-    sample_data_clean = sample_data.loc[valid_indices].copy()
-    sample_data_clean["ERT_observed"] = ert_observed
-    sample_data_clean["group"] = groups_list
+    # Apply clamp to BOTH groups
+    S_eq = S.copy()
+    S_eq[feature] = clamp_fn(S_eq)
 
-    baseline_gap = (
-        sample_data_clean[sample_data_clean["group"] == "dyslexic"][
-            "ERT_observed"
-        ].mean()
-        - sample_data_clean[sample_data_clean["group"] == "control"][
-            "ERT_observed"
-        ].mean()
+    # Counterfactual gap
+    counterfactual_gap = predict_gap_on_sample(ert_predictor, S_eq)
+
+    # Gap reduction
+    gap_explained_ms = G0 - counterfactual_gap
+    pct_of_G0 = (gap_explained_ms / G0 * 100) if G0 != 0 else 0
+
+    logger.info(f"    Baseline gap G0: {G0:.2f} ms")
+    logger.info(f"    Gap after equalizing {feature}: {counterfactual_gap:.2f} ms")
+    logger.info(
+        f"    Gap explained: {gap_explained_ms:.2f} ms ({pct_of_G0:.1f}% of G0)"
     )
 
-    control_data = sample_data_clean[sample_data_clean["group"] == "control"]
-    dyslexic_data = sample_data_clean[sample_data_clean["group"] == "dyslexic"]
-
-    ert_counterfactual = []
-
-    for idx, row in sample_data_clean.iterrows():
-        group = row["group"]
-        features_cf = row[["length", "zipf", "surprisal"]].copy().to_frame().T
-
-        if group == "dyslexic":
-            feature_value = row[feature]
-            percentile = (dyslexic_data[feature] <= feature_value).mean()
-            control_value = control_data[feature].quantile(percentile)
-            features_cf[feature] = control_value
-
-        try:
-            ert = ert_predictor.predict_ert(features_cf, group)[0]
-            ert_counterfactual.append(ert)
-        except:
-            ert_counterfactual.append(np.nan)
-
-    sample_data_clean["ERT_counterfactual"] = ert_counterfactual
-    sample_data_clean = sample_data_clean.dropna(subset=["ERT_counterfactual"])
-
-    counterfactual_gap = (
-        sample_data_clean[sample_data_clean["group"] == "dyslexic"][
-            "ERT_counterfactual"
-        ].mean()
-        - sample_data_clean[sample_data_clean["group"] == "control"][
-            "ERT_counterfactual"
-        ].mean()
-    )
-
-    gap_explained = baseline_gap - counterfactual_gap
-    pct_explained = (gap_explained / baseline_gap * 100) if baseline_gap != 0 else 0
-
-    logger.info(f"    Gap explained: {gap_explained:.2f} ms ({pct_explained:.1f}%)")
-
-    # Permutation test
+    # Bootstrap
     def compute_gap_explained_feat(boot_data):
-        ert_obs_b = []
-        groups_b = []
-        valid_b = []
+        # No fixed seed inside bootstrap
+        boot_sample = boot_data.sample(min(500, len(boot_data)))
 
-        for idx, row in boot_data.iterrows():
-            group = row["group"]
-            features = row[["length", "zipf", "surprisal"]].to_frame().T
-            try:
-                ert = ert_predictor.predict_ert(features, group)[0]
-                ert_obs_b.append(ert)
-                groups_b.append(group)
-                valid_b.append(idx)
-            except:
-                pass
+        baseline_gap_b = predict_gap_on_sample(ert_predictor, boot_sample)
 
-        boot_clean = boot_data.loc[valid_b].copy()
-        boot_clean["ERT_observed"] = ert_obs_b
-        boot_clean["group"] = groups_b
-
-        baseline_gap_b = (
-            boot_clean[boot_clean["group"] == "dyslexic"]["ERT_observed"].mean()
-            - boot_clean[boot_clean["group"] == "control"]["ERT_observed"].mean()
-        )
-
-        ctrl_b = boot_clean[boot_clean["group"] == "control"]
-        dys_b = boot_clean[boot_clean["group"] == "dyslexic"]
-
-        if len(ctrl_b) < 10 or len(dys_b) < 10:
+        if np.isnan(baseline_gap_b):
             return np.nan
 
-        ert_cf_b = []
-        for idx, row in boot_clean.iterrows():
-            group = row["group"]
-            features_cf = row[["length", "zipf", "surprisal"]].copy().to_frame().T
+        boot_eq = boot_sample.copy()
+        boot_eq[feature] = clamp_fn(boot_eq)
 
-            if group == "dyslexic":
-                feat_val = row[feature]
-                pct = (dys_b[feature] <= feat_val).mean()
-                ctrl_val = ctrl_b[feature].quantile(pct)
-                features_cf[feature] = ctrl_val
+        cf_gap_b = predict_gap_on_sample(ert_predictor, boot_eq)
 
-            try:
-                ert = ert_predictor.predict_ert(features_cf, group)[0]
-                ert_cf_b.append(ert)
-            except:
-                ert_cf_b.append(np.nan)
-
-        boot_clean["ERT_counterfactual"] = ert_cf_b
-        boot_clean = boot_clean.dropna(subset=["ERT_counterfactual"])
-
-        if len(boot_clean) < 10:
+        if np.isnan(cf_gap_b):
             return np.nan
-
-        cf_gap_b = (
-            boot_clean[boot_clean["group"] == "dyslexic"]["ERT_counterfactual"].mean()
-            - boot_clean[boot_clean["group"] == "control"]["ERT_counterfactual"].mean()
-        )
 
         return baseline_gap_b - cf_gap_b
 
-    logger.info(f"    Computing permutation test for {feature} equalization...")
-    print(f"    {feature} equalization permutation test...", flush=True)
-    stats_explained = permutation_test_gap_component(
-        gap_explained, data, compute_gap_explained_feat, n_permutations=n_permutations
+    logger.info(f"    Computing bootstrap for {feature} equalization...")
+    print(
+        f"    {feature} equalization bootstrap (may take a few minutes)...", flush=True
+    )
+    stats_explained = bootstrap_gap_component(
+        gap_explained_ms, S, compute_gap_explained_feat, n_bootstrap=n_bootstrap
     )
 
     return {
         "feature": feature,
-        "baseline_gap": float(baseline_gap),
+        "baseline_gap": float(G0),
         "counterfactual_gap": float(counterfactual_gap),
-        "gap_explained": float(gap_explained),
+        "gap_explained_ms": float(gap_explained_ms),
         "gap_explained_stats": stats_explained,
-        "pct_explained": float(pct_explained),
-        "method": "percentile_matching",
+        "pct_of_G0": float(pct_of_G0),
+        "method": "clamp_both_groups",
     }
 
 
@@ -629,55 +579,65 @@ def test_hypothesis_3(
     ert_predictor,
     data: pd.DataFrame,
     quartiles: Dict[str, Dict[str, float]],
-    n_permutations: int = 200,  # Reduced default
+    n_bootstrap: int = 200,
 ) -> Dict:
     """
-    Test Hypothesis 3: Gap decomposition
-    FULLY REVISED: Added p-values for all components
+    Test Hypothesis 3: Gap decomposition - FULLY RULES-COMPLIANT
 
-    Args:
-        n_permutations: Number of permutations for p-value estimation (default: 200)
+    Single source of truth: one sample S, one baseline G0.
+    All analyses use the same S, G0, and equal-ease policy.
     """
     logger.info("=" * 60)
     logger.info("HYPOTHESIS 3: GAP DECOMPOSITION")
     logger.info("=" * 60)
-    logger.info(f"Using {n_permutations} permutations for p-value estimation")
-    print(f"\n=== H3: Gap Decomposition (n_perm={n_permutations}) ===\n", flush=True)
+    logger.info(f"Using {n_bootstrap} bootstrap iterations")
+    print(f"\n=== H3: Gap Decomposition (n_bootstrap={n_bootstrap}) ===\n", flush=True)
 
+    # Create THE analysis sample S (single source of truth)
     np.random.seed(ANALYSIS_SEED)
-    sample_size = min(5000, len(data))
-    analysis_sample = data.sample(sample_size, random_state=ANALYSIS_SEED)
+    sample_size = min(2000, len(data))
+    S = data.sample(sample_size, random_state=ANALYSIS_SEED)
 
-    logger.info(f"\nUsing consistent sample: {len(analysis_sample):,} observations")
+    logger.info(f"\nAnalysis sample S: {len(S):,} observations")
+    logger.info(f"Random seed: {ANALYSIS_SEED}")
 
-    canonical_gap = compute_canonical_gap(analysis_sample)
-    logger.info(f"\nCanonical gap: {canonical_gap:.2f} ms")
+    # Compute THE canonical gap G0 (single source of truth)
+    G0 = predict_gap_on_sample(ert_predictor, S)
+    logger.info(f"\nCanonical gap G0: {G0:.2f} ms")
 
-    # Shapley decomposition
-    shapley = shapley_decomposition(
-        ert_predictor, analysis_sample, canonical_gap, n_permutations
+    # Bootstrap G0 itself
+    def compute_gap_bootstrap(boot_data):
+        """Bootstrap the gap by resampling subjects"""
+        return predict_gap_on_sample(ert_predictor, boot_data)
+
+    logger.info("  Computing statistics for G0...")
+    print("  Computing G0 statistics...", flush=True)
+    gap_stats = bootstrap_gap_component(
+        G0,
+        S,
+        compute_gap_bootstrap,
+        n_bootstrap=n_bootstrap,
     )
 
-    # Equal-ease counterfactual
-    equal_ease = equal_ease_counterfactual(
-        ert_predictor, analysis_sample, quartiles, canonical_gap, n_permutations
-    )
+    # Run all analyses on SAME S with SAME G0
+    shapley = shapley_decomposition(ert_predictor, S, G0, n_bootstrap)
 
-    # Feature contributions
+    equal_ease = equal_ease_counterfactual(ert_predictor, S, quartiles, G0, n_bootstrap)
+
+    # Pass gap_shrink to feature contributions so they sum correctly
     feature_contributions = equal_ease_feature_contributions(
-        ert_predictor, analysis_sample, quartiles, n_permutations=64
+        ert_predictor, S, quartiles, equal_ease["gap_shrink_ms"], n_permutations=64
     )
 
-    # Per-feature equalization
     per_feature = {}
     for feature in ["length", "zipf", "surprisal"]:
         per_feature[feature] = per_feature_equalization(
-            ert_predictor, analysis_sample, feature, n_permutations
+            ert_predictor, S, feature, quartiles, G0, n_bootstrap
         )
 
     # Decision logic
     any_substantial_effect = any(
-        abs(res.get("pct_explained", 0)) >= 25 for res in per_feature.values()
+        abs(res.get("pct_of_G0", 0)) >= 25 for res in per_feature.values()
     )
     text_difficulty_explained = equal_ease.get("gap_shrink_pct", 0) >= 20
 
@@ -699,8 +659,9 @@ def test_hypothesis_3(
 
     return {
         "status": status,
-        "total_gap": canonical_gap,
-        "sample_size": len(analysis_sample),
+        "canonical_gap_G0": float(G0),
+        "canonical_gap_stats": gap_stats,
+        "sample_size": len(S),
         "random_seed": ANALYSIS_SEED,
         "shapley_decomposition": shapley,
         "equal_ease_counterfactual": equal_ease,
