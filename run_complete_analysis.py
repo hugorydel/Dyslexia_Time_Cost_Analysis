@@ -378,7 +378,10 @@ def main():
         description="Complete Dyslexia GAM Analysis Pipeline (FULLY REVISED)"
     )
     parser.add_argument(
-        "--data-path", type=str, required=True, help="Path to preprocessed data CSV"
+        "--data-path",
+        type=str,
+        default="input_data/preprocessed_data.csv",
+        help="Path to preprocessed data CSV",
     )
     parser.add_argument(
         "--use-cache",
