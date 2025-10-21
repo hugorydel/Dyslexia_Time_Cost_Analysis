@@ -16,22 +16,41 @@ ANALYSIS_SEED = 42
 BASELINE_TOLERANCE = 1e-6
 
 
+def predict_components_batch(predictor, df, group):
+    """
+    Batch helper for predictions with components.
+    Returns 1D arrays of ert, p_skip, trt.
+    """
+    X = df[["length", "zipf", "surprisal"]]
+    ert, p_skip, trt = predictor.predict_ert(X, group, return_components=True)
+    # Ensure 1D arrays
+    return np.asarray(ert).ravel(), np.asarray(p_skip).ravel(), np.asarray(trt).ravel()
+
+
 def predict_gap_on_sample(ert_predictor, sample: pd.DataFrame) -> float:
     """
     Compute gap using model predictions on the given sample.
     This is the ONLY way to compute gaps - ensures consistency.
+    Uses BATCH prediction for performance.
     """
     ert_by_group = {"control": [], "dyslexic": []}
 
     for group_name in ["control", "dyslexic"]:
         group_data = sample[sample["group"] == group_name]
-        for idx, row in group_data.iterrows():
-            features = row[["length", "zipf", "surprisal"]].to_frame().T
-            try:
-                ert = ert_predictor.predict_ert(features, group_name)[0]
-                ert_by_group[group_name].append(ert)
-            except:
-                continue
+        if len(group_data) == 0:
+            continue
+
+        # BATCH PREDICTION: extract all features at once
+        features_batch = group_data[["length", "zipf", "surprisal"]].values
+        try:
+            # Predict on entire batch
+            ert_batch = ert_predictor.predict_ert(
+                pd.DataFrame(features_batch, columns=["length", "zipf", "surprisal"]),
+                group_name,
+            )
+            ert_by_group[group_name] = ert_batch.tolist()
+        except:
+            continue
 
     if len(ert_by_group["control"]) > 0 and len(ert_by_group["dyslexic"]) > 0:
         return np.mean(ert_by_group["dyslexic"]) - np.mean(ert_by_group["control"])
@@ -107,49 +126,29 @@ def shapley_decomposition(
     if len(dys_data) == 0:
         return {"error": "No dyslexic data"}
 
-    # Predictions for dyslexic
-    ert_dys, p_skip_dys, trt_dys = [], [], []
-    for idx, row in dys_data.iterrows():
-        features = row[["length", "zipf", "surprisal"]].to_frame().T
-        try:
-            ert, p_skip, trt = ert_predictor.predict_ert(
-                features, "dyslexic", return_components=True
-            )
-            ert_dys.append(ert[0])
-            p_skip_dys.append(p_skip[0])
-            trt_dys.append(trt[0])
-        except:
-            continue
+    # === BATCHED PREDICTIONS (replaces per-row loops) ===
+    ert_dys, p_skip_dys, trt_dys = predict_components_batch(
+        ert_predictor, dys_data, "dyslexic"
+    )
+    mean_ert_dys = ert_dys.mean()
 
-    mean_ert_dys = np.mean(ert_dys)
+    ert_ctrl, p_skip_ctrl, trt_ctrl = predict_components_batch(
+        ert_predictor, dys_data, "control"
+    )
+    mean_ert_ctrl = ert_ctrl.mean()
 
-    # Predictions for control (on same dyslexic observations)
-    ert_ctrl, p_skip_ctrl, trt_ctrl = [], [], []
-    for idx, row in dys_data.iterrows():
-        features = row[["length", "zipf", "surprisal"]].to_frame().T
-        try:
-            ert, p_skip, trt = ert_predictor.predict_ert(
-                features, "control", return_components=True
-            )
-            ert_ctrl.append(ert[0])
-            p_skip_ctrl.append(p_skip[0])
-            trt_ctrl.append(trt[0])
-        except:
-            continue
-
-    mean_ert_ctrl = np.mean(ert_ctrl)
     computed_gap = mean_ert_dys - mean_ert_ctrl
 
     # Path 1: Equalize skip first
-    ert_1 = [(1 - p_s_c) * t_d for p_s_c, t_d in zip(p_skip_ctrl, trt_dys)]
-    mean_ert_1 = np.mean(ert_1)
+    ert_1 = (1 - p_skip_ctrl) * trt_dys
+    mean_ert_1 = ert_1.mean()
 
     delta_skip_path1 = mean_ert_dys - mean_ert_1
     delta_duration_path1 = mean_ert_1 - mean_ert_ctrl
 
     # Path 2: Equalize duration first
-    ert_3 = [(1 - p_s_d) * t_c for p_s_d, t_c in zip(p_skip_dys, trt_ctrl)]
-    mean_ert_3 = np.mean(ert_3)
+    ert_3 = (1 - p_skip_dys) * trt_ctrl
+    mean_ert_3 = ert_3.mean()
 
     delta_duration_path2 = mean_ert_dys - mean_ert_3
     delta_skip_path2 = mean_ert_3 - mean_ert_ctrl
@@ -173,62 +172,88 @@ def shapley_decomposition(
     skip_contribution_ms = delta_skip * scale
     duration_contribution_ms = delta_duration * scale
 
-    # Bootstrap for skip contribution
+    # === BOOTSTRAP: SKIP contribution (batched inside) ===
     def compute_skip_contrib(boot_data):
         dys_boot = boot_data[boot_data["group"] == "dyslexic"]
         if len(dys_boot) < 100:
             return np.nan
 
-        # No fixed seed inside bootstrap
-        dys_sample = dys_boot.sample(min(500, len(dys_boot)))
+        dys_sample = dys_boot.sample(min(500, len(dys_boot)))  # no fixed seed
 
-        ert_dys_b, p_skip_dys_b, trt_dys_b = [], [], []
-        ert_ctrl_b, p_skip_ctrl_b, trt_ctrl_b = [], [], []
+        ed, psd, td = predict_components_batch(ert_predictor, dys_sample, "dyslexic")
+        ec, psc, tc = predict_components_batch(ert_predictor, dys_sample, "control")
 
-        for idx, row in dys_sample.iterrows():
-            features = row[["length", "zipf", "surprisal"]].to_frame().T
-            try:
-                ert_d, p_d, t_d = ert_predictor.predict_ert(
-                    features, "dyslexic", return_components=True
-                )
-                ert_c, p_c, t_c = ert_predictor.predict_ert(
-                    features, "control", return_components=True
-                )
-                ert_dys_b.append(ert_d[0])
-                p_skip_dys_b.append(p_d[0])
-                trt_dys_b.append(t_d[0])
-                ert_ctrl_b.append(ert_c[0])
-                p_skip_ctrl_b.append(p_c[0])
-                trt_ctrl_b.append(t_c[0])
-            except:
-                pass
-
-        if len(ert_dys_b) < 10:
+        if len(ed) < 10 or len(ec) < 10:
             return np.nan
 
-        mean_dys = np.mean(ert_dys_b)
-        mean_ctrl = np.mean(ert_ctrl_b)
-        ert_1_b = [(1 - p_c) * t_d for p_c, t_d in zip(p_skip_ctrl_b, trt_dys_b)]
-        ert_3_b = [(1 - p_d) * t_c for p_d, t_c in zip(p_skip_dys_b, trt_ctrl_b)]
+        mean_dys = ed.mean()
+        mean_ctrl = ec.mean()
 
-        skip_1 = mean_dys - np.mean(ert_1_b)
-        skip_2 = np.mean(ert_3_b) - mean_ctrl
+        # Path 1: equalize skip first
+        ert_1_b = (1 - psc) * td
+        skip_1 = mean_dys - ert_1_b.mean()
 
-        return (skip_1 + skip_2) / 2
+        # Path 2: equalize duration first
+        ert_3_b = (1 - psd) * tc
+        skip_2 = ert_3_b.mean() - mean_ctrl
+
+        return 0.5 * (skip_1 + skip_2)
+
+    # === BOOTSTRAP: DURATION contribution (direct, not complement) ===
+    def compute_duration_contrib(boot_data):
+        dys_boot = boot_data[boot_data["group"] == "dyslexic"]
+        if len(dys_boot) < 100:
+            return np.nan
+
+        dys_sample = dys_boot.sample(min(500, len(dys_boot)))  # no fixed seed
+
+        ed, psd, td = predict_components_batch(ert_predictor, dys_sample, "dyslexic")
+        ec, psc, tc = predict_components_batch(ert_predictor, dys_sample, "control")
+
+        if len(ed) < 10 or len(ec) < 10:
+            return np.nan
+
+        mean_dys = ed.mean()
+        mean_ctrl = ec.mean()
+
+        # Path 1: duration first
+        ert_3_b = (1 - psd) * tc
+        dur_1 = mean_dys - ert_3_b.mean()
+
+        # Path 2: duration second
+        ert_1_b = (1 - psc) * td
+        dur_2 = ert_1_b.mean() - mean_ctrl
+
+        return 0.5 * (dur_1 + dur_2)
 
     logger.info("    Computing bootstrap for Shapley components...")
     print("    Shapley bootstrap (may take a few minutes)...", flush=True)
     stats_skip = bootstrap_gap_component(
         delta_skip, S, compute_skip_contrib, n_bootstrap=n_bootstrap
     )
+    stats_dur = bootstrap_gap_component(
+        delta_duration, S, compute_duration_contrib, n_bootstrap=n_bootstrap
+    )
 
-    # Scale the skip stats
+    # Scale both stats to G0
+    for st in (stats_skip, stats_dur):
+        st["mean"] *= scale
+        st["ci_low"] *= scale
+        st["ci_high"] *= scale
+
     stats_skip_scaled = {
-        "mean": stats_skip["mean"] * scale,
-        "ci_low": stats_skip["ci_low"] * scale,
-        "ci_high": stats_skip["ci_high"] * scale,
+        "mean": stats_skip["mean"],
+        "ci_low": stats_skip["ci_low"],
+        "ci_high": stats_skip["ci_high"],
         "p_value": stats_skip["p_value"],
         "n_bootstrap": stats_skip["n_bootstrap"],
+    }
+    stats_duration_scaled = {
+        "mean": stats_dur["mean"],
+        "ci_low": stats_dur["ci_low"],
+        "ci_high": stats_dur["ci_high"],
+        "p_value": stats_dur["p_value"],
+        "n_bootstrap": stats_dur["n_bootstrap"],
     }
 
     # Percentages relative to G0
@@ -248,20 +273,11 @@ def shapley_decomposition(
         0.1 * abs(G0), 1.0
     ), "Skip + Duration must sum to G0"
 
-    # Duration stats as complement
-    stats_duration = {
-        "mean": float(duration_contribution_ms),
-        "ci_low": float(G0 - stats_skip_scaled["ci_high"]),
-        "ci_high": float(G0 - stats_skip_scaled["ci_low"]),
-        "p_value": stats_skip_scaled["p_value"],
-        "n_bootstrap": stats_skip_scaled["n_bootstrap"],
-    }
-
     return {
         "skip_contribution": float(skip_contribution_ms),
         "skip_contribution_stats": stats_skip_scaled,
         "duration_contribution": float(duration_contribution_ms),
-        "duration_contribution_stats": stats_duration,
+        "duration_contribution_stats": stats_duration_scaled,
         "skip_pct": float(pct_skip),
         "duration_pct": float(pct_duration),
     }
