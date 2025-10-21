@@ -75,9 +75,6 @@ def diagnose_zipf_length_interaction(
         n_bins: Number of bins to create (default: 10)
         output_dir: Directory to save outputs
     """
-    logger.info("\n" + "=" * 80)
-    logger.info("ZIPF-LENGTH INTERACTION DIAGNOSTIC (OBSERVED DATA)")
-    logger.info("=" * 80)
 
     if output_dir is None:
         output_dir = Path("./diagnostics")
@@ -178,18 +175,6 @@ def diagnose_zipf_length_interaction(
             else:
                 observed_effect = np.nan
                 observed_se = np.nan
-
-            logger.info(f"\n  {group.upper()}:")
-            logger.info(f"    n = {len(group_data)}")
-            logger.info(
-                f"    Zipf range: [{group_data['zipf'].min():.2f}, {group_data['zipf'].max():.2f}]"
-            )
-            logger.info(
-                f"    Zipf Q1={zipf_q1:.2f}, Q3={zipf_q3:.2f}, IQR={zipf_iqr:.2f}"
-            )
-            logger.info(
-                f"    Observed effect (Q5-Q1): {observed_effect:.2f} ± {observed_se:.2f} ms"
-            )
 
             if observed_effect > 0:
                 logger.info(f"    ⚠️  REVERSAL: Higher frequency -> MORE time")

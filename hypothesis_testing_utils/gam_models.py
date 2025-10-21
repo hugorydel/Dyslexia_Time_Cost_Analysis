@@ -65,13 +65,13 @@ class DyslexiaGAMModels:
         if model_type == "skip":
             gam = LogisticGAM(
                 s(0, n_splines=n_splines)
-                + s(1, n_splines=n_splines)
+                + s(1, n_splines=n_splines, constraints="monotonic_inc")  # Zipf ↑
                 + s(2, n_splines=n_splines)
             )
         else:
             gam = LinearGAM(
                 s(0, n_splines=n_splines)
-                + s(1, n_splines=n_splines)
+                + s(1, n_splines=n_splines, constraints="monotonic_dec")  # Zipf ↓
                 + s(2, n_splines=n_splines)
             )
 
@@ -160,7 +160,7 @@ class DyslexiaGAMModels:
         logger.info("    Fitting final model on all control data...")
         gam_ctrl = LogisticGAM(
             s(0, n_splines=n_sp_ctrl)
-            + s(1, n_splines=n_sp_ctrl)
+            + s(1, n_splines=n_sp_ctrl, constraints="monotonic_inc")  # Zipf ↑
             + s(2, n_splines=n_sp_ctrl)
         )
         gam_ctrl.lam = float(lam_ctrl)
@@ -188,7 +188,7 @@ class DyslexiaGAMModels:
         logger.info("    Fitting final model on all dyslexic data...")
         gam_dys = LogisticGAM(
             s(0, n_splines=n_sp_dys)
-            + s(1, n_splines=n_sp_dys)
+            + s(1, n_splines=n_sp_dys, constraints="monotonic_inc")  # Zipf ↑ (ADD THIS)
             + s(2, n_splines=n_sp_dys)
         )
         gam_dys.lam = float(lam_dys)
@@ -341,7 +341,7 @@ class DyslexiaGAMModels:
         logger.info("    Fitting final model on all control data...")
         gam_ctrl = LinearGAM(
             s(0, n_splines=n_sp_ctrl)
-            + s(1, n_splines=n_sp_ctrl)
+            + s(1, n_splines=n_sp_ctrl, constraints="monotonic_dec")  # Zipf ↓
             + s(2, n_splines=n_sp_ctrl)
         )
         gam_ctrl.lam = float(lam_ctrl)
@@ -369,7 +369,7 @@ class DyslexiaGAMModels:
         logger.info("    Fitting final model on all dyslexic data...")
         gam_dys = LinearGAM(
             s(0, n_splines=n_sp_dys)
-            + s(1, n_splines=n_sp_dys)
+            + s(1, n_splines=n_sp_dys, constraints="monotonic_dec")  # Zipf ↓
             + s(2, n_splines=n_sp_dys)
         )
         gam_dys.lam = float(lam_dys)
@@ -474,7 +474,7 @@ class DyslexiaGAMModels:
                 if model_type == "skip":
                     gam = LogisticGAM(
                         s(0, n_splines=n_sp)
-                        + s(1, n_splines=n_sp)
+                        + s(1, n_splines=n_sp, constraints="monotonic_inc")  # Zipf ↑
                         + s(2, n_splines=n_sp)
                     )
                     gam.gridsearch(X_sub[tr], y_sub[tr], lam=lam_search, progress=False)
@@ -483,7 +483,7 @@ class DyslexiaGAMModels:
                 else:
                     gam = LinearGAM(
                         s(0, n_splines=n_sp)
-                        + s(1, n_splines=n_sp)
+                        + s(1, n_splines=n_sp, constraints="monotonic_dec")  # Zipf ↓
                         + s(2, n_splines=n_sp)
                     )
                     gam.gridsearch(X_sub[tr], y_sub[tr], lam=lam_search, progress=False)

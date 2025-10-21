@@ -25,10 +25,7 @@ from hypothesis_testing_utils.gam_models import fit_gam_models
 from hypothesis_testing_utils.h1_feature_effects import test_hypothesis_1
 from hypothesis_testing_utils.h2_amplification import test_hypothesis_2
 from hypothesis_testing_utils.h3_gap_decomposition import test_hypothesis_3
-from hypothesis_testing_utils.table_generator import (
-    create_results_summary_markdown,
-    generate_all_tables,
-)
+from hypothesis_testing_utils.table_generator import generate_all_tables
 from hypothesis_testing_utils.visualization_utils import generate_all_figures
 from hypothesis_testing_utils.zipf_diagnostic import run_zipf_diagnostic
 
@@ -114,13 +111,6 @@ class CompleteAnalysisPipeline:
 
         try:
             # ===== PHASE 1: DATA PREPARATION =====
-            logger.info("\n" + "=" * 80)
-            logger.info("PHASE 1: DATA PREPARATION")
-            logger.info("=" * 80)
-            print("\n" + "=" * 80, flush=True)
-            print("PHASE 1: DATA PREPARATION", flush=True)
-            print("=" * 80 + "\n", flush=True)
-
             data = pd.read_csv(data_path)
             logger.info(f"Loaded data: {len(data):,} observations")
 
@@ -135,23 +125,9 @@ class CompleteAnalysisPipeline:
             logger.info("✅ Phase 1 complete")
 
             # ===== DIAGNOSTIC: Zipf-Length Interaction =====
-            logger.info("\n" + "=" * 80)
-            logger.info("RUNNING ZIPF-LENGTH DIAGNOSTIC")
-            logger.info("=" * 80)
-
             run_zipf_diagnostic(prepared_data, n_bins=10, results_dir=self.results_dir)
 
             # ===== PHASE 2: MODEL FITTING =====
-            logger.info("\n" + "=" * 80)
-            logger.info("PHASE 2: GAM MODEL FITTING")
-            logger.info("=" * 80)
-            print("\n" + "=" * 80, flush=True)
-            print("PHASE 2: GAM MODEL FITTING", flush=True)
-            print("=" * 80 + "\n", flush=True)
-            logger.info(
-                "⚠️ Model caching DISABLED - always recomputing for reproducibility"
-            )
-
             skip_meta, duration_meta, gam_models = fit_gam_models(
                 prepared_data, use_log_duration=True, quick_mode=self.quick_mode
             )
@@ -215,7 +191,7 @@ class CompleteAnalysisPipeline:
                     ert_predictor,
                     prepared_data,
                     quartiles,
-                    n_permutations=self.n_permutations,
+                    n_bootstrap=self.n_bootstrap,
                 )
 
             h3_results = load_or_recompute(h3_cache, compute_h3, reuse=self.use_cache)
@@ -227,10 +203,6 @@ class CompleteAnalysisPipeline:
             )
 
             # ===== PHASE 4: TABLE GENERATION =====
-            logger.info("\n" + "=" * 80)
-            logger.info("PHASE 4: TABLE GENERATION")
-            logger.info("=" * 80)
-
             generate_all_tables(
                 h1_results=h1_results,
                 h2_results=h2_results,
@@ -243,10 +215,6 @@ class CompleteAnalysisPipeline:
             logger.info("✅ Phase 4 complete")
 
             # ===== PHASE 5: FIGURE GENERATION =====
-            logger.info("\n" + "=" * 80)
-            logger.info("PHASE 5: FIGURE GENERATION")
-            logger.info("=" * 80)
-
             generate_all_figures(
                 ert_predictor=ert_predictor,
                 data=prepared_data,
@@ -264,10 +232,6 @@ class CompleteAnalysisPipeline:
             logger.info("   All figures have accompanying .json data files")
 
             # ===== PHASE 6: FINAL REPORT =====
-            logger.info("\n" + "=" * 80)
-            logger.info("PHASE 6: FINAL REPORT")
-            logger.info("=" * 80)
-
             n_significant = h2_results.get("n_significant", 0)
 
             final_results = {
@@ -278,12 +242,6 @@ class CompleteAnalysisPipeline:
                     "data_note": metadata.get("note", ""),
                     "used_cache": self.use_cache,
                     "model_cache": "disabled",
-                    "statistical_enhancements": [
-                        "p-values to 5 decimal places",
-                        "95% confidence intervals for all effects",
-                        "Cohen's h for skip pathway effects",
-                        "JSON exports for figure reproducibility",
-                    ],
                 },
                 "hypotheses": {
                     "h1": {
@@ -305,13 +263,6 @@ class CompleteAnalysisPipeline:
             }
 
             self._save_json(final_results, "final_report.json")
-
-            create_results_summary_markdown(
-                h1_results,
-                h2_results,
-                h3_results,
-                self.results_dir / "RESULTS_SUMMARY.md",
-            )
 
             logger.info("✅ Phase 6 complete")
 
@@ -432,13 +383,13 @@ def main():
         "--n-bootstrap",
         type=int,
         default=1000,
-        help="Number of bootstrap iterations for H2 (default: 1000)",
+        help="Number of bootstrap iterations for H2 and H3 (default: 1000)",
     )
     parser.add_argument(
         "--n-permutations",
         type=int,
         default=200,
-        help="Number of permutations for H1 and H3 p-values (default: 200)",
+        help="Number of permutations for H1 p-values (default: 200)",
     )
     parser.add_argument(
         "--quick",
@@ -464,7 +415,7 @@ def main():
     )
 
     try:
-        results = pipeline.run(args.data_path)
+        pipeline.run(args.data_path)
         sys.exit(0)
 
     except Exception as e:

@@ -18,6 +18,25 @@ def cohens_h(p1: float, p2: float) -> float:
     return 2 * (np.arcsin(np.sqrt(p1)) - np.arcsin(np.sqrt(p2)))
 
 
+def cohens_d(
+    mean1: float, mean2: float, std1: float, std2: float, n1: int, n2: int
+) -> float:
+    """
+    Compute Cohen's d effect size for two means
+    Uses pooled standard deviation
+    """
+    if n1 <= 0 or n2 <= 0:
+        return np.nan
+
+    # Pooled standard deviation
+    pooled_std = np.sqrt(((n1 - 1) * std1**2 + (n2 - 1) * std2**2) / (n1 + n2 - 2))
+
+    if pooled_std == 0:
+        return np.nan
+
+    return (mean2 - mean1) / pooled_std
+
+
 def _classify_sr(ci_low: float, ci_high: float, eps: float = 1e-12) -> str:
     """Classify SR based on 95% CI position relative to 1.0"""
     if np.isnan(ci_low) or np.isnan(ci_high):
@@ -47,7 +66,7 @@ def compute_slope_ratio_standard(
     quartiles: Dict,
     pathway: str = "ert",
 ) -> Tuple[float, Dict, Dict]:
-    """Standard SR for length and surprisal"""
+    """Standard SR for length and surprisal, now with Cohen's d for duration and ERT"""
     q1 = quartiles[feature]["q1"]
     q3 = quartiles[feature]["q3"]
 
@@ -71,6 +90,57 @@ def compute_slope_ratio_standard(
             "delta_trt": trt_q3[0] - trt_q1[0],
             "delta_ert": ert_q3[0] - ert_q1[0],
         }
+
+        # Calculate Cohen's d for duration and ERT pathways
+        # Get actual data near Q1 and Q3 (within 10% range)
+        q1_range = (q1 * 0.9, q1 * 1.1)
+        q3_range = (q3 * 0.9, q3 * 1.1)
+
+        group_data = data[data["group"] == group]
+
+        q1_data = group_data[
+            (group_data[feature] >= q1_range[0]) & (group_data[feature] <= q1_range[1])
+        ]
+        q3_data = group_data[
+            (group_data[feature] >= q3_range[0]) & (group_data[feature] <= q3_range[1])
+        ]
+
+        # Cohen's d for duration (TRT)
+        if len(q1_data) > 0 and len(q3_data) > 0:
+            # For TRT: use observed durations when not skipped
+            trt_q1_vals = q1_data[q1_data["skip"] == 0]["TRT"]
+            trt_q3_vals = q3_data[q3_data["skip"] == 0]["TRT"]
+
+            if len(trt_q1_vals) > 1 and len(trt_q3_vals) > 1:
+                effects[group]["cohens_d_duration"] = cohens_d(
+                    trt_q1_vals.mean(),
+                    trt_q3_vals.mean(),
+                    trt_q1_vals.std(),
+                    trt_q3_vals.std(),
+                    len(trt_q1_vals),
+                    len(trt_q3_vals),
+                )
+            else:
+                effects[group]["cohens_d_duration"] = np.nan
+
+            # Cohen's d for ERT (total reading time)
+            ert_q1_vals = q1_data["ERT"]
+            ert_q3_vals = q3_data["ERT"]
+
+            if len(ert_q1_vals) > 1 and len(ert_q3_vals) > 1:
+                effects[group]["cohens_d_ert"] = cohens_d(
+                    ert_q1_vals.mean(),
+                    ert_q3_vals.mean(),
+                    ert_q1_vals.std(),
+                    ert_q3_vals.std(),
+                    len(ert_q1_vals),
+                    len(ert_q3_vals),
+                )
+            else:
+                effects[group]["cohens_d_ert"] = np.nan
+        else:
+            effects[group]["cohens_d_duration"] = np.nan
+            effects[group]["cohens_d_ert"] = np.nan
 
     if pathway == "skip":
         delta_ctrl = abs(effects["control"]["delta_p_skip"])
@@ -100,9 +170,15 @@ def compute_slope_ratio_conditional_zipf(
     bin_weights: pd.Series,
     pathway: str = "ert",
 ) -> Tuple[float, Dict, Dict]:
-    """Conditional SR for zipf (within length bins)"""
+    """Conditional SR for zipf (within length bins), now with Cohen's d for duration and ERT"""
     bin_srs = []
     bin_indices_used = []
+
+    # Also collect Cohen's d values across bins
+    cohens_d_duration_ctrl = []
+    cohens_d_duration_dys = []
+    cohens_d_ert_ctrl = []
+    cohens_d_ert_dys = []
 
     n_bins = len(bin_weights)
 
@@ -148,6 +224,55 @@ def compute_slope_ratio_conditional_zipf(
                 "delta_ert": ert_q3[0] - ert_q1[0],
             }
 
+            # Calculate Cohen's d for this bin
+            # Get data near Q1 and Q3
+            q1_range = (zipf_q1 * 0.9, zipf_q1 * 1.1)
+            q3_range = (zipf_q3 * 0.9, zipf_q3 * 1.1)
+
+            q1_data = bin_data[
+                (bin_data["zipf"] >= q1_range[0]) & (bin_data["zipf"] <= q1_range[1])
+            ]
+            q3_data = bin_data[
+                (bin_data["zipf"] >= q3_range[0]) & (bin_data["zipf"] <= q3_range[1])
+            ]
+
+            if len(q1_data) > 0 and len(q3_data) > 0:
+                # Cohen's d for duration (TRT)
+                trt_q1_vals = q1_data[q1_data["skip"] == 0]["TRT"]
+                trt_q3_vals = q3_data[q3_data["skip"] == 0]["TRT"]
+
+                if len(trt_q1_vals) > 1 and len(trt_q3_vals) > 1:
+                    cd_dur = cohens_d(
+                        trt_q1_vals.mean(),
+                        trt_q3_vals.mean(),
+                        trt_q1_vals.std(),
+                        trt_q3_vals.std(),
+                        len(trt_q1_vals),
+                        len(trt_q3_vals),
+                    )
+                    if group == "control":
+                        cohens_d_duration_ctrl.append(cd_dur)
+                    else:
+                        cohens_d_duration_dys.append(cd_dur)
+
+                # Cohen's d for ERT
+                ert_q1_vals = q1_data["ERT"]
+                ert_q3_vals = q3_data["ERT"]
+
+                if len(ert_q1_vals) > 1 and len(ert_q3_vals) > 1:
+                    cd_ert = cohens_d(
+                        ert_q1_vals.mean(),
+                        ert_q3_vals.mean(),
+                        ert_q1_vals.std(),
+                        ert_q3_vals.std(),
+                        len(ert_q1_vals),
+                        len(ert_q3_vals),
+                    )
+                    if group == "control":
+                        cohens_d_ert_ctrl.append(cd_ert)
+                    else:
+                        cohens_d_ert_dys.append(cd_ert)
+
         if pathway == "skip":
             delta_ctrl = abs(effects["control"]["delta_p_skip"])
             delta_dys = abs(effects["dyslexic"]["delta_p_skip"])
@@ -171,7 +296,22 @@ def compute_slope_ratio_conditional_zipf(
 
     sr_avg = np.average(bin_srs, weights=weights_normalized)
 
-    return sr_avg, {}, {}
+    # Average Cohen's d values
+    effect_sizes_ctrl = {
+        "cohens_d_duration": (
+            np.mean(cohens_d_duration_ctrl) if cohens_d_duration_ctrl else np.nan
+        ),
+        "cohens_d_ert": np.mean(cohens_d_ert_ctrl) if cohens_d_ert_ctrl else np.nan,
+    }
+
+    effect_sizes_dys = {
+        "cohens_d_duration": (
+            np.mean(cohens_d_duration_dys) if cohens_d_duration_dys else np.nan
+        ),
+        "cohens_d_ert": np.mean(cohens_d_ert_dys) if cohens_d_ert_dys else np.nan,
+    }
+
+    return sr_avg, effect_sizes_ctrl, effect_sizes_dys
 
 
 def bootstrap_all_metrics(
@@ -354,16 +494,39 @@ def test_hypothesis_2(
 
         for pathway in ["skip", "duration", "ert"]:
             if feature == "zipf":
-                sr, _, _ = compute_slope_ratio_conditional_zipf(
+                sr, ctrl_effects, dys_effects = compute_slope_ratio_conditional_zipf(
                     ert_predictor, data, quartiles, bin_edges, bin_weights, pathway
                 )
             else:
-                sr, _, _ = compute_slope_ratio_standard(
+                sr, ctrl_effects, dys_effects = compute_slope_ratio_standard(
                     ert_predictor, data, feature, quartiles, pathway
                 )
 
             feature_results[f"sr_{pathway}"] = float(sr)
             logger.info(f"  SR({pathway}): {sr:.3f}")
+
+        # Capture Cohen's d values (computed differently for zipf vs other features)
+        # - length/surprisal: from actual data at Q1/Q3
+        # - zipf: weighted average across length bins
+        feature_results["cohens_d_duration_control"] = float(
+            ctrl_effects.get("cohens_d_duration", np.nan)
+        )
+        feature_results["cohens_d_duration_dyslexic"] = float(
+            dys_effects.get("cohens_d_duration", np.nan)
+        )
+        feature_results["cohens_d_ert_control"] = float(
+            ctrl_effects.get("cohens_d_ert", np.nan)
+        )
+        feature_results["cohens_d_ert_dyslexic"] = float(
+            dys_effects.get("cohens_d_ert", np.nan)
+        )
+
+        logger.info(
+            f"  Cohen's d (duration): Control={feature_results['cohens_d_duration_control']:.3f}, Dyslexic={feature_results['cohens_d_duration_dyslexic']:.3f}"
+        )
+        logger.info(
+            f"  Cohen's d (ERT): Control={feature_results['cohens_d_ert_control']:.3f}, Dyslexic={feature_results['cohens_d_ert_dyslexic']:.3f}"
+        )
 
         results[feature] = feature_results
 

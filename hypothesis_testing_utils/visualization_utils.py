@@ -229,6 +229,11 @@ def create_figure_s1_gam_smooths(
                 ci_low = 1 / (1 + np.exp(-ci[:, 0]))
                 ci_high = 1 / (1 + np.exp(-ci[:, 1]))
 
+                # Ensure proper ordering (low < high) after transformation
+                ci_low, ci_high = np.minimum(ci_low, ci_high), np.maximum(
+                    ci_low, ci_high
+                )
+
                 ax.plot(
                     feat_range,
                     p_skip,
@@ -352,13 +357,58 @@ def create_figure_s1_gam_smooths(
         for group, color in [("control", "steelblue"), ("dyslexic", "coral")]:
             ert = ert_predictor.predict_ert(grid, group)
 
-            ax.plot(
-                feat_range, ert, label=group.capitalize(), linewidth=2.5, color=color
-            )
+            # Calculate confidence intervals by propagating uncertainty
+            try:
+                # Get skip probability and CI
+                skip_model = gam_models.skip_model[group]
+                X_grid = grid[["length", "zipf", "surprisal"]].values
+                p_skip = skip_model.predict_proba(X_grid)
+                skip_ci = skip_model.confidence_intervals(X_grid, width=0.95)
+                p_skip_low = 1 / (1 + np.exp(-skip_ci[:, 0]))
+                p_skip_high = 1 / (1 + np.exp(-skip_ci[:, 1]))
+                p_skip_low, p_skip_high = np.minimum(
+                    p_skip_low, p_skip_high
+                ), np.maximum(p_skip_low, p_skip_high)
 
-            json_data["ert_pathway"][feat][group] = {
-                "predictions": ert.tolist(),
-            }
+                # Get duration and CI
+                dur_model = gam_models.duration_model[group]
+                y_log = dur_model.predict(X_grid)
+                trt = np.exp(y_log) * gam_models.smearing_factors[group]
+                dur_ci = dur_model.confidence_intervals(X_grid, width=0.95)
+                trt_low = np.exp(dur_ci[:, 0]) * gam_models.smearing_factors[group]
+                trt_high = np.exp(dur_ci[:, 1]) * gam_models.smearing_factors[group]
+
+                # Propagate uncertainty: ERT = (1 - p_skip) * trt
+                # Use conservative approach: combine extremes
+                ert_low = (1 - p_skip_high) * trt_low
+                ert_high = (1 - p_skip_low) * trt_high
+
+                ax.plot(
+                    feat_range,
+                    ert,
+                    label=group.capitalize(),
+                    linewidth=2.5,
+                    color=color,
+                )
+                ax.fill_between(feat_range, ert_low, ert_high, color=color, alpha=0.2)
+
+                json_data["ert_pathway"][feat][group] = {
+                    "predictions": ert.tolist(),
+                    "ci_low": ert_low.tolist(),
+                    "ci_high": ert_high.tolist(),
+                }
+            except:
+                ax.plot(
+                    feat_range,
+                    ert,
+                    label=group.capitalize(),
+                    linewidth=2.5,
+                    color=color,
+                )
+
+                json_data["ert_pathway"][feat][group] = {
+                    "predictions": ert.tolist(),
+                }
 
         q1, q3 = data[feat].quantile([0.25, 0.75])
         ax.axvline(q1, color="gray", linestyle="--", alpha=0.5, linewidth=1)

@@ -30,30 +30,28 @@ def predict_components_batch(predictor, df, group):
 def predict_gap_on_sample(ert_predictor, sample: pd.DataFrame) -> float:
     """
     Compute gap using model predictions on the given sample.
-    This is the ONLY way to compute gaps - ensures consistency.
+    Subject-balanced: mean of subject means within group (reduces variance).
     Uses BATCH prediction for performance.
     """
-    ert_by_group = {"control": [], "dyslexic": []}
-
+    group_means = {}
     for group_name in ["control", "dyslexic"]:
-        group_data = sample[sample["group"] == group_name]
-        if len(group_data) == 0:
+        gdf = sample[sample["group"] == group_name]
+        if len(gdf) == 0:
             continue
-
-        # BATCH PREDICTION: extract all features at once
-        features_batch = group_data[["length", "zipf", "surprisal"]].values
+        X = gdf[["length", "zipf", "surprisal"]]
         try:
-            # Predict on entire batch
-            ert_batch = ert_predictor.predict_ert(
-                pd.DataFrame(features_batch, columns=["length", "zipf", "surprisal"]),
-                group_name,
-            )
-            ert_by_group[group_name] = ert_batch.tolist()
-        except:
+            ert = np.asarray(ert_predictor.predict_ert(X, group_name)).ravel()
+        except Exception:
             continue
+        subj_mean = (
+            pd.DataFrame({"subject_id": gdf["subject_id"].values, "ert": ert})
+            .groupby("subject_id")["ert"]
+            .mean()
+        )
+        group_means[group_name] = float(subj_mean.mean())
 
-    if len(ert_by_group["control"]) > 0 and len(ert_by_group["dyslexic"]) > 0:
-        return np.mean(ert_by_group["dyslexic"]) - np.mean(ert_by_group["control"])
+    if "control" in group_means and "dyslexic" in group_means:
+        return group_means["dyslexic"] - group_means["control"]
     return np.nan
 
 
@@ -64,9 +62,9 @@ def bootstrap_gap_component(
     n_bootstrap: int = 200,
     **kwargs,
 ) -> Dict:
-    """Bootstrap with subject resampling (not permutation test)"""
-    subjects = data["subject_id"].unique()
-    n_subjects = len(subjects)
+    """Bootstrap with subject resampling (stratified by group)"""
+    ctrl_subjects = data.loc[data["group"] == "control", "subject_id"].unique()
+    dys_subjects = data.loc[data["group"] == "dyslexic", "subject_id"].unique()
 
     bootstrap_values = []
 
@@ -74,19 +72,28 @@ def bootstrap_gap_component(
 
     for i in tqdm(range(n_bootstrap), desc="      Bootstrap", leave=False):
         np.random.seed(i + 3000)
-        boot_subjects = np.random.choice(subjects, size=n_subjects, replace=True)
-        boot_data = pd.concat(
-            [data[data["subject_id"] == s] for s in boot_subjects], ignore_index=True
+        boot_ctrl = np.random.choice(
+            ctrl_subjects, size=len(ctrl_subjects), replace=True
         )
+        boot_dys = np.random.choice(dys_subjects, size=len(dys_subjects), replace=True)
 
-        if len(boot_data) < 500:
-            continue
+        parts = []
+        for j, s in enumerate(boot_ctrl):
+            df = data[data["subject_id"] == s].copy()
+            df["subject_id"] = f"ctrl_{s}_{j}"  # unique id per draw
+            parts.append(df)
+        for j, s in enumerate(boot_dys):
+            df = data[data["subject_id"] == s].copy()
+            df["subject_id"] = f"dys_{s}_{j}"  # unique id per draw
+            parts.append(df)
+
+        boot_data = pd.concat(parts, ignore_index=True)
 
         try:
             result = computation_fn(boot_data, **kwargs)
             if not np.isnan(result):
                 bootstrap_values.append(result)
-        except:
+        except Exception:
             pass
 
     if len(bootstrap_values) > 0:
@@ -172,19 +179,14 @@ def shapley_decomposition(
     skip_contribution_ms = delta_skip * scale
     duration_contribution_ms = delta_duration * scale
 
-    # === BOOTSTRAP: SKIP contribution (batched inside) ===
+    # === BOOTSTRAP: SKIP contribution (use ALL dys tokens in each draw) ===
     def compute_skip_contrib(boot_data):
         dys_boot = boot_data[boot_data["group"] == "dyslexic"]
-        if len(dys_boot) < 100:
+        if len(dys_boot) < 10:
             return np.nan
 
-        dys_sample = dys_boot.sample(min(500, len(dys_boot)))  # no fixed seed
-
-        ed, psd, td = predict_components_batch(ert_predictor, dys_sample, "dyslexic")
-        ec, psc, tc = predict_components_batch(ert_predictor, dys_sample, "control")
-
-        if len(ed) < 10 or len(ec) < 10:
-            return np.nan
+        ed, psd, td = predict_components_batch(ert_predictor, dys_boot, "dyslexic")
+        ec, psc, tc = predict_components_batch(ert_predictor, dys_boot, "control")
 
         mean_dys = ed.mean()
         mean_ctrl = ec.mean()
@@ -199,19 +201,14 @@ def shapley_decomposition(
 
         return 0.5 * (skip_1 + skip_2)
 
-    # === BOOTSTRAP: DURATION contribution (direct, not complement) ===
+    # === BOOTSTRAP: DURATION contribution (use ALL dys tokens in each draw) ===
     def compute_duration_contrib(boot_data):
         dys_boot = boot_data[boot_data["group"] == "dyslexic"]
-        if len(dys_boot) < 100:
+        if len(dys_boot) < 10:
             return np.nan
 
-        dys_sample = dys_boot.sample(min(500, len(dys_boot)))  # no fixed seed
-
-        ed, psd, td = predict_components_batch(ert_predictor, dys_sample, "dyslexic")
-        ec, psc, tc = predict_components_batch(ert_predictor, dys_sample, "control")
-
-        if len(ed) < 10 or len(ec) < 10:
-            return np.nan
+        ed, psd, td = predict_components_batch(ert_predictor, dys_boot, "dyslexic")
+        ec, psc, tc = predict_components_batch(ert_predictor, dys_boot, "control")
 
         mean_dys = ed.mean()
         mean_ctrl = ec.mean()
@@ -327,22 +324,16 @@ def equal_ease_counterfactual(
 
     # Bootstrap
     def compute_gap_shrink(boot_data):
-        # No fixed seed inside bootstrap
-        boot_sample = boot_data.sample(min(500, len(boot_data)))
-
-        baseline_gap_b = predict_gap_on_sample(ert_predictor, boot_sample)
-
+        baseline_gap_b = predict_gap_on_sample(ert_predictor, boot_data)
         if np.isnan(baseline_gap_b):
             return np.nan
 
-        # Apply same policy
-        boot_easy = boot_sample.copy()
+        boot_easy = boot_data.copy()
         boot_easy["length"] = boot_easy["length"].clip(upper=Q1_len)
         boot_easy["surprisal"] = boot_easy["surprisal"].clip(upper=Q1_surpr)
         boot_easy["zipf"] = boot_easy["zipf"].clip(lower=Q3_zipf)
 
         cf_gap_b = predict_gap_on_sample(ert_predictor, boot_easy)
-
         if np.isnan(cf_gap_b):
             return np.nan
 
@@ -554,19 +545,14 @@ def per_feature_equalization(
 
     # Bootstrap
     def compute_gap_explained_feat(boot_data):
-        # No fixed seed inside bootstrap
-        boot_sample = boot_data.sample(min(500, len(boot_data)))
-
-        baseline_gap_b = predict_gap_on_sample(ert_predictor, boot_sample)
-
+        baseline_gap_b = predict_gap_on_sample(ert_predictor, boot_data)
         if np.isnan(baseline_gap_b):
             return np.nan
 
-        boot_eq = boot_sample.copy()
+        boot_eq = boot_data.copy()
         boot_eq[feature] = clamp_fn(boot_eq)
 
         cf_gap_b = predict_gap_on_sample(ert_predictor, boot_eq)
-
         if np.isnan(cf_gap_b):
             return np.nan
 

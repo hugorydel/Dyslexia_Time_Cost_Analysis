@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_pooled_length_bins(
-    data: pd.DataFrame, n_bins: int = 5
+    data: pd.DataFrame, n_bins: int = 7
 ) -> Tuple[np.ndarray, pd.Series]:
     """
     Create length bins on POOLED sample (both groups combined)
@@ -246,7 +246,7 @@ def prepare_data_pipeline(data: pd.DataFrame) -> Tuple[pd.DataFrame, Dict]:
     orientation_checks = check_feature_orientations(gam_data, quartiles)
 
     # Create pooled length bins
-    bin_edges, bin_weights = create_pooled_length_bins(gam_data, n_bins=5)
+    bin_edges, bin_weights = create_pooled_length_bins(gam_data, n_bins=7)
 
     # Apply bins to data
     gam_data["length_bin"] = pd.cut(
