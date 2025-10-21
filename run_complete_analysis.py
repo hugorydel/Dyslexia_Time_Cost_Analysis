@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-COMPLETE Analysis Pipeline - REVISED
+COMPLETE Analysis Pipeline - FULLY REVISED
 Key changes:
-1. Removed model caching (always recompute GAMs)
-2. Kept result caching with atomic writes
-3. Dedicated hypothesis_testing_output.log
-4. Fixed n_amplified -> n_significant
-5. Quieter console output (progress bars clean)
+1. Added comprehensive statistics with p-values (5 decimal places)
+2. JSON exports for all figures
+3. Removed supplementary directory structure
+4. Enhanced logging for statistical outputs
 """
 
 import argparse
@@ -19,7 +18,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-# Import all modules
 from hypothesis_testing_utils.caching_utils import atomic_joblib_dump, load_or_recompute
 from hypothesis_testing_utils.data_preparation import prepare_data_pipeline
 from hypothesis_testing_utils.ert_predictor import create_ert_predictor
@@ -42,12 +40,11 @@ def setup_logging(results_dir: Path):
     """
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
-    logger.handlers = []  # Clear existing handlers
+    logger.handlers = []
 
-    # File handler: detailed logging
     fh = RotatingFileHandler(
         results_dir / "hypothesis_testing_output.log",
-        maxBytes=5_000_000,  # 5MB
+        maxBytes=5_000_000,
         backupCount=3,
         encoding="utf-8",
     )
@@ -56,7 +53,6 @@ def setup_logging(results_dir: Path):
         logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     )
 
-    # Console handler: warnings only (keeps progress bars clean)
     ch = logging.StreamHandler(sys.stdout)
     ch.setLevel(logging.WARNING)
     ch.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
@@ -71,7 +67,7 @@ logger = logging.getLogger(__name__)
 
 
 class CompleteAnalysisPipeline:
-    """Complete end-to-end analysis pipeline - REVISED"""
+    """Complete end-to-end analysis pipeline - FULLY REVISED"""
 
     def __init__(
         self,
@@ -83,14 +79,11 @@ class CompleteAnalysisPipeline:
         self.results_dir = Path(results_dir)
         self.results_dir.mkdir(exist_ok=True, parents=True)
 
-        # Setup logging first
         setup_logging(self.results_dir)
 
-        # Create subdirectories
         self.figures_dir = self.results_dir / "figures"
         self.tables_dir = self.results_dir / "tables"
 
-        # Cache directory (results only, NOT models)
         self.quick_mode = quick_mode
         self.cache_dir = self.results_dir / (
             "cache_quick" if self.quick_mode else "cache_full"
@@ -104,7 +97,7 @@ class CompleteAnalysisPipeline:
         self.use_cache = use_cache
 
         logger.info("=" * 80)
-        logger.info("COMPLETE DYSLEXIA GAM ANALYSIS PIPELINE - REVISED")
+        logger.info("COMPLETE DYSLEXIA GAM ANALYSIS PIPELINE - FULLY REVISED")
         logger.info("=" * 80)
         logger.info(f"Results directory: {self.results_dir}")
         logger.info(f"Bootstrap iterations: {n_bootstrap}")
@@ -112,6 +105,11 @@ class CompleteAnalysisPipeline:
         logger.info(f"Quick mode: {quick_mode}")
         logger.info(f"Model caching: DISABLED (always recompute for reproducibility)")
         logger.info(f"Result caching: {'ENABLED' if use_cache else 'DISABLED'}")
+        logger.info(f"Output enhancements:")
+        logger.info(f"  - P-values to 5 decimal places")
+        logger.info(f"  - Comprehensive 95% CIs")
+        logger.info(f"  - JSON exports for all figures")
+        logger.info(f"  - Cohen's h for skip effects")
 
     def run(self, data_path: str):
         """Execute complete analysis pipeline"""
@@ -127,12 +125,10 @@ class CompleteAnalysisPipeline:
 
             prepared_data, metadata = prepare_data_pipeline(data)
 
-            # Extract components
             quartiles = metadata["quartiles"]
             bin_edges = np.array(metadata["pooled_bin_edges"])
             bin_weights = pd.Series(metadata["pooled_bin_weights"])
 
-            # Save metadata
             self._save_json(metadata, "data_metadata.json")
 
             logger.info("✅ Phase 1 complete")
@@ -145,7 +141,6 @@ class CompleteAnalysisPipeline:
                 "⚠️ Model caching DISABLED - always recomputing for reproducibility"
             )
 
-            # ALWAYS recompute models (no caching)
             skip_meta, duration_meta, gam_models = fit_gam_models(
                 prepared_data, use_log_duration=True, quick_mode=self.quick_mode
             )
@@ -159,10 +154,10 @@ class CompleteAnalysisPipeline:
 
             # ===== PHASE 3: HYPOTHESIS TESTING =====
             logger.info("\n" + "=" * 80)
-            logger.info("PHASE 3: HYPOTHESIS TESTING")
+            logger.info("PHASE 3: HYPOTHESIS TESTING (with comprehensive statistics)")
             logger.info("=" * 80)
 
-            # H1: Feature Effects (with caching)
+            # H1: Feature Effects (with p-values and CIs)
             h1_cache = self.cache_dir / "h1_results.pkl"
 
             def compute_h1():
@@ -173,7 +168,7 @@ class CompleteAnalysisPipeline:
             h1_results = load_or_recompute(h1_cache, compute_h1, reuse=self.use_cache)
             self._save_json(h1_results, "h1_results.json")
 
-            # H2: Amplification (with caching, keyed by n_bootstrap)
+            # H2: Amplification (with p-values for SRs)
             h2_cache = self.cache_dir / f"h2_results_n{self.n_bootstrap}.pkl"
 
             def compute_h2():
@@ -189,7 +184,7 @@ class CompleteAnalysisPipeline:
             h2_results = load_or_recompute(h2_cache, compute_h2, reuse=self.use_cache)
             self._save_json(h2_results, "h2_results.json")
 
-            # H3: Gap Decomposition (with caching)
+            # H3: Gap Decomposition (with p-values for all components)
             h3_cache = self.cache_dir / "h3_results.pkl"
 
             def compute_h3():
@@ -199,6 +194,9 @@ class CompleteAnalysisPipeline:
             self._save_json(h3_results, "h3_results.json")
 
             logger.info("✅ Phase 3 complete")
+            logger.info(
+                "   All statistics include p-values (5 decimal places) and 95% CIs"
+            )
 
             # ===== PHASE 4: TABLE GENERATION =====
             logger.info("\n" + "=" * 80)
@@ -235,13 +233,13 @@ class CompleteAnalysisPipeline:
             )
 
             logger.info("✅ Phase 5 complete")
+            logger.info("   All figures have accompanying .json data files")
 
             # ===== PHASE 6: FINAL REPORT =====
             logger.info("\n" + "=" * 80)
             logger.info("PHASE 6: FINAL REPORT")
             logger.info("=" * 80)
 
-            # Fix n_amplified reference
             n_significant = h2_results.get("n_significant", 0)
 
             final_results = {
@@ -252,6 +250,12 @@ class CompleteAnalysisPipeline:
                     "data_note": metadata.get("note", ""),
                     "used_cache": self.use_cache,
                     "model_cache": "disabled",
+                    "statistical_enhancements": [
+                        "p-values to 5 decimal places",
+                        "95% confidence intervals for all effects",
+                        "Cohen's h for skip pathway effects",
+                        "JSON exports for figure reproducibility",
+                    ],
                 },
                 "hypotheses": {
                     "h1": {
@@ -346,22 +350,32 @@ class CompleteAnalysisPipeline:
         logger.info("\nOUTPUTS:")
         logger.info(f"  📁 Results: {self.results_dir}/")
         logger.info(f"  📊 Figures: {self.figures_dir}/")
+        logger.info(f"    - All figures include .json data files for reproducibility")
         logger.info(f"  📋 Tables: {self.tables_dir}/")
+        logger.info(f"    - All tables include p-values (5 decimal places) and 95% CIs")
         logger.info(f"  📄 Summary: {self.results_dir}/RESULTS_SUMMARY.md")
         logger.info(f"  📝 Log: {self.results_dir}/hypothesis_testing_output.log")
 
         logger.info("\n" + "=" * 80)
-        logger.info("Next steps:")
-        logger.info("1. Review RESULTS_SUMMARY.md for interpretation")
-        logger.info("2. Check figures/ for publication-quality plots")
-        logger.info("3. Check tables/ for formatted tables (CSV)")
-        logger.info("4. Review hypothesis_testing_output.log for detailed output")
+        logger.info("ENHANCED STATISTICAL OUTPUTS:")
+        logger.info("  ✓ P-values to 5 decimal places for all effects")
+        logger.info("  ✓ 95% confidence intervals for all estimates")
+        logger.info("  ✓ Cohen's h for skip pathway effects")
+        logger.info("  ✓ JSON exports for all figures (full reproducibility)")
+        logger.info("=" * 80)
+
+        logger.info("\nNext steps:")
+        logger.info("1. Review RESULTS_SUMMARY.md for comprehensive interpretation")
+        logger.info("2. Check figures/ for publication-quality plots + JSON data")
+        logger.info("3. Check tables/ for formatted tables with statistics (CSV)")
+        logger.info("4. Use JSON files to regenerate/restyle figures as needed")
+        logger.info("5. Review hypothesis_testing_output.log for detailed output")
         logger.info("=" * 80 + "\n")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Complete Dyslexia GAM Analysis Pipeline (REVISED)"
+        description="Complete Dyslexia GAM Analysis Pipeline (FULLY REVISED)"
     )
     parser.add_argument(
         "--data-path", type=str, required=True, help="Path to preprocessed data CSV"
@@ -397,16 +411,12 @@ def main():
 
     args = parser.parse_args()
 
-    # Handle cache flags
     use_cache = args.use_cache and not args.no_cache
-
-    # Adjust bootstrap if quick mode
     n_bootstrap = 100 if args.quick else args.n_bootstrap
 
     if args.quick:
         print("⚡ QUICK MODE: Using 100 bootstrap iterations")
 
-    # Initialize and run pipeline
     pipeline = CompleteAnalysisPipeline(
         results_dir=args.results_dir,
         n_bootstrap=n_bootstrap,

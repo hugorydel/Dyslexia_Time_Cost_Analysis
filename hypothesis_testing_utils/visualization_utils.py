@@ -1,12 +1,10 @@
 """
-Visualization Utilities - REVISED
+Visualization Utilities - FULLY REVISED
 Key changes:
-1. Wider range for smooths (99% vs 95%)
-2. Confidence bands added to smooths
-3. Unified y-axes per row
-4. Added ERT row (3x3 grid: skip, duration, ERT)
-5. Removed Figure 2 and Figure 3
-6. Model stats now exported to JSON instead of Figure S2
+1. JSON exports for all figure data
+2. Merged supplementary figures into main function
+3. Removed supplementary subdirectory
+4. Comprehensive data export for reproducibility
 """
 
 import json
@@ -21,7 +19,6 @@ import seaborn as sns
 
 logger = logging.getLogger(__name__)
 
-# Set style
 sns.set_style("whitegrid")
 plt.rcParams["font.size"] = 10
 plt.rcParams["axes.labelsize"] = 11
@@ -34,7 +31,6 @@ def set_row_ylim(axes_row):
     ymins, ymaxs = [], []
     for ax in axes_row:
         ys = []
-        # Get data from filled bands
         for coll in ax.collections:
             if hasattr(coll, "get_paths") and len(coll.get_paths()) > 0:
                 try:
@@ -42,7 +38,6 @@ def set_row_ylim(axes_row):
                     ys.extend(vertices[:, 1])
                 except:
                     pass
-        # Get data from lines
         for line in ax.lines:
             ys.extend(line.get_ydata())
         if ys:
@@ -59,9 +54,7 @@ def set_row_ylim(axes_row):
 def create_figure_1_overall_effects(
     h1_results: Dict, h2_results: Dict, output_path: Path
 ):
-    """
-    Figure 1: Overall Effects Overview (unchanged)
-    """
+    """Figure 1: Overall Effects Overview with JSON export"""
     logger.info("Creating Figure 1: Overall Effects Overview...")
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
@@ -175,17 +168,28 @@ def create_figure_1_overall_effects(
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
 
+    # === EXPORT JSON DATA ===
+    figure_data = {
+        "panel_a_bar_chart": {
+            "features": ["Length", "Zipf Frequency", "Surprisal"],
+            "control_amies": [float(a) for a in ctrl_amies],
+            "dyslexic_amies": [float(a) for a in dys_amies],
+        },
+        "panel_b_forest_plot": df_sr.to_dict("records"),
+    }
+
+    json_path = output_path.with_suffix(".json")
+    with open(json_path, "w") as f:
+        json.dump(figure_data, f, indent=2)
+
     logger.info(f"  Saved: {output_path}")
+    logger.info(f"  Saved data: {json_path}")
 
 
 def create_figure_s1_gam_smooths(
     ert_predictor, data: pd.DataFrame, gam_models, output_path: Path
 ):
-    """
-    Figure S1: GAM Smooth Effects - REVISED
-    Now 3x3 grid: Skip, Duration, ERT
-    With confidence bands and unified y-axes per row
-    """
+    """Figure S1: GAM Smooth Effects (3x3) with JSON export"""
     logger.info("Creating Figure S1: GAM Smooth Effects (3x3 with confidence bands)...")
 
     fig, axes = plt.subplots(3, 3, figsize=(15, 13))
@@ -193,11 +197,17 @@ def create_figure_s1_gam_smooths(
     features = ["length", "zipf", "surprisal"]
     feature_labels = ["Word Length", "Zipf Frequency", "Surprisal"]
 
+    # Data for JSON export
+    json_data = {
+        "skip_pathway": {},
+        "duration_pathway": {},
+        "ert_pathway": {},
+    }
+
     # === Row 1: Skip pathway ===
     for i, (feat, label) in enumerate(zip(features, feature_labels)):
         ax = axes[0, i]
 
-        # Use 99th percentile range
         feat_range = np.linspace(
             data[feat].quantile(0.01), data[feat].quantile(0.99), 100
         )
@@ -208,20 +218,17 @@ def create_figure_s1_gam_smooths(
         grid = pd.DataFrame({feat: feat_range, **means})
         X_grid = grid[["length", "zipf", "surprisal"]].values
 
-        for group, color in [("control", "steelblue"), ("dyslexic", "coral")]:
-            # Get model
-            model = gam_models.skip_model[group]
+        json_data["skip_pathway"][feat] = {"feature_values": feat_range.tolist()}
 
-            # Predictions
+        for group, color in [("control", "steelblue"), ("dyslexic", "coral")]:
+            model = gam_models.skip_model[group]
             p_skip = model.predict_proba(X_grid)
 
-            # Confidence intervals
             try:
                 ci = model.confidence_intervals(X_grid, width=0.95)
-                ci_low = 1 / (1 + np.exp(-ci[:, 0]))  # Transform to probability scale
+                ci_low = 1 / (1 + np.exp(-ci[:, 0]))
                 ci_high = 1 / (1 + np.exp(-ci[:, 1]))
 
-                # Plot line
                 ax.plot(
                     feat_range,
                     p_skip,
@@ -229,11 +236,14 @@ def create_figure_s1_gam_smooths(
                     linewidth=2.5,
                     color=color,
                 )
-
-                # Plot confidence band
                 ax.fill_between(feat_range, ci_low, ci_high, color=color, alpha=0.2)
+
+                json_data["skip_pathway"][feat][group] = {
+                    "predictions": p_skip.tolist(),
+                    "ci_low": ci_low.tolist(),
+                    "ci_high": ci_high.tolist(),
+                }
             except:
-                # Fallback if confidence intervals fail
                 ax.plot(
                     feat_range,
                     p_skip,
@@ -241,8 +251,10 @@ def create_figure_s1_gam_smooths(
                     linewidth=2.5,
                     color=color,
                 )
+                json_data["skip_pathway"][feat][group] = {
+                    "predictions": p_skip.tolist(),
+                }
 
-        # Mark quartiles
         q1, q3 = data[feat].quantile([0.25, 0.75])
         ax.axvline(q1, color="gray", linestyle="--", alpha=0.5, linewidth=1)
         ax.axvline(q3, color="gray", linestyle="--", alpha=0.5, linewidth=1)
@@ -254,7 +266,6 @@ def create_figure_s1_gam_smooths(
         ax.legend()
         ax.grid(alpha=0.3)
 
-    # Set uniform y-axis for skip row
     set_row_ylim(axes[0, :])
 
     # === Row 2: Duration pathway ===
@@ -271,14 +282,14 @@ def create_figure_s1_gam_smooths(
         grid = pd.DataFrame({feat: feat_range, **means})
         X_grid = grid[["length", "zipf", "surprisal"]].values
 
+        json_data["duration_pathway"][feat] = {"feature_values": feat_range.tolist()}
+
         for group, color in [("control", "steelblue"), ("dyslexic", "coral")]:
             model = gam_models.duration_model[group]
 
-            # Predictions (on log scale, then transform back)
             y_log = model.predict(X_grid)
             trt = np.exp(y_log) * gam_models.smearing_factors[group]
 
-            # Confidence intervals
             try:
                 ci = model.confidence_intervals(X_grid, width=0.95)
                 ci_low = np.exp(ci[:, 0]) * gam_models.smearing_factors[group]
@@ -292,6 +303,12 @@ def create_figure_s1_gam_smooths(
                     color=color,
                 )
                 ax.fill_between(feat_range, ci_low, ci_high, color=color, alpha=0.2)
+
+                json_data["duration_pathway"][feat][group] = {
+                    "predictions": trt.tolist(),
+                    "ci_low": ci_low.tolist(),
+                    "ci_high": ci_high.tolist(),
+                }
             except:
                 ax.plot(
                     feat_range,
@@ -300,6 +317,9 @@ def create_figure_s1_gam_smooths(
                     linewidth=2.5,
                     color=color,
                 )
+                json_data["duration_pathway"][feat][group] = {
+                    "predictions": trt.tolist(),
+                }
 
         q1, q3 = data[feat].quantile([0.25, 0.75])
         ax.axvline(q1, color="gray", linestyle="--", alpha=0.5, linewidth=1)
@@ -312,7 +332,6 @@ def create_figure_s1_gam_smooths(
         ax.legend()
         ax.grid(alpha=0.3)
 
-    # Set uniform y-axis for duration row
     set_row_ylim(axes[1, :])
 
     # === Row 3: ERT (Combined) ===
@@ -328,13 +347,18 @@ def create_figure_s1_gam_smooths(
 
         grid = pd.DataFrame({feat: feat_range, **means})
 
+        json_data["ert_pathway"][feat] = {"feature_values": feat_range.tolist()}
+
         for group, color in [("control", "steelblue"), ("dyslexic", "coral")]:
-            # Predict ERT = (1 - P(skip)) × TRT
             ert = ert_predictor.predict_ert(grid, group)
 
             ax.plot(
                 feat_range, ert, label=group.capitalize(), linewidth=2.5, color=color
             )
+
+            json_data["ert_pathway"][feat][group] = {
+                "predictions": ert.tolist(),
+            }
 
         q1, q3 = data[feat].quantile([0.25, 0.75])
         ax.axvline(q1, color="gray", linestyle="--", alpha=0.5, linewidth=1)
@@ -347,22 +371,25 @@ def create_figure_s1_gam_smooths(
         ax.legend()
         ax.grid(alpha=0.3)
 
-    # Set uniform y-axis for ERT row
     set_row_ylim(axes[2, :])
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
 
+    # === EXPORT JSON DATA ===
+    json_path = output_path.with_suffix(".json")
+    with open(json_path, "w") as f:
+        json.dump(json_data, f, indent=2)
+
     logger.info(f"  Saved: {output_path}")
+    logger.info(f"  Saved data: {json_path}")
 
 
 def export_model_stats_json(
     gam_models, skip_metadata: Dict, duration_metadata: Dict, output_path: Path
 ):
-    """
-    Export model statistics to JSON (replaces Figure S2)
-    """
+    """Export model statistics to JSON"""
     logger.info("Exporting model statistics to JSON...")
 
     stats = {
@@ -418,38 +445,6 @@ def export_model_stats_json(
     logger.info(f"  Saved: {output_path}")
 
 
-def generate_supplementary_figures(
-    ert_predictor,
-    data: pd.DataFrame,
-    gam_models,
-    skip_metadata: Dict,
-    duration_metadata: Dict,
-    output_dir: Path,
-):
-    """Generate supplementary figures - REVISED"""
-    logger.info("\n" + "=" * 60)
-    logger.info("GENERATING SUPPLEMENTARY FIGURES & OUTPUTS")
-    logger.info("=" * 60)
-
-    supp_dir = output_dir / "supplementary"
-    supp_dir.mkdir(exist_ok=True)
-
-    # Figure S1: GAM Smooths (3x3 with confidence bands)
-    create_figure_s1_gam_smooths(
-        ert_predictor, data, gam_models, supp_dir / "figure_s1_gam_smooths.png"
-    )
-
-    # Model statistics as JSON (replaces Figure S2)
-    export_model_stats_json(
-        gam_models,
-        skip_metadata,
-        duration_metadata,
-        supp_dir / "model_statistics.json",
-    )
-
-    logger.info("Supplementary outputs complete!")
-
-
 def generate_all_figures(
     ert_predictor,
     data: pd.DataFrame,
@@ -464,30 +459,41 @@ def generate_all_figures(
 ):
     """
     Generate all figures - REVISED
-    Removed Figure 2 (zipf pathways) and Figure 3 (gap decomposition)
+    Merged supplementary figures into main function
     """
     logger.info("\n" + "=" * 60)
-    logger.info("GENERATING PUBLICATION FIGURES")
+    logger.info("GENERATING ALL FIGURES")
     logger.info("=" * 60)
 
     output_dir.mkdir(exist_ok=True, parents=True)
 
-    # Main Figure: Overall Effects
+    # === MAIN FIGURES ===
+    logger.info("\nMain figures:")
+
+    # Figure 1: Overall Effects
     create_figure_1_overall_effects(
         h1_results, h2_results, output_dir / "figure_1_overall_effects.png"
     )
 
-    logger.info("\nMain figure complete!")
+    # === ADDITIONAL FIGURES (formerly supplementary) ===
+    logger.info("\nAdditional figures:")
 
-    # Supplementary Figures
-    generate_supplementary_figures(
+    # Figure S1: GAM Smooths
+    create_figure_s1_gam_smooths(
         ert_predictor,
         data,
         gam_models,
+        output_dir / "figure_s1_gam_smooths.png",
+    )
+
+    # Model Statistics (JSON)
+    export_model_stats_json(
+        gam_models,
         skip_metadata,
         duration_metadata,
-        output_dir,
+        output_dir / "model_statistics.json",
     )
 
     logger.info("\nAll figures generated successfully!")
     logger.info(f"Figures saved to: {output_dir}")
+    logger.info("  Each figure has accompanying .json data file")

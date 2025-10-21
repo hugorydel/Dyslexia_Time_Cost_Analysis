@@ -1,6 +1,6 @@
 """
 Hypothesis 2: Amplification with Comprehensive Bootstrap
-FULLY REVISED: Fixed SR classification + Restored AMIE bootstrap
+FULLY REVISED: Added p-values for slope ratios
 """
 
 import logging
@@ -19,15 +19,7 @@ def cohens_h(p1: float, p2: float) -> float:
 
 
 def _classify_sr(ci_low: float, ci_high: float, eps: float = 1e-12) -> str:
-    """
-    Classify SR based on 95% CI position relative to 1.0
-
-    Returns:
-        "amplified" if CI > 1.0 (dyslexics more sensitive)
-        "reduced" if CI < 1.0 (dyslexics less sensitive)
-        "ns" if CI includes 1.0 (not significant)
-        "undetermined" if CI is invalid/missing
-    """
+    """Classify SR based on 95% CI position relative to 1.0"""
     if np.isnan(ci_low) or np.isnan(ci_high):
         return "undetermined"
     if ci_low > 1.0 + eps:
@@ -38,15 +30,7 @@ def _classify_sr(ci_low: float, ci_high: float, eps: float = 1e-12) -> str:
 
 
 def _feature_status_from_pathways(ci_dict_for_feature: Dict) -> Tuple[str, str]:
-    """
-    Determine feature status by checking pathways in priority order: ERT > duration > skip
-
-    Args:
-        ci_dict_for_feature: Dict with pathway keys, each containing (ci_low, ci_high) tuple
-
-    Returns:
-        (chosen_pathway, status) tuple
-    """
+    """Determine feature status by checking pathways in priority order: ERT > duration > skip"""
     for pathway in ["ert", "duration", "skip"]:
         if pathway in ci_dict_for_feature:
             ci_low, ci_high = ci_dict_for_feature[pathway]
@@ -63,10 +47,7 @@ def compute_slope_ratio_standard(
     quartiles: Dict,
     pathway: str = "ert",
 ) -> Tuple[float, Dict, Dict]:
-    """
-    Standard SR for length and surprisal
-    SR = |Δ_dys| / |Δ_ctrl|
-    """
+    """Standard SR for length and surprisal"""
     q1 = quartiles[feature]["q1"]
     q3 = quartiles[feature]["q3"]
 
@@ -91,18 +72,16 @@ def compute_slope_ratio_standard(
             "delta_ert": ert_q3[0] - ert_q1[0],
         }
 
-    # Select pathway
     if pathway == "skip":
         delta_ctrl = abs(effects["control"]["delta_p_skip"])
         delta_dys = abs(effects["dyslexic"]["delta_p_skip"])
     elif pathway == "duration":
         delta_ctrl = abs(effects["control"]["delta_trt"])
         delta_dys = abs(effects["dyslexic"]["delta_trt"])
-    else:  # ert
+    else:
         delta_ctrl = abs(effects["control"]["delta_ert"])
         delta_dys = abs(effects["dyslexic"]["delta_ert"])
 
-    # Check for unstable denominators
     if pathway == "skip" and delta_ctrl < 0.01:
         sr = np.nan
     elif pathway == "duration" and delta_ctrl < 5:
@@ -205,14 +184,12 @@ def bootstrap_all_metrics(
 ) -> Tuple[Dict, Dict]:
     """
     COMPREHENSIVE BOOTSTRAP: Resample subjects and recompute ALL metrics
-    FULLY RESTORED: Includes both AMIEs and SRs with proper structure
     """
     logger.info(f"\nRunning comprehensive bootstrap ({n_bootstrap} iterations)...")
 
     subjects = data["subject_id"].unique()
     n_subjects = len(subjects)
 
-    # Proper nested structure - INCLUDING AMIEs
     bootstrap_results = {
         "amie": {
             f: {"control": [], "dyslexic": []} for f in ["length", "zipf", "surprisal"]
@@ -224,7 +201,6 @@ def bootstrap_all_metrics(
         },
     }
 
-    # Suppress per-iteration logging
     for i in tqdm(range(n_bootstrap), desc="Bootstrap", leave=True):
         if (i + 1) % 100 == 0:
             logger.info(f"  Completed {i+1}/{n_bootstrap} bootstrap samples")
@@ -238,7 +214,6 @@ def bootstrap_all_metrics(
         if len(boot_data) < 1000:
             continue
 
-        # Recompute quartiles on bootstrap sample
         boot_quartiles = {
             feat: {
                 "q1": boot_data[feat].quantile(0.25),
@@ -248,10 +223,7 @@ def bootstrap_all_metrics(
             for feat in ["length", "zipf", "surprisal"]
         }
 
-        # === COMPUTE ALL METRICS ===
         for feature in ["length", "zipf", "surprisal"]:
-
-            # 1. AMIEs (for each group separately)
             for group in ["control", "dyslexic"]:
                 try:
                     if feature == "zipf":
@@ -283,7 +255,6 @@ def bootstrap_all_metrics(
                 except Exception:
                     pass
 
-            # 2. Slope Ratios
             for pathway in ["skip", "duration", "ert"]:
                 try:
                     if feature == "zipf":
@@ -307,13 +278,13 @@ def bootstrap_all_metrics(
                 except:
                     pass
 
-    # === COMPUTE CONFIDENCE INTERVALS ===
+    # === COMPUTE CONFIDENCE INTERVALS AND P-VALUES ===
     ci_results = {}
 
     for feature in ["length", "zipf", "surprisal"]:
         ci_results[feature] = {}
 
-        # CIs for AMIEs (both groups)
+        # CIs for AMIEs
         for group in ["control", "dyslexic"]:
             samples = bootstrap_results["amie"][feature][group]
             if len(samples) > 0:
@@ -324,24 +295,32 @@ def bootstrap_all_metrics(
                     "n_samples": len(samples),
                 }
 
-        # CIs for SRs (all pathways)
+        # CIs and p-values for SRs
         for pathway in ["skip", "duration", "ert"]:
             samples = bootstrap_results["slope_ratios"][f"sr_{pathway}"][feature]
             if len(samples) > 0:
+                mean_sr = float(np.mean(samples))
+                ci_low = float(np.percentile(samples, 2.5))
+                ci_high = float(np.percentile(samples, 97.5))
+
+                # P-value: proportion of SR <= 1.0 or SR >= 1.0
+                if mean_sr > 1.0:
+                    p_value = float(np.mean(np.array(samples) <= 1.0))
+                else:
+                    p_value = float(np.mean(np.array(samples) >= 1.0))
+
+                # Two-tailed
+                p_value = min(1.0, 2 * p_value)
+
                 ci_results[feature][pathway] = {
-                    "mean": float(np.mean(samples)),
-                    "ci_low": float(np.percentile(samples, 2.5)),
-                    "ci_high": float(np.percentile(samples, 97.5)),
+                    "mean": mean_sr,
+                    "ci_low": ci_low,
+                    "ci_high": ci_high,
+                    "p_value": p_value,
                     "n_samples": len(samples),
                 }
 
     logger.info("Bootstrap complete!")
-    logger.info(
-        f"  AMIE samples: {sum(len(bootstrap_results['amie'][f][g]) for f in bootstrap_results['amie'] for g in bootstrap_results['amie'][f])}"
-    )
-    logger.info(
-        f"  SR samples: {sum(len(bootstrap_results['slope_ratios'][p][f]) for p in bootstrap_results['slope_ratios'] for f in bootstrap_results['slope_ratios'][p])}"
-    )
 
     return bootstrap_results, ci_results
 
@@ -356,7 +335,7 @@ def test_hypothesis_2(
 ) -> Dict:
     """
     Test Hypothesis 2: Dyslexic Amplification
-    FULLY REVISED: Fixed classification + Restored AMIE bootstrap
+    FULLY REVISED: Added p-values for all slope ratios
     """
     logger.info("=" * 60)
     logger.info("HYPOTHESIS 2: DYSLEXIC AMPLIFICATION")
@@ -388,14 +367,13 @@ def test_hypothesis_2(
 
         results[feature] = feature_results
 
-    # === 2. BOOTSTRAP CONFIDENCE INTERVALS (AMIEs + SRs) ===
+    # === 2. BOOTSTRAP CIs AND P-VALUES ===
     bootstrap_samples, ci_results = bootstrap_all_metrics(
         ert_predictor, data, quartiles, bin_edges, bin_weights, n_bootstrap
     )
 
-    # === 3. MERGE CIs INTO RESULTS ===
+    # === 3. MERGE CIs AND P-VALUES INTO RESULTS ===
     for feature in features:
-        # Add AMIE CIs
         for group in ["control", "dyslexic"]:
             ci_key = f"amie_{group}"
             if ci_key in ci_results.get(feature, {}):
@@ -404,28 +382,26 @@ def test_hypothesis_2(
                 results[feature][f"amie_{group}_ci_low"] = ci_data["ci_low"]
                 results[feature][f"amie_{group}_ci_high"] = ci_data["ci_high"]
 
-        # Add SR CIs
         for pathway in ["skip", "duration", "ert"]:
             if feature in ci_results and pathway in ci_results[feature]:
                 ci_data = ci_results[feature][pathway]
                 results[feature][f"sr_{pathway}_ci_low"] = ci_data["ci_low"]
                 results[feature][f"sr_{pathway}_ci_high"] = ci_data["ci_high"]
                 results[feature][f"sr_{pathway}_mean"] = ci_data["mean"]
+                results[feature][f"sr_{pathway}_p_value"] = ci_data["p_value"]
 
-    # === 4. FIXED DECISION LOGIC ===
+    # === 4. DECISION LOGIC ===
     amplified_features = []
     reduced_features = []
     feature_status = {}
 
     for feature in features:
-        # Pack CIs per pathway for this feature
         packed = {}
         for pathway in ["ert", "duration", "skip"]:
             if feature in ci_results and pathway in ci_results[feature]:
                 ci_data = ci_results[feature][pathway]
                 packed[pathway] = (ci_data["ci_low"], ci_data["ci_high"])
 
-        # Determine status using priority order
         chosen_pathway, feat_status = _feature_status_from_pathways(packed)
 
         feature_status[feature] = {"pathway": chosen_pathway, "status": feat_status}
@@ -437,7 +413,6 @@ def test_hypothesis_2(
 
     n_significant = len(amplified_features) + len(reduced_features)
 
-    # Determine overall status
     if n_significant >= 2:
         status = "CONFIRMED"
     elif n_significant == 1:
@@ -451,9 +426,12 @@ def test_hypothesis_2(
     logger.info(f"  Amplified: {amplified_features}")
     logger.info(f"  Reduced: {reduced_features}")
 
-    # Log feature-specific details
     for feat, fstatus in feature_status.items():
-        logger.info(f"  {feat}: {fstatus['status']} (via {fstatus['pathway']} pathway)")
+        p_val = results[feat].get(f"sr_{fstatus['pathway']}_p_value", np.nan)
+        logger.info(
+            f"  {feat}: {fstatus['status']} (via {fstatus['pathway']} pathway, "
+            f"p={p_val:.5f})"
+        )
 
     logger.info(f"{'='*60}")
 
@@ -466,5 +444,5 @@ def test_hypothesis_2(
         "reduced_features": sorted(reduced_features),
         "bootstrap_samples": bootstrap_samples,
         "confidence_intervals": ci_results,
-        "summary": f"{n_significant}/3 features show significant differential effects (95% CI excludes 1.0)",
+        "summary": f"{n_significant}/3 features show significant differential effects",
     }
