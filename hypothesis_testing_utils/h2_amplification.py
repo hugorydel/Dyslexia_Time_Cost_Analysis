@@ -345,8 +345,8 @@ def bootstrap_all_metrics(
         if (i + 1) % 100 == 0:
             logger.info(f"  Completed {i+1}/{n_bootstrap} bootstrap samples")
 
-        np.random.seed(i)
-        boot_subjects = np.random.choice(subjects, size=n_subjects, replace=True)
+        rng = np.random.RandomState(i)
+        boot_subjects = rng.choice(subjects, size=n_subjects, replace=True)
         boot_data = pd.concat(
             [data[data["subject_id"] == s] for s in boot_subjects], ignore_index=True
         )

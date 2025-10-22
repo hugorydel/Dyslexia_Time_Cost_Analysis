@@ -71,11 +71,9 @@ def bootstrap_gap_component(
     print(f"      Bootstrap (n={n_bootstrap})...", flush=True)
 
     for i in tqdm(range(n_bootstrap), desc="      Bootstrap", leave=False):
-        np.random.seed(i + 3000)
-        boot_ctrl = np.random.choice(
-            ctrl_subjects, size=len(ctrl_subjects), replace=True
-        )
-        boot_dys = np.random.choice(dys_subjects, size=len(dys_subjects), replace=True)
+        rng = np.random.RandomState(3000 + i)
+        boot_ctrl = rng.choice(ctrl_subjects, size=len(ctrl_subjects), replace=True)
+        boot_dys = rng.choice(dys_subjects, size=len(dys_subjects), replace=True)
 
         parts = []
         for j, s in enumerate(boot_ctrl):
@@ -449,13 +447,16 @@ def equal_ease_feature_contributions(
         return predict_gap_on_sample(ert_predictor, S_current)
 
     baseline_gap = v(S)
+    rng = np.random.RandomState(
+        ANALYSIS_SEED + 1
+    )  # Make permutations deterministic without touching global state
 
     # build state from subsets (canonical order inside helper)
     for perm_idx in range(n_permutations):
         if (perm_idx + 1) % 16 == 0:
             logger.info(f"    Permutation {perm_idx + 1}/{n_permutations}")
 
-        order = np.random.permutation(features)
+        order = rng.permutation(features)
 
         applied = set()
         gap_prev = baseline_gap
@@ -649,7 +650,7 @@ def test_hypothesis_3(
     quartiles: Dict[str, Dict[str, float]],
     n_bootstrap: int = 200,
     n_permutations: int = 64,
-    bin_edges: np.ndarray = None,  # <<< NEW: same edges as H1
+    bin_edges: np.ndarray = None,  # <<< same edges as H1
 ) -> Dict:
     """
     Test Hypothesis 3: Gap decomposition - FULLY RULES-COMPLIANT

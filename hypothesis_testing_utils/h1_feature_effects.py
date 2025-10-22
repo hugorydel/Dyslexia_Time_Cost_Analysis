@@ -265,8 +265,8 @@ def permutation_test_amie(
     for i in tqdm(
         range(n_permutations), desc=f"      AMIE {feature[:3]}-{group[:3]}", leave=False
     ):
-        np.random.seed(i + 1000)
-        boot_subjects = np.random.choice(subjects, size=n_subjects, replace=True)
+        rng = np.random.RandomState(1000 + i)
+        boot_subjects = rng.choice(subjects, size=n_subjects, replace=True)
         boot_data = pd.concat(
             [data[data["subject_id"] == s] for s in boot_subjects], ignore_index=True
         )
@@ -395,8 +395,8 @@ def permutation_test_pathway_effect(
         desc=f"      {pathway[:3]} {feature[:3]}-{group[:3]}",
         leave=False,
     ):
-        np.random.seed(i + 2000)
-        boot_sids = np.random.choice(subjects, size=n_subjects, replace=True)
+        rng = np.random.RandomState(2000 + i)
+        boot_sids = rng.choice(subjects, size=n_subjects, replace=True)
         boot_data = pd.concat(
             [data[data["subject_id"] == s] for s in boot_sids], ignore_index=True
         )
