@@ -1,0 +1,46 @@
+{
+  "skip_model": {
+    "control": {
+      "auc_training": 0.6956328010523614,
+      "auc_cv": 0.7003956048970823,
+      "n_obs": 245104,
+      "n_splines": 10,
+      "lambda": 1.0,
+      "edf": 17.63978799752746
+    },
+    "dyslexic": {
+      "auc_training": 0.6830054102385191,
+      "auc_cv": 0.6823356738254155,
+      "n_obs": 77672,
+      "n_splines": 10,
+      "lambda": 1.0,
+      "edf": 14.50457136754734
+    }
+  },
+  "duration_model": {
+    "control": {
+      "r2_training": 0.08862046373572385,
+      "rmse_cv": 0.5208797713794857,
+      "n_obs": 146325,
+      "n_splines": 10,
+      "lambda": 100.0,
+      "edf": 13.801925434392702
+    },
+    "dyslexic": {
+      "r2_training": 0.06594266254786962,
+      "rmse_cv": 0.5766803990231738,
+      "n_obs": 54179,
+      "n_splines": 10,
+      "lambda": 1.0,
+      "edf": 20.388845393090207
+    }
+  },
+  "model_notes": {
+    "family": {
+      "skip": "binomial",
+      "duration": "Gaussian (log)"
+    },
+    "method": "additive_smooths_only",
+    "has_tensor_product": false
+  }
+}

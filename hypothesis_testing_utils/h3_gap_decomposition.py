@@ -436,10 +436,6 @@ def equal_ease_feature_contributions(
     logger.info(f"  Computing feature contributions ({n_permutations} permutations)...")
     print(f"  Feature contributions (Shapley, n={n_permutations})...", flush=True)
 
-    # Extract fixed global thresholds
-    Q1_len = quartiles["length"]["q1"]
-    Q1_surpr = quartiles["surprisal"]["q1"]
-
     if bin_edges is None:
         raise ValueError("bin_edges must be provided for conditional Zipf equal-ease.")
     q3_zipf_by_bin = _zipf_q3_by_length_bin(S, bin_edges)  # policy fixed
@@ -652,6 +648,7 @@ def test_hypothesis_3(
     data: pd.DataFrame,
     quartiles: Dict[str, Dict[str, float]],
     n_bootstrap: int = 200,
+    n_permutations: int = 64,
     bin_edges: np.ndarray = None,  # <<< NEW: same edges as H1
 ) -> Dict:
     """
@@ -673,8 +670,7 @@ def test_hypothesis_3(
 
     # Create THE analysis sample S (single source of truth)
     np.random.seed(ANALYSIS_SEED)
-    sample_size = min(2000, len(data))
-    S = data.sample(sample_size, random_state=ANALYSIS_SEED)
+    S = data.copy()
 
     logger.info(f"\nAnalysis sample S: {len(S):,} observations")
     logger.info(f"Random seed: {ANALYSIS_SEED}")
@@ -710,7 +706,7 @@ def test_hypothesis_3(
         S,
         quartiles,
         equal_ease["gap_shrink_ms"],
-        n_permutations=64,
+        n_permutations=n_permutations,
         bin_edges=bin_edges,
     )
 

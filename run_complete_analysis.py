@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from hypothesis_testing_utils.caching_utils import atomic_joblib_dump, load_or_recompute
+from hypothesis_testing_utils.caching_utils import load_or_recompute
 from hypothesis_testing_utils.data_preparation import prepare_data_pipeline
 from hypothesis_testing_utils.ert_predictor import create_ert_predictor
 from hypothesis_testing_utils.gam_models import fit_gam_models
@@ -80,7 +80,6 @@ class CompleteAnalysisPipeline:
         setup_logging(self.results_dir)
 
         self.figures_dir = self.results_dir / "figures"
-        self.tables_dir = self.results_dir / "tables"
 
         self.quick_mode = quick_mode
         self.cache_dir = self.results_dir / (
@@ -88,7 +87,6 @@ class CompleteAnalysisPipeline:
         )
 
         self.figures_dir.mkdir(exist_ok=True)
-        self.tables_dir.mkdir(exist_ok=True)
         self.cache_dir.mkdir(exist_ok=True)
 
         self.n_bootstrap = n_bootstrap
@@ -191,6 +189,7 @@ class CompleteAnalysisPipeline:
                     prepared_data,
                     quartiles,
                     n_bootstrap=self.n_bootstrap,
+                    n_permutations=self.n_permutations,
                     bin_edges=bin_edges,
                 )
 
@@ -318,8 +317,6 @@ class CompleteAnalysisPipeline:
         logger.info(f"  📁 Results: {self.results_dir}/")
         logger.info(f"  📊 Figures: {self.figures_dir}/")
         logger.info(f"    - All figures include .json data files for reproducibility")
-        logger.info(f"  📋 Tables: {self.tables_dir}/")
-        logger.info(f"    - All tables include p-values (5 decimal places) and 95% CIs")
         logger.info(f"  📄 Summary: {self.results_dir}/RESULTS_SUMMARY.md")
         logger.info(f"  📝 Log: {self.results_dir}/hypothesis_testing_output.log")
 
@@ -334,9 +331,8 @@ class CompleteAnalysisPipeline:
         logger.info("\nNext steps:")
         logger.info("1. Review RESULTS_SUMMARY.md for comprehensive interpretation")
         logger.info("2. Check figures/ for publication-quality plots + JSON data")
-        logger.info("3. Check tables/ for formatted tables with statistics (CSV)")
-        logger.info("4. Use JSON files to regenerate/restyle figures as needed")
-        logger.info("5. Review hypothesis_testing_output.log for detailed output")
+        logger.info("3. Use JSON files to regenerate/restyle figures as needed")
+        logger.info("4. Review hypothesis_testing_output.log for detailed output")
         logger.info("=" * 80 + "\n")
 
 
