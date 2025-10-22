@@ -118,6 +118,17 @@ def bootstrap_gap_component(
     }
 
 
+def _apply_equal_ease_subset(df, subset, quartiles, bin_edges, q3_zipf_by_bin):
+    out = df.copy()
+    if "length" in subset:
+        out["length"] = out["length"].clip(upper=quartiles["length"]["q1"])
+    if "surprisal" in subset:
+        out["surprisal"] = out["surprisal"].clip(upper=quartiles["surprisal"]["q1"])
+    if "zipf" in subset:
+        out["zipf"] = _clamp_zipf_conditional(out, bin_edges, q3_zipf_by_bin)
+    return out
+
+
 def shapley_decomposition(
     ert_predictor, S: pd.DataFrame, G0: float, n_bootstrap: int = 200
 ) -> Dict:
@@ -280,16 +291,58 @@ def shapley_decomposition(
     }
 
 
+# ---------------------- NEW HELPERS (conditional Zipf policy) ----------------------
+
+
+def _assign_length_bin(df: pd.DataFrame, bin_edges: np.ndarray) -> pd.Series:
+    """Return integer length-bin indices for df['length'] using provided bin_edges."""
+    return pd.cut(df["length"], bins=bin_edges, labels=False, include_lowest=True)
+
+
+def _zipf_q3_by_length_bin(S: pd.DataFrame, bin_edges: np.ndarray) -> pd.Series:
+    """
+    Compute per-bin Q3 of zipf on the SINGLE source-of-truth sample S.
+    Returns a Series indexed by bin id (0..n_bins-1).
+    """
+    bins_S = _assign_length_bin(S, bin_edges)
+    tmp = S.copy()
+    tmp["length_bin"] = bins_S
+    return tmp.groupby("length_bin")["zipf"].quantile(0.75)
+
+
+def _clamp_zipf_conditional(
+    df: pd.DataFrame, bin_edges: np.ndarray, q3_by_bin: pd.Series
+) -> pd.Series:
+    """
+    Clamp zipf within length bins: zipf := max(zipf, Q3_bin).
+    Uses fixed thresholds q3_by_bin computed on S.
+    If a row maps to a bin with no Q3 (rare if bootstrapping from S),
+    leave that row unchanged.
+    """
+    bins_df = _assign_length_bin(df, bin_edges)
+    thr = bins_df.map(q3_by_bin)
+    z = df["zipf"].values
+    t = thr.values.astype(float)
+    t = np.where(np.isnan(t), z, t)  # no-op if bin unseen
+    return pd.Series(np.maximum(z, t), index=df.index)
+
+
+# -------------------------------------------------------------------------------
+
+
 def equal_ease_counterfactual(
     ert_predictor,
     S: pd.DataFrame,
     quartiles: Dict,
     G0: float,
     n_bootstrap: int = 200,
+    bin_edges: np.ndarray = None,  # <<< NEW
 ) -> Dict:
     """
     Equal-ease counterfactual using Q1/Q3 clamp policy.
     Uses the SAME sample S and baseline G0.
+
+    Zipf clamp is conditional on length: per-bin Q3 computed once on S.
     """
     logger.info("  Computing equal-ease counterfactual...")
     print("  Equal-ease counterfactual...", flush=True)
@@ -297,7 +350,11 @@ def equal_ease_counterfactual(
     # Extract quartiles
     Q1_len = quartiles["length"]["q1"]
     Q1_surpr = quartiles["surprisal"]["q1"]
-    Q3_zipf = quartiles["zipf"]["q3"]
+
+    # NEW: conditional Zipf thresholds from S
+    if bin_edges is None:
+        raise ValueError("bin_edges must be provided for conditional Zipf equal-ease.")
+    q3_zipf_by_bin = _zipf_q3_by_length_bin(S, bin_edges)
 
     # Baseline gap (should equal G0)
     baseline_gap = predict_gap_on_sample(ert_predictor, S)
@@ -305,11 +362,11 @@ def equal_ease_counterfactual(
     if abs(baseline_gap - G0) > BASELINE_TOLERANCE:
         logger.warning(f"    Baseline gap {baseline_gap:.2f} differs from G0 {G0:.2f}")
 
-    # Apply equal-ease policy: clamp to Q1/Q3 (same for both groups)
+    # Apply equal-ease policy: global Q1 for length & surprisal, per-bin Q3 for Zipf
     S_easy = S.copy()
     S_easy["length"] = S_easy["length"].clip(upper=Q1_len)
     S_easy["surprisal"] = S_easy["surprisal"].clip(upper=Q1_surpr)
-    S_easy["zipf"] = S_easy["zipf"].clip(lower=Q3_zipf)
+    S_easy["zipf"] = _clamp_zipf_conditional(S_easy, bin_edges, q3_zipf_by_bin)  # NEW
 
     # Counterfactual gap
     counterfactual_gap = predict_gap_on_sample(ert_predictor, S_easy)
@@ -322,7 +379,7 @@ def equal_ease_counterfactual(
     logger.info(f"    Counterfactual gap: {counterfactual_gap:.2f} ms")
     logger.info(f"    Gap shrink: {gap_shrink_ms:.2f} ms ({gap_shrink_pct:.1f}%)")
 
-    # Bootstrap
+    # Bootstrap (policy thresholds fixed from S)
     def compute_gap_shrink(boot_data):
         baseline_gap_b = predict_gap_on_sample(ert_predictor, boot_data)
         if np.isnan(baseline_gap_b):
@@ -331,7 +388,9 @@ def equal_ease_counterfactual(
         boot_easy = boot_data.copy()
         boot_easy["length"] = boot_easy["length"].clip(upper=Q1_len)
         boot_easy["surprisal"] = boot_easy["surprisal"].clip(upper=Q1_surpr)
-        boot_easy["zipf"] = boot_easy["zipf"].clip(lower=Q3_zipf)
+        boot_easy["zipf"] = _clamp_zipf_conditional(
+            boot_easy, bin_edges, q3_zipf_by_bin
+        )
 
         cf_gap_b = predict_gap_on_sample(ert_predictor, boot_easy)
         if np.isnan(cf_gap_b):
@@ -366,18 +425,24 @@ def equal_ease_feature_contributions(
     quartiles: Dict,
     gap_shrink_ms: float,
     n_permutations: int = 64,
+    bin_edges: np.ndarray = None,  # <<< NEW
 ) -> Dict:
     """
     Feature Shapley decomposition of equal-ease gap reduction.
     Uses SAME sample S and SAME policy. Contributions MUST sum to gap_shrink_ms.
+
+    Zipf clamp is conditional on length using per-bin Q3 from S.
     """
     logger.info(f"  Computing feature contributions ({n_permutations} permutations)...")
     print(f"  Feature contributions (Shapley, n={n_permutations})...", flush=True)
 
-    # Extract quartiles
+    # Extract fixed global thresholds
     Q1_len = quartiles["length"]["q1"]
     Q1_surpr = quartiles["surprisal"]["q1"]
-    Q3_zipf = quartiles["zipf"]["q3"]
+
+    if bin_edges is None:
+        raise ValueError("bin_edges must be provided for conditional Zipf equal-ease.")
+    q3_zipf_by_bin = _zipf_q3_by_length_bin(S, bin_edges)  # policy fixed
 
     features = ["length", "zipf", "surprisal"]
     contributions = {f: [] for f in features}
@@ -389,26 +454,26 @@ def equal_ease_feature_contributions(
 
     baseline_gap = v(S)
 
+    # build state from subsets (canonical order inside helper)
     for perm_idx in range(n_permutations):
         if (perm_idx + 1) % 16 == 0:
             logger.info(f"    Permutation {perm_idx + 1}/{n_permutations}")
 
         order = np.random.permutation(features)
 
-        S_current = S.copy()
+        applied = set()
         gap_prev = baseline_gap
 
         if np.isnan(gap_prev):
             continue
 
         for feat in order:
-            # Apply clamp for this feature
-            if feat == "length":
-                S_current["length"] = S_current["length"].clip(upper=Q1_len)
-            elif feat == "surprisal":
-                S_current["surprisal"] = S_current["surprisal"].clip(upper=Q1_surpr)
-            elif feat == "zipf":
-                S_current["zipf"] = S_current["zipf"].clip(lower=Q3_zipf)
+            applied.add(feat)
+            # Rebuild S_current from ORIGINAL S using the current subset,
+            # so zipf always uses bins after any length clamp (order-invariant).
+            S_current = _apply_equal_ease_subset(
+                S, applied, quartiles, bin_edges, q3_zipf_by_bin
+            )
 
             gap_new = v(S_current)
 
@@ -499,15 +564,16 @@ def per_feature_equalization(
     quartiles: Dict,
     G0: float,
     n_bootstrap: int = 200,
+    bin_edges: np.ndarray = None,  # <<< NEW
 ) -> Dict:
     """
     Per-feature equalization: apply clamp to BOTH groups identically.
-    Report delta_gap in ms and as % of G0.
+    Zipf equalization is conditional on length (per-bin Q3 from S).
     """
     logger.info(f"  Computing per-feature equalization for {feature}...")
     print(f"  Per-feature equalization: {feature}...", flush=True)
 
-    # Extract quartile for this feature
+    # Extract quartile for this feature / define clamp
     if feature == "length":
         Q1 = quartiles["length"]["q1"]
         clamp_fn = lambda df: df["length"].clip(upper=Q1)
@@ -515,8 +581,12 @@ def per_feature_equalization(
         Q1 = quartiles["surprisal"]["q1"]
         clamp_fn = lambda df: df["surprisal"].clip(upper=Q1)
     elif feature == "zipf":
-        Q3 = quartiles["zipf"]["q3"]
-        clamp_fn = lambda df: df["zipf"].clip(lower=Q3)
+        if bin_edges is None:
+            raise ValueError(
+                "bin_edges must be provided for conditional Zipf equal-ease."
+            )
+        q3_zipf_by_bin = _zipf_q3_by_length_bin(S, bin_edges)  # fixed from S
+        clamp_fn = lambda df: _clamp_zipf_conditional(df, bin_edges, q3_zipf_by_bin)
     else:
         raise ValueError(f"Unknown feature: {feature}")
 
@@ -543,7 +613,7 @@ def per_feature_equalization(
         f"    Gap explained: {gap_explained_ms:.2f} ms ({pct_of_G0:.1f}% of G0)"
     )
 
-    # Bootstrap
+    # Bootstrap (policy fixed from S)
     def compute_gap_explained_feat(boot_data):
         baseline_gap_b = predict_gap_on_sample(ert_predictor, boot_data)
         if np.isnan(baseline_gap_b):
@@ -582,6 +652,7 @@ def test_hypothesis_3(
     data: pd.DataFrame,
     quartiles: Dict[str, Dict[str, float]],
     n_bootstrap: int = 200,
+    bin_edges: np.ndarray = None,  # <<< NEW: same edges as H1
 ) -> Dict:
     """
     Test Hypothesis 3: Gap decomposition - FULLY RULES-COMPLIANT
@@ -594,6 +665,11 @@ def test_hypothesis_3(
     logger.info("=" * 60)
     logger.info(f"Using {n_bootstrap} bootstrap iterations")
     print(f"\n=== H3: Gap Decomposition (n_bootstrap={n_bootstrap}) ===\n", flush=True)
+
+    if bin_edges is None:
+        raise ValueError(
+            "H3 requires bin_edges for conditional Zipf equal-ease (match H1)."
+        )
 
     # Create THE analysis sample S (single source of truth)
     np.random.seed(ANALYSIS_SEED)
@@ -624,17 +700,24 @@ def test_hypothesis_3(
     # Run all analyses on SAME S with SAME G0
     shapley = shapley_decomposition(ert_predictor, S, G0, n_bootstrap)
 
-    equal_ease = equal_ease_counterfactual(ert_predictor, S, quartiles, G0, n_bootstrap)
+    equal_ease = equal_ease_counterfactual(
+        ert_predictor, S, quartiles, G0, n_bootstrap, bin_edges=bin_edges
+    )
 
     # Pass gap_shrink to feature contributions so they sum correctly
     feature_contributions = equal_ease_feature_contributions(
-        ert_predictor, S, quartiles, equal_ease["gap_shrink_ms"], n_permutations=64
+        ert_predictor,
+        S,
+        quartiles,
+        equal_ease["gap_shrink_ms"],
+        n_permutations=64,
+        bin_edges=bin_edges,
     )
 
     per_feature = {}
     for feature in ["length", "zipf", "surprisal"]:
         per_feature[feature] = per_feature_equalization(
-            ert_predictor, S, feature, quartiles, G0, n_bootstrap
+            ert_predictor, S, feature, quartiles, G0, n_bootstrap, bin_edges=bin_edges
         )
 
     # Decision logic

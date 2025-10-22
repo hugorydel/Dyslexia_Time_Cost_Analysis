@@ -25,7 +25,6 @@ from hypothesis_testing_utils.gam_models import fit_gam_models
 from hypothesis_testing_utils.h1_feature_effects import test_hypothesis_1
 from hypothesis_testing_utils.h2_amplification import test_hypothesis_2
 from hypothesis_testing_utils.h3_gap_decomposition import test_hypothesis_3
-from hypothesis_testing_utils.table_generator import generate_all_tables
 from hypothesis_testing_utils.visualization_utils import generate_all_figures
 from hypothesis_testing_utils.zipf_diagnostic import run_zipf_diagnostic
 
@@ -192,6 +191,7 @@ class CompleteAnalysisPipeline:
                     prepared_data,
                     quartiles,
                     n_bootstrap=self.n_bootstrap,
+                    bin_edges=bin_edges,
                 )
 
             h3_results = load_or_recompute(h3_cache, compute_h3, reuse=self.use_cache)
@@ -202,19 +202,7 @@ class CompleteAnalysisPipeline:
                 "   All statistics include p-values (5 decimal places) and 95% CIs"
             )
 
-            # ===== PHASE 4: TABLE GENERATION =====
-            generate_all_tables(
-                h1_results=h1_results,
-                h2_results=h2_results,
-                h3_results=h3_results,
-                skip_metadata=skip_meta,
-                duration_metadata=duration_meta,
-                output_dir=self.tables_dir,
-            )
-
-            logger.info("✅ Phase 4 complete")
-
-            # ===== PHASE 5: FIGURE GENERATION =====
+            # ===== PHASE 4: FIGURE GENERATION =====
             generate_all_figures(
                 ert_predictor=ert_predictor,
                 data=prepared_data,
@@ -228,10 +216,10 @@ class CompleteAnalysisPipeline:
                 output_dir=self.figures_dir,
             )
 
-            logger.info("✅ Phase 5 complete")
+            logger.info("✅ Phase 4 complete")
             logger.info("   All figures have accompanying .json data files")
 
-            # ===== PHASE 6: FINAL REPORT =====
+            # ===== PHASE 5: FINAL REPORT =====
             n_significant = h2_results.get("n_significant", 0)
 
             final_results = {
@@ -264,7 +252,7 @@ class CompleteAnalysisPipeline:
 
             self._save_json(final_results, "final_report.json")
 
-            logger.info("✅ Phase 6 complete")
+            logger.info("✅ Phase 5 complete")
 
             # ===== COMPLETION =====
             self._print_completion_summary(final_results)
