@@ -10,3 +10,4 @@ input_data/preprocessed_data.csv
 input_data/preprocessed_data.txt
 *.py[cod]
 /results_quick/
+/results_fullS_copy/

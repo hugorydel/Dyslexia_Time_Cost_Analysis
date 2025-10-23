@@ -59,7 +59,7 @@ def bootstrap_gap_component(
     observed_value: float,
     data: pd.DataFrame,
     computation_fn,
-    n_bootstrap: int = 200,
+    n_bootstrap: int = 1000,
     **kwargs,
 ) -> Dict:
     """Bootstrap with subject resampling (stratified by group)"""
@@ -422,8 +422,8 @@ def equal_ease_feature_contributions(
     S: pd.DataFrame,
     quartiles: Dict,
     gap_shrink_ms: float,
-    n_permutations: int = 64,
-    bin_edges: np.ndarray = None,  # <<< NEW
+    n_permutations: int = 200,
+    bin_edges: np.ndarray = None,
 ) -> Dict:
     """
     Feature Shapley decomposition of equal-ease gap reduction.
@@ -453,7 +453,7 @@ def equal_ease_feature_contributions(
 
     # build state from subsets (canonical order inside helper)
     for perm_idx in range(n_permutations):
-        if (perm_idx + 1) % 16 == 0:
+        if (perm_idx + 1) % 10 == 0:
             logger.info(f"    Permutation {perm_idx + 1}/{n_permutations}")
 
         order = rng.permutation(features)

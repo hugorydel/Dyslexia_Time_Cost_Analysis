@@ -1,5 +1,5 @@
 """
-Visualization Utilities - FULLY REVISED
+Visualization Utilities
 Key changes:
 1. JSON exports for all figure data
 2. Merged supplementary figures into main function
@@ -64,20 +64,50 @@ def create_figure_1_overall_effects(
     x = np.arange(len(features))
     width = 0.35
 
-    ctrl_amies = []
-    dys_amies = []
+    ctrl_amies, dys_amies = [], []
+    ctrl_err_lo, ctrl_err_hi, dys_err_lo, dys_err_hi = [], [], [], []
 
     for feat in features:
-        feat_data = h1_results["features"][feat]
-        ctrl_amie = feat_data["amie_control"].get("amie_ms", 0)
-        dys_amie = feat_data["amie_dyslexic"].get("amie_ms", 0)
-        ctrl_amies.append(ctrl_amie)
-        dys_amies.append(dys_amie)
+        fd = h1_results["features"][feat]
+        c = fd["amie_control"]
+        d = fd["amie_dyslexic"]
+
+        ctrl_amies.append(c.get("amie_ms", np.nan))
+        dys_amies.append(d.get("amie_ms", np.nan))
+
+        # asymmetric yerr around the point estimate
+        ctrl_err_lo.append(max(0.0, c["amie_ms"] - c["ci_low"]))
+        ctrl_err_hi.append(max(0.0, c["ci_high"] - c["amie_ms"]))
+        dys_err_lo.append(max(0.0, d["amie_ms"] - d["ci_low"]))
+        dys_err_hi.append(max(0.0, d["ci_high"] - d["amie_ms"]))
+
+    ctrl_yerr = np.vstack([ctrl_err_lo, ctrl_err_hi])
+    dys_yerr = np.vstack([dys_err_lo, dys_err_hi])
 
     ax1.bar(
-        x - width / 2, ctrl_amies, width, label="Control", color="steelblue", alpha=0.8
+        x - width / 2,
+        ctrl_amies,
+        width,
+        label="Control",
+        color="steelblue",
+        alpha=0.85,
+        yerr=ctrl_yerr,
+        capsize=4,
+        ecolor="black",
+        error_kw=dict(linewidth=1),
     )
-    ax1.bar(x + width / 2, dys_amies, width, label="Dyslexic", color="coral", alpha=0.8)
+    ax1.bar(
+        x + width / 2,
+        dys_amies,
+        width,
+        label="Dyslexic",
+        color="coral",
+        alpha=0.85,
+        yerr=dys_yerr,
+        capsize=4,
+        ecolor="black",
+        error_kw=dict(linewidth=1),
+    )
 
     ax1.set_xlabel("Feature")
     ax1.set_ylabel("Delta ERT (ms, Q1->Q3)")
@@ -226,13 +256,11 @@ def create_figure_s1_gam_smooths(
 
             try:
                 ci = model.confidence_intervals(X_grid, width=0.95)
-                ci_low = 1 / (1 + np.exp(-ci[:, 0]))
-                ci_high = 1 / (1 + np.exp(-ci[:, 1]))
+                ci_low, ci_high = ci[:, 0], ci[:, 1]
 
-                # Ensure proper ordering (low < high) after transformation
-                ci_low, ci_high = np.minimum(ci_low, ci_high), np.maximum(
-                    ci_low, ci_high
-                )
+                # Clip confidence intervals to fit within bounds.
+                ci_low = np.clip(ci_low, 0.0, 1.0)
+                ci_high = np.clip(ci_high, 0.0, 1.0)
 
                 ax.plot(
                     feat_range,
@@ -300,6 +328,10 @@ def create_figure_s1_gam_smooths(
                 ci_low = np.exp(ci[:, 0]) * gam_models.smearing_factors[group]
                 ci_high = np.exp(ci[:, 1]) * gam_models.smearing_factors[group]
 
+                # Clip confidence intervals to fit within bounds.
+                ci_low = np.clip(ci_low, 0.0, 1.0)
+                ci_high = np.clip(ci_high, 0.0, 1.0)
+
                 ax.plot(
                     feat_range,
                     trt,
@@ -364,11 +396,8 @@ def create_figure_s1_gam_smooths(
                 X_grid = grid[["length", "zipf", "surprisal"]].values
                 p_skip = skip_model.predict_proba(X_grid)
                 skip_ci = skip_model.confidence_intervals(X_grid, width=0.95)
-                p_skip_low = 1 / (1 + np.exp(-skip_ci[:, 0]))
-                p_skip_high = 1 / (1 + np.exp(-skip_ci[:, 1]))
-                p_skip_low, p_skip_high = np.minimum(
-                    p_skip_low, p_skip_high
-                ), np.maximum(p_skip_low, p_skip_high)
+                p_skip_low = np.clip(skip_ci[:, 0], 0.0, 1.0)
+                p_skip_high = np.clip(skip_ci[:, 1], 0.0, 1.0)
 
                 # Get duration and CI
                 dur_model = gam_models.duration_model[group]

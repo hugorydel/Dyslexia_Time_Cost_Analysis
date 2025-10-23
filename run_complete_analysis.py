@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 """
-COMPLETE Analysis Pipeline - FULLY REVISED
-Key changes:
-1. Added comprehensive statistics with p-values (5 decimal places)
-2. JSON exports for all figures
-3. Removed supplementary directory structure
-4. Enhanced logging for statistical outputs
+COMPLETE Hypothesis Analysis Pipeline
 """
 
 import argparse
@@ -64,13 +59,13 @@ logger = logging.getLogger(__name__)
 
 
 class CompleteAnalysisPipeline:
-    """Complete end-to-end analysis pipeline - FULLY REVISED"""
+    """Complete end-to-end analysis pipeline"""
 
     def __init__(
         self,
         results_dir: str = "results_final",
-        n_bootstrap: int = 1000,
-        n_permutations: int = 200,  # New parameter for H1 and H3
+        n_bootstrap: int = 2000,
+        n_permutations: int = 500,
         use_cache: bool = True,
         quick_mode: bool = False,
     ):
@@ -90,15 +85,15 @@ class CompleteAnalysisPipeline:
         self.cache_dir.mkdir(exist_ok=True)
 
         self.n_bootstrap = n_bootstrap
-        self.n_permutations = n_permutations  # Store permutations parameter
+        self.n_permutations = n_permutations
         self.use_cache = use_cache
 
         logger.info("=" * 80)
         logger.info("COMPLETE DYSLEXIA GAM ANALYSIS PIPELINE - FULLY REVISED")
         logger.info("=" * 80)
         logger.info(f"Results directory: {self.results_dir}")
-        logger.info(f"Bootstrap iterations (H2): {n_bootstrap}")
-        logger.info(f"Permutation iterations (H1, H3): {n_permutations}")
+        logger.info(f"Bootstrap iterations (H1, H2): {n_bootstrap}")
+        logger.info(f"Permutation iterations (H3): {n_permutations}")
         logger.info(f"Cache directory: {self.cache_dir}")
         logger.info(f"Quick mode: {quick_mode}")
         logger.info(f"Result caching: {'ENABLED' if use_cache else 'DISABLED'}")
@@ -142,14 +137,12 @@ class CompleteAnalysisPipeline:
             logger.info("=" * 80)
             print("\n" + "=" * 80, flush=True)
             print("PHASE 3: HYPOTHESIS TESTING", flush=True)
-            print(f"  Bootstrap (H2): {self.n_bootstrap} iterations", flush=True)
-            print(
-                f"  Permutations (H1, H3): {self.n_permutations} iterations", flush=True
-            )
+            print(f"  Bootstrap (H1, H2): {self.n_bootstrap} iterations", flush=True)
+            print(f"  Permutations (H3): {self.n_permutations} iterations", flush=True)
             print("=" * 80 + "\n", flush=True)
 
             # H1: Feature Effects (with p-values and CIs)
-            h1_cache = self.cache_dir / f"h1_results_n{self.n_permutations}.pkl"
+            h1_cache = self.cache_dir / f"h1_results_n{self.n_bootstrap}.pkl"
 
             def compute_h1():
                 return test_hypothesis_1(
@@ -158,7 +151,7 @@ class CompleteAnalysisPipeline:
                     quartiles,
                     bin_edges,
                     bin_weights,
-                    n_permutations=self.n_permutations,
+                    n_bootstrap=self.n_bootstrap,
                 )
 
             h1_results = load_or_recompute(h1_cache, compute_h1, reuse=self.use_cache)
@@ -366,14 +359,14 @@ def main():
     parser.add_argument(
         "--n-bootstrap",
         type=int,
-        default=1000,
-        help="Number of bootstrap iterations for H2 and H3 (default: 1000)",
+        default=2000,
+        help="Number of bootstrap iterations for H2 and H3 (default: 2000)",
     )
     parser.add_argument(
         "--n-permutations",
         type=int,
         default=200,
-        help="Number of permutations for H1 p-values (default: 200)",
+        help="Number of permutations for H3 p-values (default: 500)",
     )
     parser.add_argument(
         "--quick",
