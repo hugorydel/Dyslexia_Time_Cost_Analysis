@@ -1,0 +1,37 @@
+{
+  "skip_model": {
+    "family": "binomial",
+    "n_obs_control": 245104,
+    "n_obs_dyslexic": 77672,
+    "auc_control": 0.6955484306540212,
+    "auc_dyslexic": 0.6825260435362128,
+    "cv_auc_control": 0.7003008036840372,
+    "cv_auc_dyslexic": 0.6820128864201693,
+    "n_splines_control": 8,
+    "n_splines_dyslexic": 8,
+    "lambda_control": 1.0,
+    "lambda_dyslexic": 1.0,
+    "edf_control": 15.739410822188358,
+    "edf_dyslexic": 11.868171180732421,
+    "has_tensor_product": false,
+    "method": "additive_smooths_only"
+  },
+  "duration_model": {
+    "family": "Gaussian (log)",
+    "n_obs_control": 146325,
+    "n_obs_dyslexic": 54179,
+    "r2_control": 0.0886250656906683,
+    "r2_dyslexic": 0.06562086055181182,
+    "cv_rmse_control": 0.5208762926285797,
+    "cv_rmse_dyslexic": 0.5767103692011593,
+    "n_splines_control": 8,
+    "n_splines_dyslexic": 8,
+    "lambda_control": 10.0,
+    "lambda_dyslexic": 1.0,
+    "edf_control": 14.136240062605214,
+    "edf_dyslexic": 15.000101423317625,
+    "has_tensor_product": false,
+    "uses_smearing_factor": true,
+    "method": "additive_smooths_only"
+  }
+}

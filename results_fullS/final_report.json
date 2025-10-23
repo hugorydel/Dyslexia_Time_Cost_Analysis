@@ -2,9 +2,9 @@
   "metadata": {
     "n_total": 322776,
     "n_bins": 6,
-    "n_bootstrap": 100,
+    "n_bootstrap": 1000,
     "data_note": "Using RAW zipf with conditional evaluation within length bins",
-    "used_cache": true,
+    "used_cache": false,
     "model_cache": "disabled"
   },
   "hypotheses": {

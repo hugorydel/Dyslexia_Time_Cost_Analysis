@@ -1,0 +1,84 @@
+{
+  "panel_a_bar_chart": {
+    "features": [
+      "Length",
+      "Zipf Frequency",
+      "Surprisal"
+    ],
+    "control_amies": [
+      97.94284439714522,
+      -17.22697402483508,
+      11.122651627517428
+    ],
+    "dyslexic_amies": [
+      106.04063145874309,
+      -25.6937408498579,
+      25.816972452659456
+    ]
+  },
+  "panel_b_forest_plot": [
+    {
+      "feature": "length",
+      "pathway": "skip",
+      "sr": 0.7546943715064873,
+      "ci_low": 0.7546132028422327,
+      "ci_high": 0.7547696762591376
+    },
+    {
+      "feature": "length",
+      "pathway": "duration",
+      "sr": 1.1556034682048701,
+      "ci_low": 1.1553798768867851,
+      "ci_high": 1.1558287180065554
+    },
+    {
+      "feature": "length",
+      "pathway": "ert",
+      "sr": 1.08267870012803,
+      "ci_low": 1.0824947242287617,
+      "ci_high": 1.0828549496968272
+    },
+    {
+      "feature": "zipf",
+      "pathway": "skip",
+      "sr": 0.800365087976888,
+      "ci_low": 0.7856395727340538,
+      "ci_high": 0.8357017080470525
+    },
+    {
+      "feature": "zipf",
+      "pathway": "duration",
+      "sr": 1.0677407674061985,
+      "ci_low": 0.987744785634495,
+      "ci_high": 1.1265414016292246
+    },
+    {
+      "feature": "zipf",
+      "pathway": "ert",
+      "sr": 1.335781516392099,
+      "ci_low": 1.2901996130107927,
+      "ci_high": 1.3995601352462494
+    },
+    {
+      "feature": "surprisal",
+      "pathway": "skip",
+      "sr": 1.0434792871702674,
+      "ci_low": 1.0253758206746704,
+      "ci_high": 1.0604908974057976
+    },
+    {
+      "feature": "surprisal",
+      "pathway": "duration",
+      "sr": 2.4992892388682573,
+      "ci_low": 2.4805229262180224,
+      "ci_high": 2.5203245632721445
+    },
+    {
+      "feature": "surprisal",
+      "pathway": "ert",
+      "sr": 2.321116701056095,
+      "ci_low": 2.3156164243738044,
+      "ci_high": 2.3262299612897364
+    }
+  ]
+}
