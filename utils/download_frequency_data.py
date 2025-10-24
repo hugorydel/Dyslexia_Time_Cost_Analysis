@@ -39,7 +39,9 @@ DANISH_CORPORA = {
 }
 
 OUTPUT_DIR = (
-    Path(__file__).resolve().parent.parent / "input_data" / "danish_frequencies"
+    Path(__file__).resolve().parent.parent
+    / "preprocessing_output"
+    / "danish_frequencies"
 )
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 

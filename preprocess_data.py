@@ -45,6 +45,7 @@ from preprocessing_utils.skipping_calculation import (
 from preprocessing_utils.statistics_calculation import (
     calculate_basic_statistics,
     calculate_group_summary_stats,
+    calculate_participant_statistics,
 )
 
 # Set up logging
@@ -65,7 +66,9 @@ class DyslexiaTimeAnalysisPipeline:
 
         # Create output directory
         OUTPUT_DIR = (
-            Path(__file__).resolve().parent / "input_data" / "preprocessing_summary"
+            Path(__file__).resolve().parent
+            / "preprocessing_output"
+            / "preprocessing_summary"
         )
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         self.results_dir = OUTPUT_DIR
@@ -384,6 +387,12 @@ class DyslexiaTimeAnalysisPipeline:
         # Analyze linguistic features
         linguistic_analysis = self.analyze_linguistic_features(data)
         summary["linguistic_features"] = linguistic_analysis
+
+        # Comprehensive participant statistics JSON alongside existing outputs
+        participant_stats_json = calculate_participant_statistics(data)
+        save_json_results(
+            participant_stats_json, self.results_dir / "participant_statistics.json"
+        )
 
         # Save results
         save_json_results(summary, self.results_dir / "exploratory_summary.json")

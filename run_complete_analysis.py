@@ -328,7 +328,7 @@ def main():
     parser.add_argument(
         "--data-path",
         type=str,
-        default="input_data/preprocessed_data.csv",
+        default="preprocessing_output/preprocessed_data.csv",
         help="Path to preprocessed data CSV",
     )
     parser.add_argument(

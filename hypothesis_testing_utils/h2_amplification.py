@@ -32,6 +32,15 @@ def _classify_sr(ci_low: float, ci_high: float, eps: float = 1e-12) -> str:
     return "ns"
 
 
+def _ensure_length_bins(df: pd.DataFrame, bin_edges: np.ndarray) -> pd.DataFrame:
+    if "length_bin" not in df.columns:
+        df = df.copy()
+        df["length_bin"] = pd.cut(
+            df["length"], bins=bin_edges, labels=False, include_lowest=True
+        )
+    return df
+
+
 def _feature_status_from_pathways(ci_dict_for_feature: Dict) -> Tuple[str, str]:
     """Determine feature status by checking pathways in priority order: ERT > duration > skip"""
     for pathway in ["ert", "duration", "skip"]:
@@ -139,7 +148,6 @@ def compute_slope_ratio_standard(
 def compute_slope_ratio_conditional_zipf(
     ert_predictor,
     data: pd.DataFrame,
-    quartiles: Dict,
     bin_edges: np.ndarray,
     bin_weights: pd.Series,
     pathway: str = "ert",
@@ -153,6 +161,9 @@ def compute_slope_ratio_conditional_zipf(
     cohens_d_duration_dys = []
     cohens_d_ert_ctrl = []
     cohens_d_ert_dys = []
+
+    # Ensure length bins exist
+    data = _ensure_length_bins(data, bin_edges)
 
     n_bins = len(bin_weights)
 
@@ -349,6 +360,9 @@ def compute_sr_conditional_zipf_all_pathways(
     Single pass across bins: compute SR_skip, SR_duration, SR_ert for zipf together.
     Weighted average over bins using bin_weights.
     """
+    # Ensure length bins exist
+    data = _ensure_length_bins(data, bin_edges)
+
     n_bins = len(bin_weights)
     sr_bins = {"skip": [], "duration": [], "ert": []}
     used_idx = {"skip": [], "duration": [], "ert": []}
@@ -451,6 +465,9 @@ def bootstrap_all_metrics(
             parts.append(subject_frames[s].assign(subject_id=f"{s}__boot{j}"))
         boot_data = pd.concat(parts, ignore_index=True)
 
+        # Ensure length bins exist
+        boot_data = _ensure_length_bins(boot_data, bin_edges)
+
         if len(boot_data) < 1000:
             continue
 
@@ -550,7 +567,7 @@ def bootstrap_all_metrics(
 
     logger.info("Bootstrap complete!")
 
-    return bootstrap_results, ci_results
+    return ci_results
 
 
 def test_hypothesis_2(
@@ -583,7 +600,7 @@ def test_hypothesis_2(
         for pathway in ["skip", "duration", "ert"]:
             if feature == "zipf":
                 sr, ctrl_effects, dys_effects = compute_slope_ratio_conditional_zipf(
-                    ert_predictor, data, quartiles, bin_edges, bin_weights, pathway
+                    ert_predictor, data, bin_edges, bin_weights, pathway
                 )
             else:
                 sr, ctrl_effects, dys_effects = compute_slope_ratio_standard(
@@ -619,7 +636,7 @@ def test_hypothesis_2(
         results[feature] = feature_results
 
     # === 2. BOOTSTRAP CIs AND P-VALUES (optimized) ===
-    bootstrap_samples, ci_results = bootstrap_all_metrics(
+    ci_results = bootstrap_all_metrics(
         ert_predictor, data, bin_edges, bin_weights, n_bootstrap
     )
 
@@ -693,7 +710,6 @@ def test_hypothesis_2(
         "n_significant": n_significant,
         "amplified_features": sorted(amplified_features),
         "reduced_features": sorted(reduced_features),
-        "bootstrap_samples": bootstrap_samples,
         "confidence_intervals": ci_results,
         "summary": f"{n_significant}/3 features show significant differential effects",
     }
