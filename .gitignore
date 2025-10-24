@@ -4,10 +4,10 @@
 .vscode/
 cache/
 *.log
-input_data/danish_frequencies/danish_leipzig_for_analysis.txt
-input_data/danish_frequencies/danish_leipzig_processed.csv
-input_data/preprocessed_data.csv
-input_data/preprocessed_data.txt
+preprocessing_output/danish_frequencies/danish_leipzig_for_analysis.txt
+preprocessing_output/danish_frequencies/danish_leipzig_processed.csv
+preprocessing_output/preprocessed_data.csv
+preprocessing_output/preprocessed_data.txt
 *.py[cod]
 /results_quick/
 /results_fullS_copy/

@@ -310,8 +310,8 @@ def create_figure_1_overall_effects(
 def create_figure_2_gam_smooths(
     ert_predictor, data: pd.DataFrame, gam_models, output_path: Path
 ):
-    """Figure S1: GAM Smooth Effects (3x3) with JSON export (APA-7 compliant styling)"""
-    logger.info("Creating Figure S1: GAM Smooth Effects (3x3, APA-7)...")
+    """Figure 2: GAM Smooth Effects (3x3) with JSON export (APA-7 compliant styling)"""
+    logger.info("Creating Figure 2: GAM Smooth Effects (3x3, APA-7)...")
 
     fig, axes = plt.subplots(3, 3, figsize=(15, 13))
 
@@ -596,6 +596,261 @@ def create_figure_2_gam_smooths(
     logger.info(f"  Saved data: {json_path}")
 
 
+def create_figure_3_gap_decomposition(h3_results: Dict, output_path: Path):
+    """
+    Figure 3 (APA-7): Dyslexic–Control ERT gap decomposition (ms/word), 3 panels:
+      A) Observed vs equal-ease gap (95% CI)
+      B) Shapley gap contributions: Skip vs Duration (95% CI)
+      C) Equal-ease feature contributions: Length, Zipf, Surprisal (95% CI)
+
+    Exports a single PNG and a .json sidecar of the plotted values.
+    """
+    logger.info("Creating Figure 3 (APA-7): Gap Decomposition")
+
+    # ---------- APA-7 visual defaults ----------
+    import matplotlib as mpl
+
+    mpl.rcParams.update(
+        {
+            "font.family": "DejaVu Sans",
+            "axes.linewidth": 0.8,
+            "axes.labelsize": 10,
+            "xtick.labelsize": 9,
+            "ytick.labelsize": 9,
+            "figure.dpi": 300,
+            "savefig.dpi": 300,
+            "xtick.direction": "out",
+            "ytick.direction": "out",
+        }
+    )
+
+    # neutral grayscale palette
+    GRAY_LIGHT = (0.85, 0.85, 0.85)
+    GRAY_MED = (0.65, 0.65, 0.65)
+    GRAY_DARK = (0.40, 0.40, 0.40)
+    EDGE_COLOR = "black"
+
+    def _apa_axes(ax):
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.grid(False)
+        ax.tick_params(axis="both", which="both", length=3, width=0.8)
+        ax.tick_params(top=False, right=False)
+        ax.set_ylim(bottom=0)  # zero-baseline
+        return ax
+
+    def _safe_center_yerr(mean_val, ci_low, ci_high):
+        # guard odd CI ordering or missing CI
+        if np.isfinite(ci_low) and np.isfinite(ci_high):
+            lo, hi = (ci_low, ci_high) if ci_low <= ci_high else (ci_high, ci_low)
+            c = 0.5 * (lo + hi)
+            return c, (max(0.0, c - lo), max(0.0, hi - c))
+        return mean_val, (0.0, 0.0)
+
+    # ---------- Pull stats from H3 outputs ----------
+    g0_stats = h3_results.get("canonical_gap_stats", {})
+    g0_mean = float(g0_stats.get("mean", h3_results.get("canonical_gap_G0", np.nan)))
+    g0_ci_low = float(g0_stats.get("ci_low", np.nan))
+    g0_ci_high = float(g0_stats.get("ci_high", np.nan))
+
+    ee = h3_results.get("equal_ease_counterfactual", {})
+    cf_stats = ee.get("counterfactual_gap_stats", {})
+    cf_mean = float(cf_stats.get("mean", ee.get("counterfactual_gap", np.nan)))
+    cf_ci_low = float(cf_stats.get("ci_low", np.nan))
+    cf_ci_high = float(cf_stats.get("ci_high", np.nan))
+
+    sh = h3_results.get("shapley_decomposition", {})
+    skip_s = sh.get("skip_contribution_stats", {})
+    dur_s = sh.get("duration_contribution_stats", {})
+
+    fc = h3_results.get("equal_ease_feature_contributions", {})
+    fstats = fc.get("feature_contributions_stats", {})
+
+    # ---------- Layout ----------
+    fig, axes = plt.subplots(1, 3, figsize=(7.6, 3.25))
+    # tighter margins, balanced inter-panel spacing
+    fig.subplots_adjust(left=0.065, right=0.995, bottom=0.19, top=0.84, wspace=0.72)
+    axA, axB, axC = axes
+
+    # ============== Panel A: Observed vs Equal-ease ==================
+    A_labels = ["Observed\ngap", "Equal-ease\ngap"]
+    A_vals, A_errs = [], []
+
+    c, (lo, hi) = _safe_center_yerr(g0_mean, g0_ci_low, g0_ci_high)
+    A_vals.append(c)
+    A_errs.append([lo, hi])
+
+    c, (lo, hi) = _safe_center_yerr(cf_mean, cf_ci_low, cf_ci_high)
+    A_vals.append(c)
+    A_errs.append([lo, hi])
+
+    A_errs = np.array(A_errs, float).T
+    axA = _apa_axes(axA)
+
+    xA = np.array([0.0, 1.1])
+    axA.bar(
+        xA,
+        A_vals,
+        width=0.66,
+        color=[GRAY_LIGHT, GRAY_DARK],
+        edgecolor=EDGE_COLOR,
+        linewidth=1.0,
+        yerr=A_errs,
+        ecolor="black",
+        capsize=3,
+        error_kw=dict(linewidth=1.0),
+    )
+    axA.set_xticks(xA, A_labels)
+    axA.set_xlim(xA[0] - 0.55, xA[-1] + 0.55)
+    axA.set_ylabel("ERT gap (ms/word)", labelpad=4)
+
+    A_max = np.nanmax(np.array(A_vals) + A_errs[1])
+    axA.set_ylim(top=A_max * 1.18)
+
+    # panel letter
+    axA.text(
+        -0.18,
+        1.03,
+        "A",
+        transform=axA.transAxes,
+        fontsize=11,
+        fontweight="bold",
+        va="bottom",
+    )
+
+    # ============== Panel B: Shapley skip vs duration =================
+    def _center_err_from(stats):
+        m = float(stats.get("mean", np.nan))
+        l = float(stats.get("ci_low", np.nan))
+        h = float(stats.get("ci_high", np.nan))
+        return _safe_center_yerr(m, l, h)
+
+    skip_c, (skip_lo, skip_hi) = _center_err_from(skip_s)
+    dur_c, (dur_lo, dur_hi) = _center_err_from(dur_s)
+
+    B_vals = [skip_c, dur_c]
+    B_errs = np.array([[skip_lo, dur_lo], [skip_hi, dur_hi]], float)
+
+    axB = _apa_axes(axB)
+
+    xB = np.array([0.0, 1.1])
+    axB.bar(
+        xB,
+        B_vals,
+        width=0.66,
+        color=[GRAY_LIGHT, GRAY_DARK],
+        edgecolor=EDGE_COLOR,
+        linewidth=1.0,
+        yerr=B_errs,
+        ecolor="black",
+        capsize=3,
+        error_kw=dict(linewidth=1.0),
+    )
+    axB.set_xticks(xB, ["Skip", "Duration"])
+    axB.set_xlim(xB[0] - 0.55, xB[-1] + 0.55)
+    axB.set_ylabel("Contribution to gap (ms/word)", labelpad=4)
+
+    B_max = np.nanmax(np.array(B_vals) + B_errs[1])
+    axB.set_ylim(top=B_max * 1.18)
+
+    axB.text(
+        -0.18,
+        1.03,
+        "B",
+        transform=axB.transAxes,
+        fontsize=11,
+        fontweight="bold",
+        va="bottom",
+    )
+
+    # ============== Panel C: Equal-ease feature contributions =========
+    feats = ["length", "zipf", "surprisal"]
+    feat_labels = ["Length", "Zipf\nfrequency", "Surprisal"]
+
+    C_vals, C_errlist = [], []
+    for key in feats:
+        st = fstats.get(key, {})
+        m = float(st.get("mean", np.nan))
+        lo = float(st.get("ci_low", np.nan))
+        hi = float(st.get("ci_high", np.nan))
+        c, (e_lo, e_hi) = _safe_center_yerr(m, lo, hi)
+        C_vals.append(c)
+        C_errlist.append([e_lo, e_hi])
+
+    C_errs = np.array(C_errlist, float).T
+
+    axC = _apa_axes(axC)
+
+    xC = np.array([0.0, 1.6, 3.2])
+    axC.bar(
+        xC,
+        C_vals,
+        width=0.72,
+        color=[GRAY_LIGHT, GRAY_MED, GRAY_DARK],
+        edgecolor=EDGE_COLOR,
+        linewidth=1.0,
+        yerr=C_errs,
+        ecolor="black",
+        capsize=3,
+        error_kw=dict(linewidth=1.0),
+    )
+    axC.set_xticks(xC, feat_labels)
+    axC.set_xlim(xC[0] - 0.60, xC[-1] + 0.60)
+    axC.set_ylabel("Gap reduction (ms/word)", labelpad=4)
+
+    C_max = np.nanmax(np.array(C_vals) + C_errs[1])
+    axC.set_ylim(top=max(1e-6, C_max) * 1.20)
+
+    axC.text(
+        -0.18,
+        1.03,
+        "C",
+        transform=axC.transAxes,
+        fontsize=11,
+        fontweight="bold",
+        va="bottom",
+    )
+
+    # ---------- Save (PNG only) ----------
+    plt.savefig(output_path, bbox_inches="tight")
+    plt.close()
+
+    # ---------- JSON sidecar of plotted values ----------
+    out = {
+        "panel_a": {
+            "observed_gap": {
+                "mean": g0_mean,
+                "ci_low": g0_ci_low,
+                "ci_high": g0_ci_high,
+            },
+            "equal_ease_gap": {
+                "mean": cf_mean,
+                "ci_low": cf_ci_low,
+                "ci_high": cf_ci_high,
+            },
+        },
+        "panel_b_shapley": {
+            "skip": {
+                "mean": float(skip_s.get("mean", np.nan)),
+                "ci_low": float(skip_s.get("ci_low", np.nan)),
+                "ci_high": float(skip_s.get("ci_high", np.nan)),
+            },
+            "duration": {
+                "mean": float(dur_s.get("mean", np.nan)),
+                "ci_low": float(dur_s.get("ci_low", np.nan)),
+                "ci_high": float(dur_s.get("ci_high", np.nan)),
+            },
+            "g0_mean": g0_mean,
+        },
+        "panel_c_feature_contribs": fstats,
+    }
+    with open(output_path.with_suffix(".json"), "w") as f:
+        json.dump(out, f, indent=2)
+
+    logger.info(f"  Saved: {output_path}")
+    logger.info(f"  Saved data: {output_path.with_suffix('.json')}")
+
+
 def export_model_stats_json(
     gam_models, skip_metadata: Dict, duration_metadata: Dict, output_path: Path
 ):
@@ -691,6 +946,12 @@ def generate_all_figures(
         data,
         gam_models,
         output_dir / "figure_2_gam_smooths.png",
+    )
+
+    # Figure 3: Gap Decomposition (APA-7)
+    create_figure_3_gap_decomposition(
+        h3_results,
+        output_dir / "figure_3_gap_decomposition.png",
     )
 
     # Model Statistics (JSON)
