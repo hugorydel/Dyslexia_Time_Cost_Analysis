@@ -1,6 +1,5 @@
 """
 Hypothesis 1: Feature Effects with CONDITIONAL Zipf Evaluation
-FULLY REVISED: Fixed Cohen's d calculation to use pooled SD from actual data
 """
 
 import logging
@@ -8,55 +7,14 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
+
+from hypothesis_testing_utils.stats_utils import (
+    cohens_h,
+    compute_cohens_d_from_data,
+    compute_two_tailed_pvalue_corrected,
+)
 
 logger = logging.getLogger(__name__)
-
-
-# ======================
-# Effect size utilities
-# ======================
-
-
-def cohens_h(p1: float, p2: float) -> float:
-    """
-    Cohen's h for proportions (skip pathway).
-    Returns signed difference on arcsine-sqrt scale.
-    """
-    p1 = np.clip(p1, 0.0, 1.0)
-    p2 = np.clip(p2, 0.0, 1.0)
-    return 2.0 * (np.arcsin(np.sqrt(p1)) - np.arcsin(np.sqrt(p2)))
-
-
-def hedges_J(n: int) -> float:
-    """Small-sample correction factor for Cohen's d (Hedges' J)."""
-    if n is None or n <= 2:
-        return 1.0
-    return 1.0 - 3.0 / (4.0 * n - 9.0)
-
-
-def _compute_cohens_d_from_actual_data(
-    vals_q1: np.ndarray, vals_q3: np.ndarray
-) -> float:
-    """
-    Descriptive Cohen's d between Q1- and Q3-like observations using pooled SD,
-    with Hedges' J small-sample correction (a.k.a. Hedges' g).
-    """
-    v1 = np.asarray(vals_q1, dtype=float)
-    v2 = np.asarray(vals_q3, dtype=float)
-    v1 = v1[np.isfinite(v1)]
-    v2 = v2[np.isfinite(v2)]
-    n1, n2 = v1.size, v2.size
-    if n1 < 2 or n2 < 2:
-        return float("nan")
-    m1, m2 = float(np.mean(v1)), float(np.mean(v2))
-    s1, s2 = float(np.std(v1, ddof=1)), float(np.std(v2, ddof=1))
-    if s1 == 0.0 and s2 == 0.0:
-        return float("nan")
-    s_pooled = np.sqrt(((n1 - 1) * s1**2 + (n2 - 1) * s2**2) / (n1 + n2 - 2))
-    d = (m2 - m1) / s_pooled
-    g = hedges_J(n1 + n2) * d
-    return float(g)
 
 
 # ==========================================
@@ -234,17 +192,17 @@ def subject_level_deltas(
 
 
 # ===========================
-# AMIEs
+# AMIE CIs & P-Values
 # ===========================
 
 
-def permutation_test_amie(
+def bootstrap_amie(
     ert_predictor,
     data: pd.DataFrame,
     feature: str,
     group: str,
     quartiles: Dict,
-    n_bootstrap: int = 1000,
+    n_bootstrap: int = 2000,
     method: str = "standard",
     bin_edges: np.ndarray = None,
     bin_weights: pd.Series = None,
@@ -292,10 +250,7 @@ def permutation_test_amie(
     ci_low, ci_high = np.percentile(boot_means, [2.5, 97.5])
 
     # +1 correction, two-tailed
-    B = boot_means.size
-    extreme = np.sum(boot_means <= 0.0) if obs > 0 else np.sum(boot_means >= 0.0)
-    p_one = (extreme + 1.0) / (B + 1.0)
-    p_value = float(min(1.0, 2.0 * p_one))
+    p_value = compute_two_tailed_pvalue_corrected(obs, boot_means)
 
     return {
         "p_value": p_value,
@@ -303,117 +258,104 @@ def permutation_test_amie(
         "ci_high": float(ci_high),
         "n_bootstrap": n_bootstrap,
         "std_dev": float(np.std(boot_means, ddof=1)),
+        "method": method,
     }
 
 
-# =====================================
-# Pathway effects (with corrected Cohen's d)
-# =====================================
-
-
-def permutation_test_pathway_effect(
-    deltas_per_subject: np.ndarray,
-    bootstrap_delta_samples: np.ndarray,
-    pathway: str,
-    descriptive_q1_vals: np.ndarray = None,
-    descriptive_q3_vals: np.ndarray = None,
-    n_bootstrap: int = 1000,
+def bootstrap_pathway_effect(
+    ert_predictor,
+    data: pd.DataFrame,
+    feature: str,
+    group: str,
+    quartiles: Dict,
+    pathway: str,  # "skip" | "duration" | "ert"
+    n_bootstrap: int = 2000,
+    bin_edges: np.ndarray = None,
+    bin_weights: pd.Series = None,
 ) -> dict:
     """
-    - Inference is on subject-level deltas (Q3 - Q1): p-value (+1 correction) and CI.
-    - Cohen's d (descriptive) is computed from actual Q1 vs Q3 observations
-      with pooled SD + Hedges' J. For SKIP we do not return d; use Cohen's h instead.
+    Inference: subject-level deltas (Q3 - Q1) for the chosen pathway.
+    p-value: +1 corrected two-tailed via bootstrap.
+    Effect size (descriptive):
+      - skip -> Cohen's h (from predicted probabilities)
+      - duration & ert -> Hedges-corrected d from predicted values
     """
-    # Clean deltas
-    deltas = np.asarray(deltas_per_subject, dtype=float)
+    q1 = quartiles[feature]["q1"]
+    q3 = quartiles[feature]["q3"]
+
+    # 1) Subject-level deltas (handles conditional Zipf if bin_* are provided)
+    deltas = subject_level_deltas(
+        ert_predictor,
+        data,
+        feature,
+        group,
+        q1,
+        q3,
+        pathway,
+        bin_edges=(bin_edges if feature == "zipf" else None),
+        bin_weights=(bin_weights if feature == "zipf" else None),
+    )
     deltas = deltas[np.isfinite(deltas)]
     if deltas.size == 0:
         return {
-            "p_value": float("nan"),
-            "mean": float("nan"),
-            "ci_low": float("nan"),
-            "ci_high": float("nan"),
+            "p_value": np.nan,
+            "mean": np.nan,
+            "ci_low": np.nan,
+            "ci_high": np.nan,
             "n_bootstrap": n_bootstrap,
-            "std_dev": float("nan"),
-            "cohens_d": float("nan"),
-            "cohens_d_ci_low": float("nan"),
-            "cohens_d_ci_high": float("nan"),
-            "cohens_h": float("nan") if pathway != "skip" else 0.0,
+            "std_dev": np.nan,
+            "cohens_d": np.nan,
+            "cohens_d_ci_low": np.nan,
+            "cohens_d_ci_high": np.nan,
+            "skip_cohens_h": 0.0 if pathway == "skip" else np.nan,
         }
 
-    observed_mean = float(np.mean(deltas))
+    # 2) Bootstrap on subject means
+    rng = np.random.default_rng(123)
+    boot_means = np.empty(n_bootstrap, dtype=float)
+    for b in range(n_bootstrap):
+        idx = rng.integers(0, deltas.size, deltas.size)
+        boot_means[b] = np.mean(deltas[idx])
 
-    # Bootstrap CI for the mean delta
-    boots = np.asarray(bootstrap_delta_samples, dtype=float)
-    boots = boots[np.isfinite(boots)]
-    ci_low, ci_high = np.percentile(boots, [2.5, 97.5])
+    obs = float(np.mean(deltas))
+    ci_low, ci_high = np.percentile(boot_means, [2.5, 97.5])
+    p_value = compute_two_tailed_pvalue_corrected(obs, boot_means)
 
-    # +1 correction for two-tailed p
-    B = boots.size
-    extreme = np.sum(boots <= 0.0) if observed_mean > 0 else np.sum(boots >= 0.0)
-    p_one = (extreme + 1.0) / (B + 1.0)
-    p_value = min(1.0, 2.0 * p_one)
+    # 3) Descriptive effect size from full predicted arrays at Q1 vs Q3
+    X = data.loc[data["group"] == group, ["length", "zipf", "surprisal"]].copy()
+    X_q1, X_q3 = X.copy(), X.copy()
+    X_q1[feature] = q1
+    X_q3[feature] = q3
 
-    # Descriptive effect sizes
     if pathway == "skip":
-        # report Cohen's h only
-        if descriptive_q1_vals is None or descriptive_q3_vals is None:
-            cohens_h_value = float("nan")
-        else:
-            cohens_h_value = float(
-                cohens_h(
-                    float(np.mean(descriptive_q1_vals)),
-                    float(np.mean(descriptive_q3_vals)),
-                )
-            )
-        return {
-            "p_value": float(p_value),
-            "mean": observed_mean,
-            "ci_low": float(ci_low),
-            "ci_high": float(ci_high),
-            "n_bootstrap": int(B),
-            "std_dev": float(np.std(boots, ddof=1)),
-            "cohens_d": float("nan"),
-            "cohens_d_ci_low": float("nan"),
-            "cohens_d_ci_high": float("nan"),
-            "cohens_h": cohens_h_value,
-        }
-
-    # duration / ert: descriptive d with Hedges' J
-    d_desc = float("nan")
-    d_ci_low = float("nan")
-    d_ci_high = float("nan")
-    if descriptive_q1_vals is not None and descriptive_q3_vals is not None:
-        d_desc = _compute_cohens_d_from_actual_data(
-            descriptive_q1_vals, descriptive_q3_vals
-        )
-        # Bootstrap d for CI (non-parametric over paired draws from the descriptive sets)
-        rng = np.random.default_rng(123)
-        n_boot = n_bootstrap
-        if len(descriptive_q1_vals) > 1 and len(descriptive_q3_vals) > 1:
-            d_boot = []
-            for _ in range(n_boot):
-                i1 = rng.integers(0, len(descriptive_q1_vals), len(descriptive_q1_vals))
-                i2 = rng.integers(0, len(descriptive_q3_vals), len(descriptive_q3_vals))
-                d_boot.append(
-                    _compute_cohens_d_from_actual_data(
-                        np.asarray(descriptive_q1_vals)[i1],
-                        np.asarray(descriptive_q3_vals)[i2],
-                    )
-                )
-            d_ci_low, d_ci_high = np.nanpercentile(d_boot, [2.5, 97.5])
+        _, p1, _ = ert_predictor.predict_ert(X_q1, group, return_components=True)
+        _, p3, _ = ert_predictor.predict_ert(X_q3, group, return_components=True)
+        h = cohens_h(float(np.mean(p1)), float(np.mean(p3)))
+        d_desc, d_lo, d_hi = np.nan, np.nan, np.nan
+    elif pathway == "duration":
+        _, _, trt1 = ert_predictor.predict_ert(X_q1, group, return_components=True)
+        _, _, trt3 = ert_predictor.predict_ert(X_q3, group, return_components=True)
+        d_desc = compute_cohens_d_from_data(trt1, trt3)
+        d_lo, d_hi = np.nan, np.nan  # (optional: bootstrap CI for d)
+        h = np.nan
+    else:  # "ert"
+        ert1 = ert_predictor.predict_ert(X_q1, group)
+        ert3 = ert_predictor.predict_ert(X_q3, group)
+        d_desc = compute_cohens_d_from_data(ert1, ert3)
+        d_lo, d_hi = np.nan, np.nan  # (optional: bootstrap CI for d)
+        h = np.nan
 
     return {
         "p_value": float(p_value),
-        "mean": observed_mean,
+        "mean": obs,
         "ci_low": float(ci_low),
         "ci_high": float(ci_high),
-        "n_bootstrap": int(B),
-        "std_dev": float(np.std(boots, ddof=1)),
-        "cohens_d": d_desc,
-        "cohens_d_ci_low": float(d_ci_low),
-        "cohens_d_ci_high": float(d_ci_high),
-        "cohens_h": float("nan"),
+        "n_bootstrap": n_bootstrap,
+        "std_dev": float(np.std(boot_means, ddof=1)),
+        "cohens_d": float(d_desc) if np.isfinite(d_desc) else np.nan,
+        "cohens_d_ci_low": float(d_lo),
+        "cohens_d_ci_high": float(d_hi),
+        "skip_cohens_h": float(h) if pathway == "skip" else np.nan,
     }
 
 
@@ -432,8 +374,9 @@ def compute_amie_standard(
     q1 = quartiles[feature]["q1"]
     q3 = quartiles[feature]["q3"]
 
+    group_data = data[data["group"] == group].copy()
     other_features = [f for f in ["length", "zipf", "surprisal"] if f != feature]
-    means = {f: data[f].mean() for f in other_features}
+    means = {f: group_data[f].mean() for f in other_features}
 
     grid_q1 = pd.DataFrame({feature: [q1], **means})
     grid_q3 = pd.DataFrame({feature: [q3], **means})
@@ -459,7 +402,6 @@ def compute_amie_conditional_zipf(
     ert_predictor,
     data: pd.DataFrame,
     group: str,
-    quartiles: Dict,
     bin_edges: np.ndarray,
     bin_weights: pd.Series,
 ) -> Dict:
@@ -551,8 +493,9 @@ def compute_pathway_effects(
     q1 = quartiles[feature]["q1"]
     q3 = quartiles[feature]["q3"]
 
+    group_data = data[data["group"] == group].copy()
     other_features = [f for f in ["length", "zipf", "surprisal"] if f != feature]
-    means = {f: data[f].mean() for f in other_features}
+    means = {f: group_data[f].mean() for f in other_features}
 
     grid_q1 = pd.DataFrame({feature: [q1], **means})
     grid_q3 = pd.DataFrame({feature: [q3], **means})
@@ -570,16 +513,12 @@ def compute_pathway_effects(
         "p_skip_q1_grid": float(p_skip_q1[0]),
         "p_skip_q3_grid": float(p_skip_q3[0]),
         "delta_p_skip_grid": float(p_skip_q3[0] - p_skip_q1[0]),
-        "cohens_h": cohens_h(p_skip_q1[0], p_skip_q3[0]),
         "trt_q1_grid": float(trt_q1[0]),
         "trt_q3_grid": float(trt_q3[0]),
         "delta_trt_ms_grid": float(trt_q3[0] - trt_q1[0]),
         "ert_q1_grid": float(ert_q1[0]),
         "ert_q3_grid": float(ert_q3[0]),
         "delta_ert_ms_grid": float(ert_q3[0] - ert_q1[0]),
-        # inferential fields to be populated later:
-        "cohens_d_trt": np.nan,
-        "cohens_d_ert": np.nan,
     }
 
 
@@ -594,7 +533,7 @@ def test_hypothesis_1(
     quartiles: Dict,
     bin_edges: np.ndarray,
     bin_weights: pd.Series,
-    n_bootstrap: int = 1000,
+    n_bootstrap: int = 2000,
 ) -> Dict:
     """
     Test Hypothesis 1: Feature Effects
@@ -618,15 +557,15 @@ def test_hypothesis_1(
         # === 1) AMIE with statistics ===
         if feature == "zipf":
             amie_control = compute_amie_conditional_zipf(
-                ert_predictor, data, "control", quartiles, bin_edges, bin_weights
+                ert_predictor, data, "control", bin_edges, bin_weights
             )
             amie_dyslexic = compute_amie_conditional_zipf(
-                ert_predictor, data, "dyslexic", quartiles, bin_edges, bin_weights
+                ert_predictor, data, "dyslexic", bin_edges, bin_weights
             )
 
             logger.info(f"  Computing bootstrap tests for {feature} (conditional)...")
             print(f"  Testing {feature} (conditional)...", flush=True)
-            stats_ctrl = permutation_test_amie(
+            stats_ctrl = bootstrap_amie(
                 ert_predictor,
                 data,
                 feature,
@@ -637,7 +576,7 @@ def test_hypothesis_1(
                 bin_edges=bin_edges,
                 bin_weights=bin_weights,
             )
-            stats_dys = permutation_test_amie(
+            stats_dys = bootstrap_amie(
                 ert_predictor,
                 data,
                 feature,
@@ -658,7 +597,7 @@ def test_hypothesis_1(
 
             logger.info(f"  Computing bootstrap tests for {feature} (standard)...")
             print(f"  Testing {feature} (standard)...", flush=True)
-            stats_ctrl = permutation_test_amie(
+            stats_ctrl = bootstrap_amie(
                 ert_predictor,
                 data,
                 feature,
@@ -667,7 +606,7 @@ def test_hypothesis_1(
                 n_bootstrap=n_bootstrap,
                 method="standard",
             )
-            stats_dys = permutation_test_amie(
+            stats_dys = bootstrap_amie(
                 ert_predictor,
                 data,
                 feature,
@@ -704,7 +643,7 @@ def test_hypothesis_1(
         for pathway in ["skip", "duration", "ert"]:
             logger.info(f"    Testing {pathway} pathway...")
 
-            stats_ctrl_path = permutation_test_pathway_effect(
+            stats_ctrl_path = bootstrap_pathway_effect(
                 ert_predictor,
                 data,
                 feature,
@@ -712,8 +651,10 @@ def test_hypothesis_1(
                 quartiles,
                 pathway,
                 n_bootstrap,
+                bin_edges=bin_edges if feature == "zipf" else None,
+                bin_weights=bin_weights if feature == "zipf" else None,
             )
-            stats_dys_path = permutation_test_pathway_effect(
+            stats_dys_path = bootstrap_pathway_effect(
                 ert_predictor,
                 data,
                 feature,
@@ -721,6 +662,8 @@ def test_hypothesis_1(
                 quartiles,
                 pathway,
                 n_bootstrap,
+                bin_edges=bin_edges if feature == "zipf" else None,
+                bin_weights=bin_weights if feature == "zipf" else None,
             )
 
             # Inferential (subject-level) outputs:
@@ -737,6 +680,9 @@ def test_hypothesis_1(
             pathway_control[f"{pathway}_cohens_d_ci_high"] = stats_ctrl_path.get(
                 "cohens_d_ci_high", np.nan
             )
+            pathway_control[f"{pathway}_cohens_h"] = stats_ctrl_path.get(
+                "skip_cohens_h", np.nan
+            )
 
             pathway_dyslexic[f"{pathway}_mean"] = stats_dys_path["mean"]
             pathway_dyslexic[f"{pathway}_p_value"] = stats_dys_path["p_value"]
@@ -751,16 +697,9 @@ def test_hypothesis_1(
             pathway_dyslexic[f"{pathway}_cohens_d_ci_high"] = stats_dys_path.get(
                 "cohens_d_ci_high", np.nan
             )
-
-        # Convenience mirrors:
-        pathway_control["cohens_d_trt"] = pathway_control.get(
-            "duration_cohens_d", np.nan
-        )
-        pathway_control["cohens_d_ert"] = pathway_control.get("ert_cohens_d", np.nan)
-        pathway_dyslexic["cohens_d_trt"] = pathway_dyslexic.get(
-            "duration_cohens_d", np.nan
-        )
-        pathway_dyslexic["cohens_d_ert"] = pathway_dyslexic.get("ert_cohens_d", np.nan)
+            pathway_dyslexic[f"{pathway}_cohens_h"] = stats_dys_path.get(
+                "skip_cohens_h", np.nan
+            )
 
         # === 3) Direction check (based on AMIE point estimate) ===
         expected = expected_directions[feature]

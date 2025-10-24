@@ -1,6 +1,5 @@
 """
 Shared statistical utilities for hypothesis testing
-Includes corrected p-value calculation with +1 correction and effect size measures
 """
 
 import numpy as np

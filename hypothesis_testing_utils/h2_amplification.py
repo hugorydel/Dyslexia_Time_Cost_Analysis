@@ -1,6 +1,5 @@
 """
 Hypothesis 2: Amplification with Comprehensive Bootstrap
-FULLY REVISED: Added p-values for slope ratios
 """
 
 import logging
@@ -10,31 +9,16 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+from hypothesis_testing_utils.h1_feature_effects import (
+    compute_amie_conditional_zipf,
+    compute_amie_standard,
+)
+from hypothesis_testing_utils.stats_utils import (
+    compute_cohens_d_from_data,
+    compute_two_tailed_pvalue_corrected_ratio,
+)
+
 logger = logging.getLogger(__name__)
-
-
-def cohens_h(p1: float, p2: float) -> float:
-    """Compute Cohen's h effect size for two proportions"""
-    return 2 * (np.arcsin(np.sqrt(p1)) - np.arcsin(np.sqrt(p2)))
-
-
-def cohens_d(
-    mean1: float, mean2: float, std1: float, std2: float, n1: int, n2: int
-) -> float:
-    """
-    Compute Cohen's d effect size for two means
-    Uses pooled standard deviation
-    """
-    if n1 <= 0 or n2 <= 0:
-        return np.nan
-
-    # Pooled standard deviation
-    pooled_std = np.sqrt(((n1 - 1) * std1**2 + (n2 - 1) * std2**2) / (n1 + n2 - 2))
-
-    if pooled_std == 0:
-        return np.nan
-
-    return (mean2 - mean1) / pooled_std
 
 
 def _classify_sr(ci_low: float, ci_high: float, eps: float = 1e-12) -> str:
@@ -112,13 +96,8 @@ def compute_slope_ratio_standard(
             trt_q3_vals = q3_data[q3_data["skip"] == 0]["TRT"]
 
             if len(trt_q1_vals) > 1 and len(trt_q3_vals) > 1:
-                effects[group]["cohens_d_duration"] = cohens_d(
-                    trt_q1_vals.mean(),
-                    trt_q3_vals.mean(),
-                    trt_q1_vals.std(),
-                    trt_q3_vals.std(),
-                    len(trt_q1_vals),
-                    len(trt_q3_vals),
+                effects[group]["cohens_d_duration"] = compute_cohens_d_from_data(
+                    trt_q1_vals, trt_q3_vals
                 )
             else:
                 effects[group]["cohens_d_duration"] = np.nan
@@ -128,13 +107,8 @@ def compute_slope_ratio_standard(
             ert_q3_vals = q3_data["ERT"]
 
             if len(ert_q1_vals) > 1 and len(ert_q3_vals) > 1:
-                effects[group]["cohens_d_ert"] = cohens_d(
-                    ert_q1_vals.mean(),
-                    ert_q3_vals.mean(),
-                    ert_q1_vals.std(),
-                    ert_q3_vals.std(),
-                    len(ert_q1_vals),
-                    len(ert_q3_vals),
+                effects[group]["cohens_d_ert"] = compute_cohens_d_from_data(
+                    ert_q1_vals, ert_q3_vals
                 )
             else:
                 effects[group]["cohens_d_ert"] = np.nan
@@ -242,14 +216,7 @@ def compute_slope_ratio_conditional_zipf(
                 trt_q3_vals = q3_data[q3_data["skip"] == 0]["TRT"]
 
                 if len(trt_q1_vals) > 1 and len(trt_q3_vals) > 1:
-                    cd_dur = cohens_d(
-                        trt_q1_vals.mean(),
-                        trt_q3_vals.mean(),
-                        trt_q1_vals.std(),
-                        trt_q3_vals.std(),
-                        len(trt_q1_vals),
-                        len(trt_q3_vals),
-                    )
+                    cd_dur = compute_cohens_d_from_data(trt_q1_vals, trt_q3_vals)
                     if group == "control":
                         cohens_d_duration_ctrl.append(cd_dur)
                     else:
@@ -260,14 +227,7 @@ def compute_slope_ratio_conditional_zipf(
                 ert_q3_vals = q3_data["ERT"]
 
                 if len(ert_q1_vals) > 1 and len(ert_q3_vals) > 1:
-                    cd_ert = cohens_d(
-                        ert_q1_vals.mean(),
-                        ert_q3_vals.mean(),
-                        ert_q1_vals.std(),
-                        ert_q3_vals.std(),
-                        len(ert_q1_vals),
-                        len(ert_q3_vals),
-                    )
+                    cd_ert = compute_cohens_d_from_data(ert_q1_vals, ert_q3_vals)
                     if group == "control":
                         cohens_d_ert_ctrl.append(cd_ert)
                     else:
@@ -317,10 +277,9 @@ def compute_slope_ratio_conditional_zipf(
 def bootstrap_all_metrics(
     ert_predictor,
     data: pd.DataFrame,
-    quartiles: Dict,
     bin_edges: np.ndarray,
     bin_weights: pd.Series,
-    n_bootstrap: int = 1000,
+    n_bootstrap: int = 2000,
 ) -> Tuple[Dict, Dict]:
     """
     COMPREHENSIVE BOOTSTRAP: Resample subjects and recompute ALL metrics
@@ -367,24 +326,15 @@ def bootstrap_all_metrics(
             for group in ["control", "dyslexic"]:
                 try:
                     if feature == "zipf":
-                        from hypothesis_testing_utils.h1_feature_effects import (
-                            compute_amie_conditional_zipf,
-                        )
-
                         amie_result = compute_amie_conditional_zipf(
                             ert_predictor,
                             boot_data,
                             group,
-                            boot_quartiles,
                             bin_edges,
                             bin_weights,
                         )
                         amie = amie_result.get("amie_ms", np.nan)
                     else:
-                        from hypothesis_testing_utils.h1_feature_effects import (
-                            compute_amie_standard,
-                        )
-
                         amie_result = compute_amie_standard(
                             ert_predictor, boot_data, feature, group, boot_quartiles
                         )
@@ -432,7 +382,7 @@ def bootstrap_all_metrics(
                     "mean": float(np.mean(samples)),
                     "ci_low": float(np.percentile(samples, 2.5)),
                     "ci_high": float(np.percentile(samples, 97.5)),
-                    "n_samples": len(samples),
+                    "n_bootstrap": len(samples),
                 }
 
         # CIs and p-values for SRs
@@ -443,21 +393,17 @@ def bootstrap_all_metrics(
                 ci_low = float(np.percentile(samples, 2.5))
                 ci_high = float(np.percentile(samples, 97.5))
 
-                # P-value: proportion of SR <= 1.0 or SR >= 1.0
-                if mean_sr > 1.0:
-                    p_value = float(np.mean(np.array(samples) <= 1.0))
-                else:
-                    p_value = float(np.mean(np.array(samples) >= 1.0))
-
-                # Two-tailed
-                p_value = min(1.0, 2 * p_value)
+                # P-value with +1 correction
+                p_value = compute_two_tailed_pvalue_corrected_ratio(
+                    mean_sr, np.array(samples), null_value=1.0
+                )
 
                 ci_results[feature][pathway] = {
                     "mean": mean_sr,
                     "ci_low": ci_low,
                     "ci_high": ci_high,
                     "p_value": p_value,
-                    "n_samples": len(samples),
+                    "n_bootstrap": len(samples),
                 }
 
     logger.info("Bootstrap complete!")
@@ -471,7 +417,7 @@ def test_hypothesis_2(
     quartiles: Dict,
     bin_edges: np.ndarray,
     bin_weights: pd.Series,
-    n_bootstrap: int = 1000,
+    n_bootstrap: int = 2000,
 ) -> Dict:
     """
     Test Hypothesis 2: Dyslexic Amplification
@@ -532,7 +478,7 @@ def test_hypothesis_2(
 
     # === 2. BOOTSTRAP CIs AND P-VALUES ===
     bootstrap_samples, ci_results = bootstrap_all_metrics(
-        ert_predictor, data, quartiles, bin_edges, bin_weights, n_bootstrap
+        ert_predictor, data, bin_edges, bin_weights, n_bootstrap
     )
 
     # === 3. MERGE CIs AND P-VALUES INTO RESULTS ===

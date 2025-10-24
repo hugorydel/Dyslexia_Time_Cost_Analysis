@@ -1,9 +1,5 @@
 """
-Caching utilities - REVISED
-Key changes:
-1. Atomic writes to prevent corruption
-2. Recovery from corrupt cache files
-3. Removed model caching (recompute each time)
+Caching utilities
 """
 
 import hashlib

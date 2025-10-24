@@ -65,7 +65,6 @@ class CompleteAnalysisPipeline:
         self,
         results_dir: str = "results_final",
         n_bootstrap: int = 2000,
-        n_permutations: int = 500,
         use_cache: bool = True,
         quick_mode: bool = False,
     ):
@@ -85,15 +84,13 @@ class CompleteAnalysisPipeline:
         self.cache_dir.mkdir(exist_ok=True)
 
         self.n_bootstrap = n_bootstrap
-        self.n_permutations = n_permutations
         self.use_cache = use_cache
 
         logger.info("=" * 80)
         logger.info("COMPLETE DYSLEXIA GAM ANALYSIS PIPELINE - FULLY REVISED")
         logger.info("=" * 80)
         logger.info(f"Results directory: {self.results_dir}")
-        logger.info(f"Bootstrap iterations (H1, H2): {n_bootstrap}")
-        logger.info(f"Permutation iterations (H3): {n_permutations}")
+        logger.info(f"Bootstrap iterations (H1, H2, H3): {n_bootstrap}")
         logger.info(f"Cache directory: {self.cache_dir}")
         logger.info(f"Quick mode: {quick_mode}")
         logger.info(f"Result caching: {'ENABLED' if use_cache else 'DISABLED'}")
@@ -137,8 +134,9 @@ class CompleteAnalysisPipeline:
             logger.info("=" * 80)
             print("\n" + "=" * 80, flush=True)
             print("PHASE 3: HYPOTHESIS TESTING", flush=True)
-            print(f"  Bootstrap (H1, H2): {self.n_bootstrap} iterations", flush=True)
-            print(f"  Permutations (H3): {self.n_permutations} iterations", flush=True)
+            print(
+                f"  Bootstrap (H1, H2, H3): {self.n_bootstrap} iterations", flush=True
+            )
             print("=" * 80 + "\n", flush=True)
 
             # H1: Feature Effects (with p-values and CIs)
@@ -174,7 +172,7 @@ class CompleteAnalysisPipeline:
             self._save_json(h2_results, "h2_results.json")
 
             # H3: Gap Decomposition (with p-values for all components)
-            h3_cache = self.cache_dir / f"h3_results_n{self.n_permutations}.pkl"
+            h3_cache = self.cache_dir / f"h3_results_n{self.n_bootstrap}.pkl"
 
             def compute_h3():
                 return test_hypothesis_3(
@@ -182,7 +180,6 @@ class CompleteAnalysisPipeline:
                     prepared_data,
                     quartiles,
                     n_bootstrap=self.n_bootstrap,
-                    n_permutations=self.n_permutations,
                     bin_edges=bin_edges,
                 )
 
@@ -378,7 +375,6 @@ def main():
 
     use_cache = args.use_cache and not args.no_cache
     n_bootstrap = 100 if args.quick else args.n_bootstrap
-    n_permutations = 50 if args.quick else args.n_permutations
 
     if args.quick:
         print("⚡ QUICK MODE: Using 100 bootstrap + 50 permutation iterations")
@@ -386,7 +382,6 @@ def main():
     pipeline = CompleteAnalysisPipeline(
         results_dir=args.results_dir,
         n_bootstrap=n_bootstrap,
-        n_permutations=n_permutations,
         use_cache=use_cache,
         quick_mode=args.quick,
     )

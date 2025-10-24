@@ -1,9 +1,5 @@
 """
-GAM Models - REVISED
-Key changes:
-1. REMOVED tensor product te(length, zipf) interaction (causes non-monotone artifacts)
-2. Uses additive smooths only: s(length) + s(zipf) + s(surprisal)
-3. Kept two-stage hyperparameter selection and 1-SE rule
+GAM Models
 """
 
 import logging

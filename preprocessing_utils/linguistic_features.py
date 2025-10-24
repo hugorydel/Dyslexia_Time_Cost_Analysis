@@ -2,7 +2,6 @@
 """
 Linguistic Feature Computation for Danish Eye-Tracking Data
 Implements word frequency (Zipf scale) and surprisal computation
-Updated to use Leipzig Corpora frequency data
 """
 
 import logging

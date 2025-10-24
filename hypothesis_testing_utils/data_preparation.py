@@ -1,9 +1,5 @@
 """
-Data Preparation - REVISED for Analysis Plan V1
-Key changes:
-- REMOVED orthogonalization (use raw zipf)
-- ADDED pooled binning for length
-- Proper orientation checks
+Data Preparation
 """
 
 import logging

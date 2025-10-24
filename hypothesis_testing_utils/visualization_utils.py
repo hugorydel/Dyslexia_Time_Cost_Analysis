@@ -1,10 +1,5 @@
 """
 Visualization Utilities
-Key changes:
-1. JSON exports for all figure data
-2. Merged supplementary figures into main function
-3. Removed supplementary subdirectory
-4. Comprehensive data export for reproducibility
 """
 
 import json

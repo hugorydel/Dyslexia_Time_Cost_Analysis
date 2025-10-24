@@ -1,6 +1,6 @@
 # utils/quartile_analysis.py
 """
-Quartile comparison analysis (Q1 vs Q3)
+Exploratory quartile analysis (Q1 vs Q3)
 Part A of hypothesis testing
 """
 
@@ -154,8 +154,6 @@ def bootstrap_quartile_effects(
     Much faster than refitting mixed models
     """
     logger.info(f"  Computing bootstrap CIs ({n_boot} iterations)...")
-
-    from tqdm import tqdm
 
     quartile_col = f"{feature}_quartile"
 

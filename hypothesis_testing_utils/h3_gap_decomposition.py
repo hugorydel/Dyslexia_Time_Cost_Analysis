@@ -1,14 +1,17 @@
 """
-Hypothesis 3: Gap Decomposition - FULLY RULES-COMPLIANT
-Single source of truth (S & G0), consistent equal-ease policy, proper anchoring
+Hypothesis 3: Gap Decomposition
+Single source of truth (S & G0), consistent equal-ease policy
 """
 
+import itertools
 import logging
 from typing import Dict
 
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+
+from hypothesis_testing_utils.stats_utils import compute_two_tailed_pvalue_corrected
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +62,7 @@ def bootstrap_gap_component(
     observed_value: float,
     data: pd.DataFrame,
     computation_fn,
-    n_bootstrap: int = 1000,
+    n_bootstrap: int = 2000,
     **kwargs,
 ) -> Dict:
     """Bootstrap with subject resampling (stratified by group)"""
@@ -98,12 +101,10 @@ def bootstrap_gap_component(
         ci_low = float(np.percentile(bootstrap_values, 2.5))
         ci_high = float(np.percentile(bootstrap_values, 97.5))
 
-        if observed_value > 0:
-            p_value = float(np.mean(np.array(bootstrap_values) <= 0))
-        else:
-            p_value = float(np.mean(np.array(bootstrap_values) >= 0))
-
-        p_value = min(1.0, 2 * p_value)
+        # P-value with +1 correction
+        p_value = compute_two_tailed_pvalue_corrected(
+            observed_value, np.array(bootstrap_values)
+        )
     else:
         ci_low = ci_high = p_value = np.nan
 
@@ -112,7 +113,8 @@ def bootstrap_gap_component(
         "ci_low": float(ci_low),
         "ci_high": float(ci_high),
         "p_value": float(p_value),
-        "n_bootstrap": len(bootstrap_values),
+        "n_bootstrap": n_bootstrap,
+        "n_effective_bootstrap": len(bootstrap_values),
     }
 
 
@@ -128,7 +130,7 @@ def _apply_equal_ease_subset(df, subset, quartiles, bin_edges, q3_zipf_by_bin):
 
 
 def shapley_decomposition(
-    ert_predictor, S: pd.DataFrame, G0: float, n_bootstrap: int = 200
+    ert_predictor, S: pd.DataFrame, G0: float, n_bootstrap: int = 2000
 ) -> Dict:
     """
     Shapley decomposition - skip vs duration contributions.
@@ -333,8 +335,8 @@ def equal_ease_counterfactual(
     S: pd.DataFrame,
     quartiles: Dict,
     G0: float,
-    n_bootstrap: int = 200,
-    bin_edges: np.ndarray = None,  # <<< NEW
+    n_bootstrap: int = 2000,
+    bin_edges: np.ndarray = None,
 ) -> Dict:
     """
     Equal-ease counterfactual using Q1/Q3 clamp policy.
@@ -377,6 +379,15 @@ def equal_ease_counterfactual(
     logger.info(f"    Counterfactual gap: {counterfactual_gap:.2f} ms")
     logger.info(f"    Gap shrink: {gap_shrink_ms:.2f} ms ({gap_shrink_pct:.1f}%)")
 
+    def compute_cf_gap(boot_data):
+        boot_easy = boot_data.copy()
+        boot_easy["length"] = boot_easy["length"].clip(upper=Q1_len)
+        boot_easy["surprisal"] = boot_easy["surprisal"].clip(upper=Q1_surpr)
+        boot_easy["zipf"] = _clamp_zipf_conditional(
+            boot_easy, bin_edges, q3_zipf_by_bin
+        )
+        return predict_gap_on_sample(ert_predictor, boot_easy)
+
     # Bootstrap (policy thresholds fixed from S)
     def compute_gap_shrink(boot_data):
         baseline_gap_b = predict_gap_on_sample(ert_predictor, boot_data)
@@ -401,18 +412,23 @@ def equal_ease_counterfactual(
     stats_gap_shrink = bootstrap_gap_component(
         gap_shrink_ms, S, compute_gap_shrink, n_bootstrap=n_bootstrap
     )
+    stats_cf_gap = bootstrap_gap_component(
+        counterfactual_gap, S, compute_cf_gap, n_bootstrap=n_bootstrap
+    )
 
     return {
         "baseline_gap": float(G0),
         "counterfactual_gap": float(counterfactual_gap),
         "counterfactual_gap_stats": {
-            "mean": float(counterfactual_gap),
-            "ci_low": float(G0 - stats_gap_shrink["ci_high"]),
-            "ci_high": float(G0 - stats_gap_shrink["ci_low"]),
-            "p_value": stats_gap_shrink["p_value"],
+            "mean": float(stats_cf_gap["mean"]),
+            "ci_low": float(stats_cf_gap["ci_low"]),
+            "ci_high": float(stats_cf_gap["ci_high"]),
+            "p_value": float(stats_cf_gap["p_value"]),
+            "n_bootstrap": stats_cf_gap["n_bootstrap"],
         },
         "gap_shrink_ms": float(gap_shrink_ms),
         "gap_shrink_stats": stats_gap_shrink,
+        "gap_shrink_p_value": stats_gap_shrink["p_value"],
         "gap_shrink_pct": float(gap_shrink_pct),
     }
 
@@ -422,225 +438,138 @@ def equal_ease_feature_contributions(
     S: pd.DataFrame,
     quartiles: Dict,
     gap_shrink_ms: float,
-    n_permutations: int = 200,
+    n_bootstrap: int = 2000,
     bin_edges: np.ndarray = None,
 ) -> Dict:
     """
-    Feature Shapley decomposition of equal-ease gap reduction.
-    Uses SAME sample S and SAME policy. Contributions MUST sum to gap_shrink_ms.
-
-    Zipf clamp is conditional on length using per-bin Q3 from S.
+    Shapley feature contributions via exact enumeration of 3! orders.
+    Uncertainty via subject bootstrap; policy thresholds fixed from S.
     """
-    logger.info(f"  Computing feature contributions ({n_permutations} permutations)...")
-    print(f"  Feature contributions (Shapley, n={n_permutations})...", flush=True)
-
     if bin_edges is None:
         raise ValueError("bin_edges must be provided for conditional Zipf equal-ease.")
-    q3_zipf_by_bin = _zipf_q3_by_length_bin(S, bin_edges)  # policy fixed
-
+    q3_zipf_by_bin = _zipf_q3_by_length_bin(S, bin_edges)
     features = ["length", "zipf", "surprisal"]
-    contributions = {f: [] for f in features}
+    orders = list(itertools.permutations(features))  # 6 orders
 
-    # Value function: gap after applying clamps
-    def v(S_current):
-        """Value = gap after equalizing features in S_current"""
-        return predict_gap_on_sample(ert_predictor, S_current)
+    def v(df):
+        return predict_gap_on_sample(ert_predictor, df)
 
+    def apply_subset(df, subset):
+        return _apply_equal_ease_subset(
+            df, subset, quartiles, bin_edges, q3_zipf_by_bin
+        )
+
+    # --- Point estimate on S by enumerating all 6 orders ---
     baseline_gap = v(S)
-    rng = np.random.RandomState(
-        ANALYSIS_SEED + 1
-    )  # Make permutations deterministic without touching global state
-
-    # build state from subsets (canonical order inside helper)
-    for perm_idx in range(n_permutations):
-        if (perm_idx + 1) % 10 == 0:
-            logger.info(f"    Permutation {perm_idx + 1}/{n_permutations}")
-
-        order = rng.permutation(features)
-
+    per_order_contribs = {f: [] for f in features}
+    for order in orders:
         applied = set()
         gap_prev = baseline_gap
-
-        if np.isnan(gap_prev):
-            continue
-
         for feat in order:
             applied.add(feat)
-            # Rebuild S_current from ORIGINAL S using the current subset,
-            # so zipf always uses bins after any length clamp (order-invariant).
-            S_current = _apply_equal_ease_subset(
-                S, applied, quartiles, bin_edges, q3_zipf_by_bin
-            )
+            S_curr = apply_subset(S, applied)
+            gap_new = v(S_curr)
+            if np.isnan(gap_new):  # skip if failure
+                continue
+            per_order_contribs[feat].append(gap_prev - gap_new)
+            gap_prev = gap_new
 
-            gap_new = v(S_current)
+    contrib_point = {
+        f: float(np.mean(per_order_contribs[f])) if per_order_contribs[f] else 0.0
+        for f in features
+    }
 
-            if not np.isnan(gap_new):
-                marginal_reduction = gap_prev - gap_new
-                contributions[feat].append(marginal_reduction)
-                gap_prev = gap_new
+    # --- Bootstrap for CIs/p-values (re-enumerate all 6 orders each draw) ---
+    contrib_samples = {f: [] for f in features}
+    if n_bootstrap and n_bootstrap > 0:
+        ctrl_subj = S.loc[S["group"] == "control", "subject_id"].unique()
+        dys_subj = S.loc[S["group"] == "dyslexic", "subject_id"].unique()
 
-    feature_contributions = {}
-    feature_stats = {}
+        for i in tqdm(
+            range(n_bootstrap), desc="      Feature Shapley bootstrap", leave=False
+        ):
+            rng = np.random.RandomState(7000 + i)
+            boot_ctrl = rng.choice(ctrl_subj, size=len(ctrl_subj), replace=True)
+            boot_dys = rng.choice(dys_subj, size=len(dys_subj), replace=True)
 
-    for feat in features:
-        if len(contributions[feat]) > 0:
-            samples = contributions[feat]
-            mean_contrib = float(np.mean(samples))
-            feature_contributions[feat] = mean_contrib
+            parts = []
+            for j, s in enumerate(boot_ctrl):
+                df = S[S["subject_id"] == s].copy()
+                df["subject_id"] = f"ctrl_{s}_{j}"
+                parts.append(df)
+            for j, s in enumerate(boot_dys):
+                df = S[S["subject_id"] == s].copy()
+                df["subject_id"] = f"dys_{s}_{j}"
+                parts.append(df)
+            boot = pd.concat(parts, ignore_index=True)
 
-            feature_stats[feat] = {
-                "mean": mean_contrib,
-                "ci_low": float(np.percentile(samples, 2.5)),
-                "ci_high": float(np.percentile(samples, 97.5)),
-                "p_value": float(
-                    min(
-                        1.0,
-                        2
-                        * np.mean(
-                            np.array(samples) <= 0
-                            if mean_contrib > 0
-                            else np.array(samples) >= 0
-                        ),
-                    )
-                ),
-                "n_samples": len(samples),
+            # Evaluate all 6 orders on the boot sample
+            base = v(boot)
+            if np.isnan(base):
+                continue
+
+            sums = {f: 0.0 for f in features}
+            counts = {f: 0 for f in features}
+            for order in orders:
+                applied = set()
+                gap_prev = base
+                for feat in order:
+                    applied.add(feat)
+                    boot_curr = apply_subset(boot, applied)
+                    gap_new = v(boot_curr)
+                    if np.isnan(gap_new):
+                        continue
+                    delta = gap_prev - gap_new
+                    sums[feat] += delta
+                    counts[feat] += 1
+                    gap_prev = gap_new
+
+            for f in features:
+                if counts[f] > 0:
+                    contrib_samples[f].append(sums[f] / counts[f])
+
+    # --- Assemble stats ---
+    stats = {}
+    for f in features:
+        if contrib_samples[f]:
+            arr = np.array(contrib_samples[f], float)
+            ci_low, ci_high = np.percentile(arr, [2.5, 97.5])
+            p = compute_two_tailed_pvalue_corrected(contrib_point[f], arr)
+            stats[f] = {
+                "mean": float(contrib_point[f]),
+                "ci_low": float(ci_low),
+                "ci_high": float(ci_high),
+                "p_value": float(p),
+                "n_samples": int(arr.size),
             }
         else:
-            feature_contributions[feat] = 0.0
-            feature_stats[feat] = {
-                "mean": 0.0,
+            stats[f] = {
+                "mean": float(contrib_point[f]),
                 "ci_low": np.nan,
                 "ci_high": np.nan,
                 "p_value": np.nan,
                 "n_samples": 0,
             }
 
-    shapley_sum = sum(feature_contributions.values())
-
-    # Verify sum to gap_shrink_ms
-    tolerance = max(0.1 * abs(gap_shrink_ms), 1.0) + 1e-9
-
-    if abs(shapley_sum - gap_shrink_ms) > tolerance:
-        logger.warning(
-            f"    Shapley sum {shapley_sum:.2f} differs from gap_shrink {gap_shrink_ms:.2f}"
-        )
-        # Apply proportional renormalization
-        if abs(shapley_sum) > 1e-9:
-            scale = gap_shrink_ms / shapley_sum
-            for feat in features:
-                feature_contributions[feat] *= scale
-                feature_stats[feat]["mean"] *= scale
-                feature_stats[feat]["ci_low"] *= scale
-                feature_stats[feat]["ci_high"] *= scale
-            shapley_sum = gap_shrink_ms
-            logger.info(f"    Applied renormalization: scale={scale:.4f}")
-
-    logger.info(f"    Feature contributions to gap reduction:")
-    for feat, contrib in feature_contributions.items():
-        pct = (contrib / gap_shrink_ms * 100) if gap_shrink_ms != 0 else 0
-        p_val = feature_stats[feat]["p_value"]
-        logger.info(f"      {feat}: {contrib:.2f} ms ({pct:.1f}%, p={p_val:.5f})")
-    logger.info(f"    Total Shapley reduction: {shapley_sum:.2f} ms")
-
-    assert (
-        abs(shapley_sum - gap_shrink_ms) < 1e-6
-    ), "Feature contributions must sum to gap_shrink"
+    total = sum(contrib_point.values())
+    # (optional) renormalize to gap_shrink_ms if tiny drift:
+    if not np.isnan(gap_shrink_ms) and abs(total - gap_shrink_ms) > max(
+        1.0, 0.1 * abs(gap_shrink_ms)
+    ):
+        scale = gap_shrink_ms / total if abs(total) > 1e-9 else 1.0
+        for f in features:
+            stats[f]["mean"] *= scale
+            if contrib_samples[f]:
+                stats[f]["ci_low"] *= scale
+                stats[f]["ci_high"] *= scale
+        total = gap_shrink_ms
 
     return {
-        "feature_contributions_ms": feature_contributions,
-        "feature_contributions_stats": feature_stats,
-        "total_ms": float(shapley_sum),
-        "n_permutations": n_permutations,
-    }
-
-
-def per_feature_equalization(
-    ert_predictor,
-    S: pd.DataFrame,
-    feature: str,
-    quartiles: Dict,
-    G0: float,
-    n_bootstrap: int = 200,
-    bin_edges: np.ndarray = None,  # <<< NEW
-) -> Dict:
-    """
-    Per-feature equalization: apply clamp to BOTH groups identically.
-    Zipf equalization is conditional on length (per-bin Q3 from S).
-    """
-    logger.info(f"  Computing per-feature equalization for {feature}...")
-    print(f"  Per-feature equalization: {feature}...", flush=True)
-
-    # Extract quartile for this feature / define clamp
-    if feature == "length":
-        Q1 = quartiles["length"]["q1"]
-        clamp_fn = lambda df: df["length"].clip(upper=Q1)
-    elif feature == "surprisal":
-        Q1 = quartiles["surprisal"]["q1"]
-        clamp_fn = lambda df: df["surprisal"].clip(upper=Q1)
-    elif feature == "zipf":
-        if bin_edges is None:
-            raise ValueError(
-                "bin_edges must be provided for conditional Zipf equal-ease."
-            )
-        q3_zipf_by_bin = _zipf_q3_by_length_bin(S, bin_edges)  # fixed from S
-        clamp_fn = lambda df: _clamp_zipf_conditional(df, bin_edges, q3_zipf_by_bin)
-    else:
-        raise ValueError(f"Unknown feature: {feature}")
-
-    # Baseline gap
-    baseline_gap = predict_gap_on_sample(ert_predictor, S)
-
-    if abs(baseline_gap - G0) > BASELINE_TOLERANCE:
-        logger.warning(f"    Baseline gap {baseline_gap:.2f} differs from G0 {G0:.2f}")
-
-    # Apply clamp to BOTH groups
-    S_eq = S.copy()
-    S_eq[feature] = clamp_fn(S_eq)
-
-    # Counterfactual gap
-    counterfactual_gap = predict_gap_on_sample(ert_predictor, S_eq)
-
-    # Gap reduction
-    gap_explained_ms = G0 - counterfactual_gap
-    pct_of_G0 = (gap_explained_ms / G0 * 100) if G0 != 0 else 0
-
-    logger.info(f"    Baseline gap G0: {G0:.2f} ms")
-    logger.info(f"    Gap after equalizing {feature}: {counterfactual_gap:.2f} ms")
-    logger.info(
-        f"    Gap explained: {gap_explained_ms:.2f} ms ({pct_of_G0:.1f}% of G0)"
-    )
-
-    # Bootstrap (policy fixed from S)
-    def compute_gap_explained_feat(boot_data):
-        baseline_gap_b = predict_gap_on_sample(ert_predictor, boot_data)
-        if np.isnan(baseline_gap_b):
-            return np.nan
-
-        boot_eq = boot_data.copy()
-        boot_eq[feature] = clamp_fn(boot_eq)
-
-        cf_gap_b = predict_gap_on_sample(ert_predictor, boot_eq)
-        if np.isnan(cf_gap_b):
-            return np.nan
-
-        return baseline_gap_b - cf_gap_b
-
-    logger.info(f"    Computing bootstrap for {feature} equalization...")
-    print(
-        f"    {feature} equalization bootstrap (may take a few minutes)...", flush=True
-    )
-    stats_explained = bootstrap_gap_component(
-        gap_explained_ms, S, compute_gap_explained_feat, n_bootstrap=n_bootstrap
-    )
-
-    return {
-        "feature": feature,
-        "baseline_gap": float(G0),
-        "counterfactual_gap": float(counterfactual_gap),
-        "gap_explained_ms": float(gap_explained_ms),
-        "gap_explained_stats": stats_explained,
-        "pct_of_G0": float(pct_of_G0),
-        "method": "clamp_both_groups",
+        "feature_contributions_ms": {f: stats[f]["mean"] for f in features},
+        "feature_contributions_stats": stats,
+        "total_ms": float(total),
+        "n_orders": len(orders),
+        "n_bootstrap": int(n_bootstrap),
     }
 
 
@@ -648,12 +577,11 @@ def test_hypothesis_3(
     ert_predictor,
     data: pd.DataFrame,
     quartiles: Dict[str, Dict[str, float]],
-    n_bootstrap: int = 200,
-    n_permutations: int = 64,
-    bin_edges: np.ndarray = None,  # <<< same edges as H1
+    n_bootstrap: int = 2000,
+    bin_edges: np.ndarray = None,
 ) -> Dict:
     """
-    Test Hypothesis 3: Gap decomposition - FULLY RULES-COMPLIANT
+    Test Hypothesis 3: Gap decomposition
 
     Single source of truth: one sample S, one baseline G0.
     All analyses use the same S, G0, and equal-ease policy.
@@ -707,29 +635,13 @@ def test_hypothesis_3(
         S,
         quartiles,
         equal_ease["gap_shrink_ms"],
-        n_permutations=n_permutations,
+        n_bootstrap=n_bootstrap,
         bin_edges=bin_edges,
     )
 
-    per_feature = {}
-    for feature in ["length", "zipf", "surprisal"]:
-        per_feature[feature] = per_feature_equalization(
-            ert_predictor, S, feature, quartiles, G0, n_bootstrap, bin_edges=bin_edges
-        )
-
-    # Decision logic
-    any_substantial_effect = any(
-        abs(res.get("pct_of_G0", 0)) >= 25 for res in per_feature.values()
-    )
     text_difficulty_explained = equal_ease.get("gap_shrink_pct", 0) >= 20
 
-    if any_substantial_effect and text_difficulty_explained:
-        status = "STRONGLY CONFIRMED"
-        summary = "both differential sensitivity and text difficulty"
-    elif any_substantial_effect:
-        status = "CONFIRMED"
-        summary = "differential sensitivity to word features"
-    elif text_difficulty_explained:
+    if text_difficulty_explained:
         status = "CONFIRMED"
         summary = "text difficulty (simplification reduces gap)"
     else:
@@ -748,6 +660,5 @@ def test_hypothesis_3(
         "shapley_decomposition": shapley,
         "equal_ease_counterfactual": equal_ease,
         "equal_ease_feature_contributions": feature_contributions,
-        "per_feature_equalization": per_feature,
         "summary": summary,
     }

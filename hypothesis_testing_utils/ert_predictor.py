@@ -1,5 +1,5 @@
 """
-Expected Reading Time (ERT) Predictor - Pure Python
+Expected Reading Time (ERT) Predictor
 Combines skip and duration models: ERT = [1 - P(skip)] × E[TRT|fix]
 """
 
