@@ -312,37 +312,12 @@ class CompleteAnalysisPipeline:
         logger.info("✅ ANALYSIS COMPLETE!")
         logger.info("=" * 80)
 
-        logger.info("\nHYPOTHESIS RESULTS:")
-        for h_key in ["h1", "h2", "h3"]:
-            h_data = results["hypotheses"][h_key]
-            logger.info(
-                f"  {h_key.UPPER() if hasattr(h_key,'upper') else str(h_key).upper()}: {h_data['status']}"
-            )
-
-        if "h2" in results["hypotheses"]:
-            h2 = results["hypotheses"]["h2"]
-            logger.info(f"\n  H2 Details:")
-            logger.info(f"    {h2['n_significant']}/3 features significant")
-            if h2["amplified_features"]:
-                logger.info(f"    Amplified: {h2['amplified_features']}")
-            if h2["reduced_features"]:
-                logger.info(f"    Reduced: {h2['reduced_features']}")
-
         logger.info("\nOUTPUTS:")
         logger.info(f"  📁 Results: {self.results_dir}/")
         logger.info(f"  📊 Figures: {self.figures_dir}/")
         logger.info(f"    - All figures include .json data files for reproducibility")
         logger.info(f"  📄 Summary: {self.results_dir}/RESULTS_SUMMARY.md")
         logger.info(f"  📝 Log: {self.results_dir}/hypothesis_testing_output.log")
-
-        logger.info("\n" + "=" * 80)
-        logger.info("ENHANCED STATISTICAL OUTPUTS:")
-        logger.info("  ✓ P-values to 5 decimal places for all effects")
-        logger.info("  ✓ 95% confidence intervals for all estimates")
-        logger.info("  ✓ Cohen's h for skip pathway effects")
-        logger.info("  ✓ JSON exports for all figures (full reproducibility)")
-        logger.info("=" * 80)
-
         logger.info("\nNext steps:")
         logger.info("1. Review RESULTS_SUMMARY.md for comprehensive interpretation")
         logger.info("2. Check figures/ for publication-quality plots + JSON data")

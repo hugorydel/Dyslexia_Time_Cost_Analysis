@@ -217,7 +217,7 @@ def subject_level_deltas_all_pathways_uncond(
     Vectorized subject-level deltas for length/surprisal (skip/duration/ert simultaneously).
     Returns:
       - deltas_df: index=subject_id, cols=['skip','duration','ert']
-      - preds: raw arrays at Q1/Q3 for effect sizes (p/ert/trt)
+      - preds: raw arrays at Q1/Q3 for effect sizes (p/ert/trt) + subject_id row map
     """
     g = data.loc[data["group"] == group].copy()
     X = g[["length", "zipf", "surprisal"]]
@@ -226,6 +226,9 @@ def subject_level_deltas_all_pathways_uncond(
     X_q3[feature] = q3
 
     preds = _batch_q1_q3_preds_all_paths(ert_predictor, X_q1, X_q3, group)
+    # carry subject ids alongside arrays for CI bootstrapping of d
+    preds["subject_id"] = g["subject_id"].to_numpy()
+
     d_skip = preds["p3"] - preds["p1"]
     d_trt = preds["trt3"] - preds["trt1"]
     d_ert = preds["ert3"] - preds["ert1"]
@@ -272,6 +275,9 @@ def subject_level_deltas_all_pathways_zipf_cond(
     X_q3["zipf"] = z3.loc[mask].values
 
     preds = _batch_q1_q3_preds_all_paths(ert_predictor, X_q1, X_q3, group)
+    # carry subject ids for CI bootstrapping of d
+    preds["subject_id"] = g["subject_id"].to_numpy()
+
     d_skip = preds["p3"] - preds["p1"]
     d_trt = preds["trt3"] - preds["trt1"]
     d_ert = preds["ert3"] - preds["ert1"]
@@ -447,6 +453,45 @@ def bootstrap_pathway_effect(
         d_desc = compute_cohens_d_from_data(preds["ert1"], preds["ert3"])
         d_lo, d_hi = np.nan, np.nan
         h = np.nan
+
+    # --- NEW: bootstrap CI for Cohen's d by resampling subjects (no extra model calls) ---
+    if pathway in ("duration", "ert"):
+        d_lo = d_hi = np.nan
+        sid_rows = np.asarray(preds.get("subject_id"))
+        if sid_rows is not None and sid_rows.size == preds["ert1"].size:
+            # build an index list per subject once
+            idx_by_sid = (
+                pd.DataFrame({"sid": sid_rows, "i": np.arange(sid_rows.size)})
+                .groupby("sid")["i"]
+                .apply(lambda x: x.to_numpy())
+                .to_dict()
+            )
+            subj_list = deltas_df.index.to_numpy()
+            B = int(n_bootstrap)
+            d_boot = np.empty(B, dtype=float)
+            rng_d = np.random.default_rng(123)
+            for b in range(B):
+                # sample subjects with replacement
+                sample_sids = subj_list[
+                    rng_d.integers(0, subj_list.size, subj_list.size)
+                ]
+                # concatenate row indices for those subjects (with multiplicity)
+                idxs = np.concatenate(
+                    [idx_by_sid[s] for s in sample_sids if s in idx_by_sid], axis=0
+                )
+                if idxs.size < 2:
+                    d_boot[b] = np.nan
+                    continue
+                if pathway == "duration":
+                    v1, v3 = preds["trt1"][idxs], preds["trt3"][idxs]
+                else:  # "ert"
+                    v1, v3 = preds["ert1"][idxs], preds["ert3"][idxs]
+                d_boot[b] = compute_cohens_d_from_data(v1, v3)
+
+            d_boot = d_boot[np.isfinite(d_boot)]
+            if d_boot.size > 0 and np.isfinite(d_desc):
+                d_lo, d_hi = np.percentile(d_boot, [2.5, 97.5])
+    # --------------------------------------------------------------------------------------
 
     return {
         "p_value": float(p_value),
