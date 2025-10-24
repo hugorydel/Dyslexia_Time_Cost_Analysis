@@ -347,6 +347,7 @@ def bootstrap_amie(
     deltas = deltas[np.isfinite(deltas)]
     if deltas.size == 0:
         return {
+            "mean": np.nan,
             "p_value": np.nan,
             "ci_low": np.nan,
             "ci_high": np.nan,
@@ -372,6 +373,7 @@ def bootstrap_amie(
     p_value = compute_two_tailed_pvalue_corrected(obs, boot_means)
 
     return {
+        "mean": float(obs),
         "p_value": float(p_value),
         "ci_low": float(ci_low),
         "ci_high": float(ci_high),
@@ -767,6 +769,7 @@ def test_hypothesis_1(
         # Merge AMIE stats into AMIE results
         amie_control.update(
             {
+                "amie_ms": stats_ctrl.get("mean", amie_control.get("amie_ms")),
                 "p_value": stats_ctrl["p_value"],
                 "ci_low": stats_ctrl["ci_low"],
                 "ci_high": stats_ctrl["ci_high"],
@@ -774,6 +777,7 @@ def test_hypothesis_1(
         )
         amie_dyslexic.update(
             {
+                "amie_ms": stats_dys.get("mean", amie_dyslexic.get("amie_ms")),
                 "p_value": stats_dys["p_value"],
                 "ci_low": stats_dys["ci_low"],
                 "ci_high": stats_dys["ci_high"],

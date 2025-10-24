@@ -114,7 +114,7 @@ class CompleteAnalysisPipeline:
             logger.info("✅ Phase 1 complete")
 
             # ===== DIAGNOSTIC: Zipf-Length Interaction =====
-            run_zipf_diagnostic(prepared_data, n_bins=10, results_dir=self.results_dir)
+            run_zipf_diagnostic(prepared_data, n_bins=7, results_dir=self.results_dir)
 
             # ===== PHASE 2: MODEL FITTING (with caching) =====
             models_cache_path = self.cache_dir / (
@@ -224,9 +224,6 @@ class CompleteAnalysisPipeline:
                 output_dir=self.figures_dir,
             )
 
-            logger.info("✅ Phase 4 complete")
-            logger.info("   All figures have accompanying .json data files")
-
             # ===== PHASE 5: FINAL REPORT =====
             n_significant = h2_results.get("n_significant", 0)
 
@@ -263,8 +260,6 @@ class CompleteAnalysisPipeline:
             }
 
             self._save_json(final_results, "final_report.json")
-
-            logger.info("✅ Phase 5 complete")
 
             # ===== COMPLETION =====
             self._print_completion_summary(final_results)

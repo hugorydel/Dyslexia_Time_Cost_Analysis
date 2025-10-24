@@ -85,8 +85,6 @@ def diagnose_zipf_length_interaction(
     # Create bins with approximately equal observations and auto-generate labels
     bin_edges, bin_labels = create_length_bins(data, n_bins)
 
-    logger.info(f"\nCreated {len(bin_labels)} bins with labels: {bin_labels}")
-
     # Assign bins
     data = data.copy()
     data["length_bin"] = pd.cut(
@@ -112,10 +110,6 @@ def diagnose_zipf_length_interaction(
     for bin_idx, bin_label in enumerate(bin_labels):
         bin_start = bin_edges[bin_idx]
         bin_end = bin_edges[bin_idx + 1]
-
-        logger.info(
-            f"\n=== BIN '{bin_label}': Length [{bin_start:.1f}, {bin_end:.1f}) ==="
-        )
 
         bin_data = data[data["length_bin"] == bin_label]
 
