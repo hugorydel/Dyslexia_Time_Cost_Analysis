@@ -274,6 +274,141 @@ def compute_slope_ratio_conditional_zipf(
     return sr_avg, effect_sizes_ctrl, effect_sizes_dys
 
 
+# =======================
+# EFFICIENCY IMPROVEMENTS
+# =======================
+
+
+def _preindex_subject_frames(data: pd.DataFrame) -> Dict:
+    """Cache per-subject dataframes to avoid O(N) filtering each bootstrap draw."""
+    return {
+        sid: df.reset_index(drop=True)
+        for sid, df in data.groupby("subject_id", sort=False)
+    }
+
+
+def compute_sr_standard_all_pathways(
+    ert_predictor,
+    data: pd.DataFrame,
+    feature: str,
+    quartiles: Dict,
+) -> Tuple[Dict[str, float], Dict, Dict]:
+    """
+    Single pass: compute SR for skip/duration/ERT together (length/surprisal).
+    """
+    q1 = quartiles[feature]["q1"]
+    q3 = quartiles[feature]["q3"]
+
+    other_features = [f for f in ["length", "zipf", "surprisal"] if f != feature]
+    means = {f: data[f].mean() for f in other_features}
+
+    grid_q1 = pd.DataFrame({feature: [q1], **means})
+    grid_q3 = pd.DataFrame({feature: [q3], **means})
+
+    effects = {}
+    for group in ["control", "dyslexic"]:
+        ert_q1, p_skip_q1, trt_q1 = ert_predictor.predict_ert(
+            grid_q1, group, return_components=True
+        )
+        ert_q3, p_skip_q3, trt_q3 = ert_predictor.predict_ert(
+            grid_q3, group, return_components=True
+        )
+        effects[group] = {
+            "delta_p_skip": float(p_skip_q3[0] - p_skip_q1[0]),
+            "delta_trt": float(trt_q3[0] - trt_q1[0]),
+            "delta_ert": float(ert_q3[0] - ert_q1[0]),
+        }
+
+    srs = {}
+    # skip
+    dc = abs(effects["control"]["delta_p_skip"])
+    dd = abs(effects["dyslexic"]["delta_p_skip"])
+    srs["skip"] = np.nan if dc < 0.01 else (dd / dc if dc > 0 else np.nan)
+    # duration
+    dc = abs(effects["control"]["delta_trt"])
+    dd = abs(effects["dyslexic"]["delta_trt"])
+    srs["duration"] = np.nan if dc < 5 else (dd / dc if dc > 0 else np.nan)
+    # ert
+    dc = abs(effects["control"]["delta_ert"])
+    dd = abs(effects["dyslexic"]["delta_ert"])
+    srs["ert"] = (dd / dc) if dc > 0 else np.nan
+
+    # For point estimates you still compute Cohen's d in the per-path functions; here we
+    # return only SRs to keep this helper light for bootstrap use.
+    return srs, {}, {}
+
+
+def compute_sr_conditional_zipf_all_pathways(
+    ert_predictor,
+    data: pd.DataFrame,
+    quartiles: Dict,  # kept for symmetry; not used here
+    bin_edges: np.ndarray,
+    bin_weights: pd.Series,
+) -> Tuple[Dict[str, float], Dict, Dict]:
+    """
+    Single pass across bins: compute SR_skip, SR_duration, SR_ert for zipf together.
+    Weighted average over bins using bin_weights.
+    """
+    n_bins = len(bin_weights)
+    sr_bins = {"skip": [], "duration": [], "ert": []}
+    used_idx = {"skip": [], "duration": [], "ert": []}
+
+    for bin_idx in range(n_bins):
+        ctrl_bin = data[(data["group"] == "control") & (data["length_bin"] == bin_idx)]
+        dys_bin = data[(data["group"] == "dyslexic") & (data["length_bin"] == bin_idx)]
+        if len(ctrl_bin) < 10 or len(dys_bin) < 10:
+            continue
+
+        per_group = {}
+        for group, gdf in [("control", ctrl_bin), ("dyslexic", dys_bin)]:
+            z_q1 = gdf["zipf"].quantile(0.25)
+            z_q3 = gdf["zipf"].quantile(0.75)
+            Lm = gdf["length"].mean()
+            Sm = gdf["surprisal"].mean()
+            g1 = pd.DataFrame({"length": [Lm], "zipf": [z_q1], "surprisal": [Sm]})
+            g3 = pd.DataFrame({"length": [Lm], "zipf": [z_q3], "surprisal": [Sm]})
+            ert_q1, p_skip_q1, trt_q1 = ert_predictor.predict_ert(
+                g1, group, return_components=True
+            )
+            ert_q3, p_skip_q3, trt_q3 = ert_predictor.predict_ert(
+                g3, group, return_components=True
+            )
+            per_group[group] = {
+                "delta_p_skip": float(p_skip_q3[0] - p_skip_q1[0]),
+                "delta_trt": float(trt_q3[0] - trt_q1[0]),
+                "delta_ert": float(ert_q3[0] - ert_q1[0]),
+            }
+
+        for path, key in [
+            ("skip", "delta_p_skip"),
+            ("duration", "delta_trt"),
+            ("ert", "delta_ert"),
+        ]:
+            dc = abs(per_group["control"][key])
+            dd = abs(per_group["dyslexic"][key])
+            if (path == "skip" and dc < 0.01) or (path == "duration" and dc < 5):
+                continue
+            if dc > 0:
+                sr_bins[path].append(dd / dc)
+                used_idx[path].append(bin_idx)
+
+    srs = {}
+    for path in ["skip", "duration", "ert"]:
+        if not sr_bins[path]:
+            srs[path] = np.nan
+        else:
+            w = bin_weights.iloc[used_idx[path]].values
+            w = w / w.sum()
+            srs[path] = float(np.average(sr_bins[path], weights=w))
+
+    return srs, {}, {}
+
+
+# ============================
+# Bootstrap (optimized version)
+# ============================
+
+
 def bootstrap_all_metrics(
     ert_predictor,
     data: pd.DataFrame,
@@ -282,12 +417,15 @@ def bootstrap_all_metrics(
     n_bootstrap: int = 2000,
 ) -> Tuple[Dict, Dict]:
     """
-    COMPREHENSIVE BOOTSTRAP: Resample subjects and recompute ALL metrics
+    COMPREHENSIVE BOOTSTRAP (optimized):
+      - preindex by subject once
+      - compute all SR pathways in one pass per feature
     """
     logger.info(f"\nRunning comprehensive bootstrap ({n_bootstrap} iterations)...")
 
-    subjects = data["subject_id"].unique()
-    n_subjects = len(subjects)
+    subject_frames = _preindex_subject_frames(data)
+    subject_ids = list(subject_frames.keys())
+    n_subjects = len(subject_ids)
 
     bootstrap_results = {
         "amie": {
@@ -300,28 +438,34 @@ def bootstrap_all_metrics(
         },
     }
 
+    rng_base = np.random.RandomState(0)
     for i in tqdm(range(n_bootstrap), desc="Bootstrap", leave=True):
         if (i + 1) % 100 == 0:
             logger.info(f"  Completed {i+1}/{n_bootstrap} bootstrap samples")
 
-        rng = np.random.RandomState(i)
-        boot_subjects = rng.choice(subjects, size=n_subjects, replace=True)
-        boot_data = pd.concat(
-            [data[data["subject_id"] == s] for s in boot_subjects], ignore_index=True
-        )
+        # Sample subjects without O(N) scans
+        boot_subj = rng_base.choice(subject_ids, size=n_subjects, replace=True)
+        parts = []
+        for j, s in enumerate(boot_subj):
+            # unique subject_id preserves subject grouping downstream
+            parts.append(subject_frames[s].assign(subject_id=f"{s}__boot{j}"))
+        boot_data = pd.concat(parts, ignore_index=True)
 
         if len(boot_data) < 1000:
             continue
 
+        # Quartiles once
+        qs = boot_data[["length", "zipf", "surprisal"]].quantile([0.25, 0.75])
         boot_quartiles = {
             feat: {
-                "q1": boot_data[feat].quantile(0.25),
-                "q3": boot_data[feat].quantile(0.75),
-                "iqr": boot_data[feat].quantile(0.75) - boot_data[feat].quantile(0.25),
+                "q1": float(qs.loc[0.25, feat]),
+                "q3": float(qs.loc[0.75, feat]),
+                "iqr": float(qs.loc[0.75, feat] - qs.loc[0.25, feat]),
             }
             for feat in ["length", "zipf", "surprisal"]
         }
 
+        # AMIE (unchanged)
         for feature in ["length", "zipf", "surprisal"]:
             for group in ["control", "dyslexic"]:
                 try:
@@ -336,37 +480,35 @@ def bootstrap_all_metrics(
                         amie = amie_result.get("amie_ms", np.nan)
                     else:
                         amie_result = compute_amie_standard(
-                            ert_predictor, boot_data, feature, group, boot_quartiles
+                            ert_predictor, boot_data, feature, boot_quartiles
                         )
                         amie = amie_result.get("amie_ms", np.nan)
 
-                    if not np.isnan(amie):
+                    if np.isfinite(amie):
                         bootstrap_results["amie"][feature][group].append(amie)
                 except Exception:
                     pass
 
-            for pathway in ["skip", "duration", "ert"]:
-                try:
-                    if feature == "zipf":
-                        sr, _, _ = compute_slope_ratio_conditional_zipf(
-                            ert_predictor,
-                            boot_data,
-                            boot_quartiles,
-                            bin_edges,
-                            bin_weights,
-                            pathway,
-                        )
-                    else:
-                        sr, _, _ = compute_slope_ratio_standard(
-                            ert_predictor, boot_data, feature, boot_quartiles, pathway
-                        )
+        # --- SINGLE PASS SRs per feature ---
+        for feature in ["length", "zipf", "surprisal"]:
+            try:
+                if feature == "zipf":
+                    srs, _, _ = compute_sr_conditional_zipf_all_pathways(
+                        ert_predictor, boot_data, boot_quartiles, bin_edges, bin_weights
+                    )
+                else:
+                    srs, _, _ = compute_sr_standard_all_pathways(
+                        ert_predictor, boot_data, feature, boot_quartiles
+                    )
 
-                    if not np.isnan(sr):
-                        bootstrap_results["slope_ratios"][f"sr_{pathway}"][
-                            feature
-                        ].append(sr)
-                except:
-                    pass
+                for path in ["skip", "duration", "ert"]:
+                    val = srs.get(path, np.nan)
+                    if np.isfinite(val):
+                        bootstrap_results["slope_ratios"][f"sr_{path}"][feature].append(
+                            val
+                        )
+            except Exception:
+                pass
 
     # === COMPUTE CONFIDENCE INTERVALS AND P-VALUES ===
     ci_results = {}
@@ -389,20 +531,20 @@ def bootstrap_all_metrics(
         for pathway in ["skip", "duration", "ert"]:
             samples = bootstrap_results["slope_ratios"][f"sr_{pathway}"][feature]
             if len(samples) > 0:
-                mean_sr = float(np.mean(samples))
-                ci_low = float(np.percentile(samples, 2.5))
-                ci_high = float(np.percentile(samples, 97.5))
+                arr = np.array(samples, float)
+                mean_sr = float(np.mean(arr))
+                ci_low, ci_high = np.percentile(arr, [2.5, 97.5])
 
                 # P-value with +1 correction
                 p_value = compute_two_tailed_pvalue_corrected_ratio(
-                    mean_sr, np.array(samples), null_value=1.0
+                    mean_sr, arr, null_value=1.0
                 )
 
                 ci_results[feature][pathway] = {
                     "mean": mean_sr,
-                    "ci_low": ci_low,
-                    "ci_high": ci_high,
-                    "p_value": p_value,
+                    "ci_low": float(ci_low),
+                    "ci_high": float(ci_high),
+                    "p_value": float(p_value),
                     "n_bootstrap": len(samples),
                 }
 
@@ -476,7 +618,7 @@ def test_hypothesis_2(
 
         results[feature] = feature_results
 
-    # === 2. BOOTSTRAP CIs AND P-VALUES ===
+    # === 2. BOOTSTRAP CIs AND P-VALUES (optimized) ===
     bootstrap_samples, ci_results = bootstrap_all_metrics(
         ert_predictor, data, bin_edges, bin_weights, n_bootstrap
     )

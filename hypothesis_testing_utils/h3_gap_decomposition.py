@@ -26,7 +26,6 @@ def predict_components_batch(predictor, df, group):
     """
     X = df[["length", "zipf", "surprisal"]]
     ert, p_skip, trt = predictor.predict_ert(X, group, return_components=True)
-    # Ensure 1D arrays
     return np.asarray(ert).ravel(), np.asarray(p_skip).ravel(), np.asarray(trt).ravel()
 
 
@@ -34,7 +33,6 @@ def predict_gap_on_sample(ert_predictor, sample: pd.DataFrame) -> float:
     """
     Compute gap using model predictions on the given sample.
     Subject-balanced: mean of subject means within group (reduces variance).
-    Uses BATCH prediction for performance.
     """
     group_means = {}
     for group_name in ["control", "dyslexic"]:
@@ -65,7 +63,7 @@ def bootstrap_gap_component(
     n_bootstrap: int = 2000,
     **kwargs,
 ) -> Dict:
-    """Bootstrap with subject resampling (stratified by group)"""
+    """Generic bootstrap with subject resampling (stratified by group)."""
     ctrl_subjects = data.loc[data["group"] == "control", "subject_id"].unique()
     dys_subjects = data.loc[data["group"] == "dyslexic", "subject_id"].unique()
 
@@ -81,30 +79,26 @@ def bootstrap_gap_component(
         parts = []
         for j, s in enumerate(boot_ctrl):
             df = data[data["subject_id"] == s].copy()
-            df["subject_id"] = f"ctrl_{s}_{j}"  # unique id per draw
+            df["subject_id"] = f"ctrl_{s}_{j}"
             parts.append(df)
         for j, s in enumerate(boot_dys):
             df = data[data["subject_id"] == s].copy()
-            df["subject_id"] = f"dys_{s}_{j}"  # unique id per draw
+            df["subject_id"] = f"dys_{s}_{j}"
             parts.append(df)
 
         boot_data = pd.concat(parts, ignore_index=True)
 
         try:
             result = computation_fn(boot_data, **kwargs)
-            if not np.isnan(result):
+            if np.isfinite(result):
                 bootstrap_values.append(result)
         except Exception:
             pass
 
     if len(bootstrap_values) > 0:
-        ci_low = float(np.percentile(bootstrap_values, 2.5))
-        ci_high = float(np.percentile(bootstrap_values, 97.5))
-
-        # P-value with +1 correction
-        p_value = compute_two_tailed_pvalue_corrected(
-            observed_value, np.array(bootstrap_values)
-        )
+        arr = np.array(bootstrap_values, dtype=float)
+        ci_low, ci_high = np.percentile(arr, [2.5, 97.5])
+        p_value = compute_two_tailed_pvalue_corrected(observed_value, arr)
     else:
         ci_low = ci_high = p_value = np.nan
 
@@ -113,8 +107,8 @@ def bootstrap_gap_component(
         "ci_low": float(ci_low),
         "ci_high": float(ci_high),
         "p_value": float(p_value),
-        "n_bootstrap": n_bootstrap,
-        "n_effective_bootstrap": len(bootstrap_values),
+        "n_bootstrap": int(n_bootstrap),
+        "n_effective_bootstrap": int(len(bootstrap_values)),
     }
 
 
@@ -140,36 +134,30 @@ def shapley_decomposition(
     print("  Shapley decomposition...", flush=True)
 
     dys_data = S[S["group"] == "dyslexic"]
-
     if len(dys_data) == 0:
         return {"error": "No dyslexic data"}
 
-    # === BATCHED PREDICTIONS (replaces per-row loops) ===
+    # Batched predictions (point estimates)
     ert_dys, p_skip_dys, trt_dys = predict_components_batch(
         ert_predictor, dys_data, "dyslexic"
     )
-    mean_ert_dys = ert_dys.mean()
-
     ert_ctrl, p_skip_ctrl, trt_ctrl = predict_components_batch(
         ert_predictor, dys_data, "control"
     )
-    mean_ert_ctrl = ert_ctrl.mean()
 
+    mean_ert_dys = ert_dys.mean()
+    mean_ert_ctrl = ert_ctrl.mean()
     computed_gap = mean_ert_dys - mean_ert_ctrl
 
-    # Path 1: Equalize skip first
+    # Path 1: equalize skip first
     ert_1 = (1 - p_skip_ctrl) * trt_dys
-    mean_ert_1 = ert_1.mean()
+    delta_skip_path1 = mean_ert_dys - ert_1.mean()
+    delta_duration_path1 = ert_1.mean() - mean_ert_ctrl
 
-    delta_skip_path1 = mean_ert_dys - mean_ert_1
-    delta_duration_path1 = mean_ert_1 - mean_ert_ctrl
-
-    # Path 2: Equalize duration first
+    # Path 2: equalize duration first
     ert_3 = (1 - p_skip_dys) * trt_ctrl
-    mean_ert_3 = ert_3.mean()
-
-    delta_duration_path2 = mean_ert_dys - mean_ert_3
-    delta_skip_path2 = mean_ert_3 - mean_ert_ctrl
+    delta_duration_path2 = mean_ert_dys - ert_3.mean()
+    delta_skip_path2 = ert_3.mean() - mean_ert_ctrl
 
     # Average Shapley values
     delta_skip = (delta_skip_path1 + delta_skip_path2) / 2
@@ -187,84 +175,91 @@ def shapley_decomposition(
     else:
         scale = 1.0
 
-    skip_contribution_ms = delta_skip * scale
-    duration_contribution_ms = delta_duration * scale
+    # ---------- Single-pass bootstrap for BOTH Shapley components ----------
+    print("    Shapley bootstrap (single pass)...", flush=True)
+    ctrl_subjects = S.loc[S["group"] == "control", "subject_id"].unique()
+    dys_subjects = S.loc[S["group"] == "dyslexic", "subject_id"].unique()
 
-    # === BOOTSTRAP: SKIP contribution (use ALL dys tokens in each draw) ===
-    def compute_skip_contrib(boot_data):
-        dys_boot = boot_data[boot_data["group"] == "dyslexic"]
+    skip_samples, dur_samples = [], []
+
+    for i in tqdm(range(n_bootstrap), desc="      Bootstrap", leave=False):
+        rng = np.random.RandomState(3000 + i)
+        boot_ctrl = rng.choice(ctrl_subjects, size=len(ctrl_subjects), replace=True)
+        boot_dys = rng.choice(dys_subjects, size=len(dys_subjects), replace=True)
+
+        parts = []
+        for j, s in enumerate(boot_ctrl):
+            df = S[S["subject_id"] == s].copy()
+            df["subject_id"] = f"ctrl_{s}_{j}"
+            parts.append(df)
+        for j, s in enumerate(boot_dys):
+            df = S[S["subject_id"] == s].copy()
+            df["subject_id"] = f"dys_{s}_{j}"
+            parts.append(df)
+        boot = pd.concat(parts, ignore_index=True)
+
+        dys_boot = boot[boot["group"] == "dyslexic"]
         if len(dys_boot) < 10:
-            return np.nan
+            continue
 
         ed, psd, td = predict_components_batch(ert_predictor, dys_boot, "dyslexic")
         ec, psc, tc = predict_components_batch(ert_predictor, dys_boot, "control")
+        mean_dys_b = ed.mean()
+        mean_ctrl_b = ec.mean()
 
-        mean_dys = ed.mean()
-        mean_ctrl = ec.mean()
+        # Path 1 / Path 2 on the boot sample
+        ert_1_b = (1 - psc) * td  # skip equalized first
+        ert_3_b = (1 - psd) * tc  # duration equalized first
 
-        # Path 1: equalize skip first
-        ert_1_b = (1 - psc) * td
-        skip_1 = mean_dys - ert_1_b.mean()
+        # Skip contribution (avg of paths)
+        skip_1 = mean_dys_b - ert_1_b.mean()
+        skip_2 = ert_3_b.mean() - mean_ctrl_b
+        skip_b = 0.5 * (skip_1 + skip_2)
 
-        # Path 2: equalize duration first
-        ert_3_b = (1 - psd) * tc
-        skip_2 = ert_3_b.mean() - mean_ctrl
+        # Duration contribution (avg of paths)
+        dur_1 = mean_dys_b - ert_3_b.mean()
+        dur_2 = ert_1_b.mean() - mean_ctrl_b
+        dur_b = 0.5 * (dur_1 + dur_2)
 
-        return 0.5 * (skip_1 + skip_2)
+        skip_samples.append(skip_b)
+        dur_samples.append(dur_b)
 
-    # === BOOTSTRAP: DURATION contribution (use ALL dys tokens in each draw) ===
-    def compute_duration_contrib(boot_data):
-        dys_boot = boot_data[boot_data["group"] == "dyslexic"]
-        if len(dys_boot) < 10:
-            return np.nan
+    skip_arr = np.array(skip_samples, dtype=float)
+    dur_arr = np.array(dur_samples, dtype=float)
 
-        ed, psd, td = predict_components_batch(ert_predictor, dys_boot, "dyslexic")
-        ec, psc, tc = predict_components_batch(ert_predictor, dys_boot, "control")
+    # Two-tailed p-values (+1 correction inside util). p-values are
+    # computed on the unscaled distribution; scaling doesn't affect them.
+    if skip_arr.size > 0:
+        skip_ci_low, skip_ci_high = np.percentile(skip_arr, [2.5, 97.5])
+        skip_p = compute_two_tailed_pvalue_corrected(delta_skip, skip_arr)
+    else:
+        skip_ci_low = skip_ci_high = skip_p = np.nan
 
-        mean_dys = ed.mean()
-        mean_ctrl = ec.mean()
+    if dur_arr.size > 0:
+        dur_ci_low, dur_ci_high = np.percentile(dur_arr, [2.5, 97.5])
+        dur_p = compute_two_tailed_pvalue_corrected(delta_duration, dur_arr)
+    else:
+        dur_ci_low = dur_ci_high = dur_p = np.nan
 
-        # Path 1: duration first
-        ert_3_b = (1 - psd) * tc
-        dur_1 = mean_dys - ert_3_b.mean()
-
-        # Path 2: duration second
-        ert_1_b = (1 - psc) * td
-        dur_2 = ert_1_b.mean() - mean_ctrl
-
-        return 0.5 * (dur_1 + dur_2)
-
-    logger.info("    Computing bootstrap for Shapley components...")
-    print("    Shapley bootstrap (may take a few minutes)...", flush=True)
-    stats_skip = bootstrap_gap_component(
-        delta_skip, S, compute_skip_contrib, n_bootstrap=n_bootstrap
-    )
-    stats_dur = bootstrap_gap_component(
-        delta_duration, S, compute_duration_contrib, n_bootstrap=n_bootstrap
-    )
-
-    # Scale both stats to G0
-    for st in (stats_skip, stats_dur):
-        st["mean"] *= scale
-        st["ci_low"] *= scale
-        st["ci_high"] *= scale
-
+    # Scale means/CIs to G0
     stats_skip_scaled = {
-        "mean": stats_skip["mean"],
-        "ci_low": stats_skip["ci_low"],
-        "ci_high": stats_skip["ci_high"],
-        "p_value": stats_skip["p_value"],
-        "n_bootstrap": stats_skip["n_bootstrap"],
+        "mean": float(delta_skip * scale),
+        "ci_low": float(skip_ci_low * scale),
+        "ci_high": float(skip_ci_high * scale),
+        "p_value": float(skip_p),
+        "n_bootstrap": int(skip_arr.size),
     }
     stats_duration_scaled = {
-        "mean": stats_dur["mean"],
-        "ci_low": stats_dur["ci_low"],
-        "ci_high": stats_dur["ci_high"],
-        "p_value": stats_dur["p_value"],
-        "n_bootstrap": stats_dur["n_bootstrap"],
+        "mean": float(delta_duration * scale),
+        "ci_low": float(dur_ci_low * scale),
+        "ci_high": float(dur_ci_high * scale),
+        "p_value": float(dur_p),
+        "n_bootstrap": int(dur_arr.size),
     }
 
-    # Percentages relative to G0
+    skip_contribution_ms = stats_skip_scaled["mean"]
+    duration_contribution_ms = stats_duration_scaled["mean"]
+
     pct_skip = (skip_contribution_ms / G0 * 100) if G0 != 0 else 0
     pct_duration = (duration_contribution_ms / G0 * 100) if G0 != 0 else 0
 
@@ -276,7 +271,6 @@ def shapley_decomposition(
     )
     logger.info(f"    Sum check: {pct_skip + pct_duration:.1f}% (should be 100%)")
 
-    # Verify sum
     assert abs((skip_contribution_ms + duration_contribution_ms) - G0) < max(
         0.1 * abs(G0), 1.0
     ), "Skip + Duration must sum to G0"
@@ -295,15 +289,10 @@ def shapley_decomposition(
 
 
 def _assign_length_bin(df: pd.DataFrame, bin_edges: np.ndarray) -> pd.Series:
-    """Return integer length-bin indices for df['length'] using provided bin_edges."""
     return pd.cut(df["length"], bins=bin_edges, labels=False, include_lowest=True)
 
 
 def _zipf_q3_by_length_bin(S: pd.DataFrame, bin_edges: np.ndarray) -> pd.Series:
-    """
-    Compute per-bin Q3 of zipf on the SINGLE source-of-truth sample S.
-    Returns a Series indexed by bin id (0..n_bins-1).
-    """
     bins_S = _assign_length_bin(S, bin_edges)
     tmp = S.copy()
     tmp["length_bin"] = bins_S
@@ -313,12 +302,6 @@ def _zipf_q3_by_length_bin(S: pd.DataFrame, bin_edges: np.ndarray) -> pd.Series:
 def _clamp_zipf_conditional(
     df: pd.DataFrame, bin_edges: np.ndarray, q3_by_bin: pd.Series
 ) -> pd.Series:
-    """
-    Clamp zipf within length bins: zipf := max(zipf, Q3_bin).
-    Uses fixed thresholds q3_by_bin computed on S.
-    If a row maps to a bin with no Q3 (rare if bootstrapping from S),
-    leave that row unchanged.
-    """
     bins_df = _assign_length_bin(df, bin_edges)
     thr = bins_df.map(q3_by_bin)
     z = df["zipf"].values
@@ -341,94 +324,117 @@ def equal_ease_counterfactual(
     """
     Equal-ease counterfactual using Q1/Q3 clamp policy.
     Uses the SAME sample S and baseline G0.
-
     Zipf clamp is conditional on length: per-bin Q3 computed once on S.
     """
     logger.info("  Computing equal-ease counterfactual...")
     print("  Equal-ease counterfactual...", flush=True)
 
-    # Extract quartiles
     Q1_len = quartiles["length"]["q1"]
     Q1_surpr = quartiles["surprisal"]["q1"]
 
-    # NEW: conditional Zipf thresholds from S
     if bin_edges is None:
         raise ValueError("bin_edges must be provided for conditional Zipf equal-ease.")
     q3_zipf_by_bin = _zipf_q3_by_length_bin(S, bin_edges)
 
-    # Baseline gap (should equal G0)
+    # Point estimate on S
     baseline_gap = predict_gap_on_sample(ert_predictor, S)
-
     if abs(baseline_gap - G0) > BASELINE_TOLERANCE:
         logger.warning(f"    Baseline gap {baseline_gap:.2f} differs from G0 {G0:.2f}")
 
-    # Apply equal-ease policy: global Q1 for length & surprisal, per-bin Q3 for Zipf
     S_easy = S.copy()
     S_easy["length"] = S_easy["length"].clip(upper=Q1_len)
     S_easy["surprisal"] = S_easy["surprisal"].clip(upper=Q1_surpr)
-    S_easy["zipf"] = _clamp_zipf_conditional(S_easy, bin_edges, q3_zipf_by_bin)  # NEW
+    S_easy["zipf"] = _clamp_zipf_conditional(S_easy, bin_edges, q3_zipf_by_bin)
 
-    # Counterfactual gap
     counterfactual_gap = predict_gap_on_sample(ert_predictor, S_easy)
-
-    # Gap reduction
     gap_shrink_ms = G0 - counterfactual_gap
     gap_shrink_pct = (gap_shrink_ms / G0 * 100) if G0 != 0 else 0
+
+    # --------- Single-pass bootstrap: collect shrink and counterfactual gap samples ----------
+    print("    Gap shrink & CF-gap bootstrap (single pass)...", flush=True)
+
+    ctrl_subjects = S.loc[S["group"] == "control", "subject_id"].unique()
+    dys_subjects = S.loc[S["group"] == "dyslexic", "subject_id"].unique()
+
+    shrink_samples, cf_gap_samples = [], []
+
+    for i in tqdm(range(n_bootstrap), desc="      Bootstrap", leave=False):
+        rng = np.random.RandomState(3000 + i)
+        boot_ctrl = rng.choice(ctrl_subjects, size=len(ctrl_subjects), replace=True)
+        boot_dys = rng.choice(dys_subjects, size=len(dys_subjects), replace=True)
+
+        parts = []
+        for j, s in enumerate(boot_ctrl):
+            df = S[S["subject_id"] == s].copy()
+            df["subject_id"] = f"ctrl_{s}_{j}"
+            parts.append(df)
+        for j, s in enumerate(boot_dys):
+            df = S[S["subject_id"] == s].copy()
+            df["subject_id"] = f"dys_{s}_{j}"
+            parts.append(df)
+        boot = pd.concat(parts, ignore_index=True)
+
+        base_b = predict_gap_on_sample(ert_predictor, boot)
+        if not np.isfinite(base_b):
+            continue
+
+        boot_easy = boot.copy()
+        boot_easy["length"] = boot_easy["length"].clip(upper=Q1_len)
+        boot_easy["surprisal"] = boot_easy["surprisal"].clip(upper=Q1_surpr)
+        boot_easy["zipf"] = _clamp_zipf_conditional(
+            boot_easy, bin_edges, q3_zipf_by_bin
+        )
+
+        cf_b = predict_gap_on_sample(ert_predictor, boot_easy)
+        if not np.isfinite(cf_b):
+            continue
+
+        cf_gap_samples.append(cf_b)
+        shrink_samples.append(base_b - cf_b)
+
+    shrink_arr = np.array(shrink_samples, dtype=float)
+    cf_arr = np.array(cf_gap_samples, dtype=float)
+
+    # Stats (two-tailed, +1 correction)
+    if shrink_arr.size > 0:
+        shrink_ci_low, shrink_ci_high = np.percentile(shrink_arr, [2.5, 97.5])
+        shrink_p = compute_two_tailed_pvalue_corrected(gap_shrink_ms, shrink_arr)
+    else:
+        shrink_ci_low = shrink_ci_high = shrink_p = np.nan
+
+    if cf_arr.size > 0:
+        cf_ci_low, cf_ci_high = np.percentile(cf_arr, [2.5, 97.5])
+        cf_p = compute_two_tailed_pvalue_corrected(counterfactual_gap, cf_arr)
+    else:
+        cf_ci_low = cf_ci_high = cf_p = np.nan
+
+    stats_gap_shrink = {
+        "mean": float(gap_shrink_ms),
+        "ci_low": float(shrink_ci_low),
+        "ci_high": float(shrink_ci_high),
+        "p_value": float(shrink_p),
+        "n_bootstrap": int(shrink_arr.size),
+    }
+
+    stats_cf_gap = {
+        "mean": float(counterfactual_gap),
+        "ci_low": float(cf_ci_low),
+        "ci_high": float(cf_ci_high),
+        "p_value": float(cf_p),
+        "n_bootstrap": int(cf_arr.size),
+    }
+    # -----------------------------------------------------------------------------------------
 
     logger.info(f"    Baseline gap G0: {G0:.2f} ms")
     logger.info(f"    Counterfactual gap: {counterfactual_gap:.2f} ms")
     logger.info(f"    Gap shrink: {gap_shrink_ms:.2f} ms ({gap_shrink_pct:.1f}%)")
 
-    def compute_cf_gap(boot_data):
-        boot_easy = boot_data.copy()
-        boot_easy["length"] = boot_easy["length"].clip(upper=Q1_len)
-        boot_easy["surprisal"] = boot_easy["surprisal"].clip(upper=Q1_surpr)
-        boot_easy["zipf"] = _clamp_zipf_conditional(
-            boot_easy, bin_edges, q3_zipf_by_bin
-        )
-        return predict_gap_on_sample(ert_predictor, boot_easy)
-
-    # Bootstrap (policy thresholds fixed from S)
-    def compute_gap_shrink(boot_data):
-        baseline_gap_b = predict_gap_on_sample(ert_predictor, boot_data)
-        if np.isnan(baseline_gap_b):
-            return np.nan
-
-        boot_easy = boot_data.copy()
-        boot_easy["length"] = boot_easy["length"].clip(upper=Q1_len)
-        boot_easy["surprisal"] = boot_easy["surprisal"].clip(upper=Q1_surpr)
-        boot_easy["zipf"] = _clamp_zipf_conditional(
-            boot_easy, bin_edges, q3_zipf_by_bin
-        )
-
-        cf_gap_b = predict_gap_on_sample(ert_predictor, boot_easy)
-        if np.isnan(cf_gap_b):
-            return np.nan
-
-        return baseline_gap_b - cf_gap_b
-
-    logger.info("    Computing bootstrap for gap shrinkage...")
-    print("    Gap shrinkage bootstrap (may take a few minutes)...", flush=True)
-    stats_gap_shrink = bootstrap_gap_component(
-        gap_shrink_ms, S, compute_gap_shrink, n_bootstrap=n_bootstrap
-    )
-    stats_cf_gap = bootstrap_gap_component(
-        counterfactual_gap, S, compute_cf_gap, n_bootstrap=n_bootstrap
-    )
-
     return {
         "baseline_gap": float(G0),
         "counterfactual_gap": float(counterfactual_gap),
-        "counterfactual_gap_stats": {
-            "mean": float(stats_cf_gap["mean"]),
-            "ci_low": float(stats_cf_gap["ci_low"]),
-            "ci_high": float(stats_cf_gap["ci_high"]),
-            "p_value": float(stats_cf_gap["p_value"]),
-            "n_bootstrap": stats_cf_gap["n_bootstrap"],
-        },
-        "gap_shrink_ms": float(gap_shrink_ms),
+        "counterfactual_gap_stats": stats_cf_gap,
         "gap_shrink_stats": stats_gap_shrink,
-        "gap_shrink_p_value": stats_gap_shrink["p_value"],
+        "gap_shrink_ms": float(gap_shrink_ms),
         "gap_shrink_pct": float(gap_shrink_pct),
     }
 
@@ -459,7 +465,7 @@ def equal_ease_feature_contributions(
             df, subset, quartiles, bin_edges, q3_zipf_by_bin
         )
 
-    # --- Point estimate on S by enumerating all 6 orders ---
+    # Point estimate on S by enumerating all 6 orders
     baseline_gap = v(S)
     per_order_contribs = {f: [] for f in features}
     for order in orders:
@@ -469,7 +475,7 @@ def equal_ease_feature_contributions(
             applied.add(feat)
             S_curr = apply_subset(S, applied)
             gap_new = v(S_curr)
-            if np.isnan(gap_new):  # skip if failure
+            if np.isnan(gap_new):
                 continue
             per_order_contribs[feat].append(gap_prev - gap_new)
             gap_prev = gap_new
@@ -479,7 +485,7 @@ def equal_ease_feature_contributions(
         for f in features
     }
 
-    # --- Bootstrap for CIs/p-values (re-enumerate all 6 orders each draw) ---
+    # Bootstrap for CIs/p-values: re-enumerate 6 orders each draw
     contrib_samples = {f: [] for f in features}
     if n_bootstrap and n_bootstrap > 0:
         ctrl_subj = S.loc[S["group"] == "control", "subject_id"].unique()
@@ -503,7 +509,6 @@ def equal_ease_feature_contributions(
                 parts.append(df)
             boot = pd.concat(parts, ignore_index=True)
 
-            # Evaluate all 6 orders on the boot sample
             base = v(boot)
             if np.isnan(base):
                 continue
@@ -528,7 +533,7 @@ def equal_ease_feature_contributions(
                 if counts[f] > 0:
                     contrib_samples[f].append(sums[f] / counts[f])
 
-    # --- Assemble stats ---
+    # Assemble stats
     stats = {}
     for f in features:
         if contrib_samples[f]:
@@ -552,7 +557,7 @@ def equal_ease_feature_contributions(
             }
 
     total = sum(contrib_point.values())
-    # (optional) renormalize to gap_shrink_ms if tiny drift:
+    # Optional renormalization to gap_shrink_ms if small drift:
     if not np.isnan(gap_shrink_ms) and abs(total - gap_shrink_ms) > max(
         1.0, 0.1 * abs(gap_shrink_ms)
     ):
@@ -581,8 +586,7 @@ def test_hypothesis_3(
     bin_edges: np.ndarray = None,
 ) -> Dict:
     """
-    Test Hypothesis 3: Gap decomposition
-
+    Test Hypothesis 3: Gap decomposition -
     Single source of truth: one sample S, one baseline G0.
     All analyses use the same S, G0, and equal-ease policy.
     """
@@ -597,39 +601,33 @@ def test_hypothesis_3(
             "H3 requires bin_edges for conditional Zipf equal-ease (match H1)."
         )
 
-    # Create THE analysis sample S (single source of truth)
+    # Single analysis sample S
     np.random.seed(ANALYSIS_SEED)
     S = data.copy()
 
     logger.info(f"\nAnalysis sample S: {len(S):,} observations")
     logger.info(f"Random seed: {ANALYSIS_SEED}")
 
-    # Compute THE canonical gap G0 (single source of truth)
+    # Canonical gap G0
     G0 = predict_gap_on_sample(ert_predictor, S)
     logger.info(f"\nCanonical gap G0: {G0:.2f} ms")
 
-    # Bootstrap G0 itself
+    # Bootstrap G0
     def compute_gap_bootstrap(boot_data):
-        """Bootstrap the gap by resampling subjects"""
         return predict_gap_on_sample(ert_predictor, boot_data)
 
     logger.info("  Computing statistics for G0...")
     print("  Computing G0 statistics...", flush=True)
     gap_stats = bootstrap_gap_component(
-        G0,
-        S,
-        compute_gap_bootstrap,
-        n_bootstrap=n_bootstrap,
+        G0, S, compute_gap_bootstrap, n_bootstrap=n_bootstrap
     )
 
-    # Run all analyses on SAME S with SAME G0
+    # Run analyses on the same S / G0
     shapley = shapley_decomposition(ert_predictor, S, G0, n_bootstrap)
-
     equal_ease = equal_ease_counterfactual(
         ert_predictor, S, quartiles, G0, n_bootstrap, bin_edges=bin_edges
     )
 
-    # Pass gap_shrink to feature contributions so they sum correctly
     feature_contributions = equal_ease_feature_contributions(
         ert_predictor,
         S,
@@ -640,13 +638,12 @@ def test_hypothesis_3(
     )
 
     text_difficulty_explained = equal_ease.get("gap_shrink_pct", 0) >= 20
-
-    if text_difficulty_explained:
-        status = "CONFIRMED"
-        summary = "text difficulty (simplification reduces gap)"
-    else:
-        status = "NOT CONFIRMED"
-        summary = "features explain minimal portion of gap"
+    status = "CONFIRMED" if text_difficulty_explained else "NOT CONFIRMED"
+    summary = (
+        "text difficulty (simplification reduces gap)"
+        if text_difficulty_explained
+        else "features explain minimal portion of gap"
+    )
 
     logger.info(f"\nHYPOTHESIS 3: {status}")
     logger.info(f"  {summary}")

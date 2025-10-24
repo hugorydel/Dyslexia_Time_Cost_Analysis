@@ -148,9 +148,8 @@ class DyslexiaGAMModels:
             X_ctrl, y_ctrl, subj_ctrl, n_splines_search, lam_search, "skip"
         )
 
-        lam_grid_dupe = np.array([lam_ctrl, lam_ctrl], dtype=float)
         cv_auc_ctrl = self._validate_with_frozen_hyperparameters(
-            X_ctrl, y_ctrl, subj_ctrl, n_sp_ctrl, lam_grid_dupe, "skip"
+            X_ctrl, y_ctrl, subj_ctrl, n_sp_ctrl, float(lam_ctrl), "skip"
         )
 
         logger.info("    Fitting final model on all control data...")
@@ -176,9 +175,8 @@ class DyslexiaGAMModels:
             X_dys, y_dys, subj_dys, n_splines_search, lam_search, "skip"
         )
 
-        lam_grid_dupe = np.array([lam_dys, lam_dys], dtype=float)
         cv_auc_dys = self._validate_with_frozen_hyperparameters(
-            X_dys, y_dys, subj_dys, n_sp_dys, lam_grid_dupe, "skip"
+            X_dys, y_dys, subj_dys, n_sp_dys, float(lam_dys), "skip"
         )
 
         logger.info("    Fitting final model on all dyslexic data...")
@@ -329,9 +327,8 @@ class DyslexiaGAMModels:
             X_ctrl, y_ctrl, subj_ctrl, n_splines_search, lam_search, "duration"
         )
 
-        lam_grid_dupe = np.array([lam_ctrl, lam_ctrl], dtype=float)
         cv_rmse_ctrl = self._validate_with_frozen_hyperparameters(
-            X_ctrl, y_ctrl, subj_ctrl, n_sp_ctrl, lam_grid_dupe, "duration"
+            X_ctrl, y_ctrl, subj_ctrl, n_sp_ctrl, float(lam_ctrl), "duration"
         )
 
         logger.info("    Fitting final model on all control data...")
@@ -357,9 +354,8 @@ class DyslexiaGAMModels:
             X_dys, y_dys, subj_dys, n_splines_search, lam_search, "duration"
         )
 
-        lam_grid_dupe = np.array([lam_dys, lam_dys], dtype=float)
         cv_rmse_dys = self._validate_with_frozen_hyperparameters(
-            X_dys, y_dys, subj_dys, n_sp_dys, lam_grid_dupe, "duration"
+            X_dys, y_dys, subj_dys, n_sp_dys, float(lam_dys), "duration"
         )
 
         logger.info("    Fitting final model on all dyslexic data...")
@@ -444,7 +440,7 @@ class DyslexiaGAMModels:
         unique_subjects = np.unique(subjects)
         n_total = unique_subjects.size
 
-        target = max(30, n_total // 3)
+        target = max(38, n_total // 3)
         n_subsample = min(n_total, max(3, min(120, target)))
 
         subsample_subjects = rng.choice(unique_subjects, n_subsample, replace=False)

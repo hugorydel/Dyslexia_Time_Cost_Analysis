@@ -42,31 +42,6 @@ def _predict_components(
     return np.asarray(y).reshape(-1)
 
 
-def _subject_level_deltas_unconditional(
-    ert_predictor,
-    sdf: pd.DataFrame,
-    feature: str,
-    group: str,
-    q1: float,
-    q3: float,
-    pathway: str,
-) -> float:
-    """
-    For one subject's data (sdf), compute the mean predicted difference (Q3 - Q1)
-    using the subject's actual other features; only 'feature' is set to q1/q3.
-    Returns the subject-level mean delta.
-    """
-    X = sdf[["length", "zipf", "surprisal"]].copy()
-    X_q1 = X.copy()
-    X_q3 = X.copy()
-    X_q1[feature] = q1
-    X_q3[feature] = q3
-
-    y1 = _predict_components(ert_predictor, X_q1, group, pathway)
-    y3 = _predict_components(ert_predictor, X_q3, group, pathway)
-    return float(np.mean(y3 - y1))
-
-
 def _compute_bin_zipf_quartiles(
     gdf: pd.DataFrame, bin_edges: np.ndarray
 ) -> List[Tuple[float, float]]:
@@ -150,6 +125,31 @@ def _subject_level_deltas_zipf_conditional(
     return float(np.average(np.array(bin_effects, dtype=float), weights=ws))
 
 
+def _subject_level_deltas_unconditional(
+    ert_predictor,
+    sdf: pd.DataFrame,
+    feature: str,
+    group: str,
+    q1: float,
+    q3: float,
+    pathway: str,
+) -> float:
+    """
+    For one subject's data (sdf), compute the mean predicted difference (Q3 - Q1)
+    using the subject's actual other features; only 'feature' is set to q1/q3.
+    Returns the subject-level mean delta.
+    """
+    X = sdf[["length", "zipf", "surprisal"]].copy()
+    X_q1 = X.copy()
+    X_q3 = X.copy()
+    X_q1[feature] = q1
+    X_q3[feature] = q3
+
+    y1 = _predict_components(ert_predictor, X_q1, group, pathway)
+    y3 = _predict_components(ert_predictor, X_q3, group, pathway)
+    return float(np.mean(y3 - y1))
+
+
 def subject_level_deltas(
     ert_predictor,
     data: pd.DataFrame,
@@ -191,6 +191,120 @@ def subject_level_deltas(
     return np.array(deltas, dtype=float)
 
 
+# Vectorized helper for all pathways
+
+
+def _batch_q1_q3_preds_all_paths(
+    ert_predictor, X_q1: pd.DataFrame, X_q3: pd.DataFrame, group: str
+):
+    """Two predictor calls -> arrays for ert, p(skip), trt at Q1 and Q3 (vectorized)."""
+    ert1, p1, trt1 = ert_predictor.predict_ert(X_q1, group, return_components=True)
+    ert3, p3, trt3 = ert_predictor.predict_ert(X_q3, group, return_components=True)
+    return {
+        "ert1": np.asarray(ert1).ravel(),
+        "ert3": np.asarray(ert3).ravel(),
+        "p1": np.asarray(p1).ravel(),
+        "p3": np.asarray(p3).ravel(),
+        "trt1": np.asarray(trt1).ravel(),
+        "trt3": np.asarray(trt3).ravel(),
+    }
+
+
+def subject_level_deltas_all_pathways_uncond(
+    ert_predictor, data: pd.DataFrame, feature: str, group: str, q1: float, q3: float
+) -> Tuple[pd.DataFrame, Dict[str, np.ndarray]]:
+    """
+    Vectorized subject-level deltas for length/surprisal (skip/duration/ert simultaneously).
+    Returns:
+      - deltas_df: index=subject_id, cols=['skip','duration','ert']
+      - preds: raw arrays at Q1/Q3 for effect sizes (p/ert/trt)
+    """
+    g = data.loc[data["group"] == group].copy()
+    X = g[["length", "zipf", "surprisal"]]
+    X_q1, X_q3 = X.copy(), X.copy()
+    X_q1[feature] = q1
+    X_q3[feature] = q3
+
+    preds = _batch_q1_q3_preds_all_paths(ert_predictor, X_q1, X_q3, group)
+    d_skip = preds["p3"] - preds["p1"]
+    d_trt = preds["trt3"] - preds["trt1"]
+    d_ert = preds["ert3"] - preds["ert1"]
+
+    df = pd.DataFrame(
+        {
+            "subject_id": g["subject_id"].values,
+            "skip": d_skip,
+            "duration": d_trt,
+            "ert": d_ert,
+        }
+    )
+    deltas_df = df.groupby("subject_id", sort=False).mean()
+    return deltas_df, preds
+
+
+def subject_level_deltas_all_pathways_zipf_cond(
+    ert_predictor,
+    data: pd.DataFrame,
+    group: str,
+    bin_edges: np.ndarray,
+    bin_weights: pd.Series,
+) -> Tuple[pd.DataFrame, Dict[str, np.ndarray]]:
+    """
+    Vectorized subject-level deltas for Zipf (conditional within length bins).
+    Two calls total; then per-subject, per-bin mean, then weighted avg across used bins.
+    """
+    g = data.loc[data["group"] == group].copy()
+    g["length_bin"] = pd.cut(
+        g["length"], bins=bin_edges, labels=False, include_lowest=True
+    )
+
+    q1_by_bin = g.groupby("length_bin")["zipf"].quantile(0.25)
+    q3_by_bin = g.groupby("length_bin")["zipf"].quantile(0.75)
+
+    z1 = g["length_bin"].map(q1_by_bin)
+    z3 = g["length_bin"].map(q3_by_bin)
+    mask = z1.notna() & z3.notna()
+    g = g.loc[mask].copy()
+
+    X = g[["length", "zipf", "surprisal"]]
+    X_q1, X_q3 = X.copy(), X.copy()
+    X_q1["zipf"] = z1.loc[mask].values
+    X_q3["zipf"] = z3.loc[mask].values
+
+    preds = _batch_q1_q3_preds_all_paths(ert_predictor, X_q1, X_q3, group)
+    d_skip = preds["p3"] - preds["p1"]
+    d_trt = preds["trt3"] - preds["trt1"]
+    d_ert = preds["ert3"] - preds["ert1"]
+
+    # per-subject, per-bin means
+    wide = pd.DataFrame(
+        {
+            "subject_id": g["subject_id"].values,
+            "length_bin": g["length_bin"].values,
+            "skip": d_skip,
+            "duration": d_trt,
+            "ert": d_ert,
+        }
+    )
+    per_sb = wide.groupby(["subject_id", "length_bin"], sort=False).mean()
+
+    # attach weights and compute weighted avg over available bins for each subject
+    w = bin_weights.rename("w")
+    per_sb = per_sb.join(w, on="length_bin").dropna(subset=["w"])
+
+    def _wavg(df):
+        ws = df["w"].values.astype(float)
+        out = {}
+        for col in ["skip", "duration", "ert"]:
+            out[col] = (
+                np.average(df[col].values, weights=ws) if ws.sum() > 0 else np.nan
+            )
+        return pd.Series(out)
+
+    deltas_df = per_sb.groupby(level=0).apply(_wavg)
+    return deltas_df, preds
+
+
 # ===========================
 # AMIE CIs & P-Values
 # ===========================
@@ -211,21 +325,19 @@ def bootstrap_amie(
     Bootstrap AMIE on subject-level deltas for the ERT pathway.
     Two-tailed p with +1 correction; 95% CI via percentiles.
     """
-    # Get Q1/Q3 (unused for conditional Zipf because deltas routine handles bins)
-    q1 = quartiles[feature]["q1"]
-    q3 = quartiles[feature]["q3"]
+    # Vectorized subject-level deltas for ERT
+    if feature == "zipf" and bin_edges is not None and bin_weights is not None:
+        deltas_df, _ = subject_level_deltas_all_pathways_zipf_cond(
+            ert_predictor, data, group, bin_edges, bin_weights
+        )
+    else:
+        q1 = quartiles[feature]["q1"]
+        q3 = quartiles[feature]["q3"]
+        deltas_df, _ = subject_level_deltas_all_pathways_uncond(
+            ert_predictor, data, feature, group, q1, q3
+        )
 
-    deltas = subject_level_deltas(
-        ert_predictor,
-        data,
-        feature,
-        group,
-        q1=q1,
-        q3=q3,
-        pathway="ert",
-        bin_edges=(bin_edges if (feature == "zipf") else None),
-        bin_weights=(bin_weights if (feature == "zipf") else None),
-    )
+    deltas = deltas_df["ert"].to_numpy()
     deltas = deltas[np.isfinite(deltas)]
     if deltas.size == 0:
         return {
@@ -234,6 +346,7 @@ def bootstrap_amie(
             "ci_high": np.nan,
             "n_bootstrap": n_bootstrap,
             "std_dev": np.nan,
+            "method": method,
         }
 
     obs = float(np.mean(deltas))
@@ -253,10 +366,10 @@ def bootstrap_amie(
     p_value = compute_two_tailed_pvalue_corrected(obs, boot_means)
 
     return {
-        "p_value": p_value,
+        "p_value": float(p_value),
         "ci_low": float(ci_low),
         "ci_high": float(ci_high),
-        "n_bootstrap": n_bootstrap,
+        "n_bootstrap": int(n_bootstrap),
         "std_dev": float(np.std(boot_means, ddof=1)),
         "method": method,
     }
@@ -280,21 +393,22 @@ def bootstrap_pathway_effect(
       - skip -> Cohen's h (from predicted probabilities)
       - duration & ert -> Hedges-corrected d from predicted values
     """
-    q1 = quartiles[feature]["q1"]
-    q3 = quartiles[feature]["q3"]
+    # Vectorized subject-level deltas for all pathways (+ raw Q1/Q3 preds for effect sizes)
+    if feature == "zipf" and bin_edges is not None and bin_weights is not None:
+        deltas_df, preds = subject_level_deltas_all_pathways_zipf_cond(
+            ert_predictor, data, group, bin_edges, bin_weights
+        )
+    else:
+        q1 = quartiles[feature]["q1"]
+        q3 = quartiles[feature]["q3"]
+        deltas_df, preds = subject_level_deltas_all_pathways_uncond(
+            ert_predictor, data, feature, group, q1, q3
+        )
 
-    # 1) Subject-level deltas (handles conditional Zipf if bin_* are provided)
-    deltas = subject_level_deltas(
-        ert_predictor,
-        data,
-        feature,
-        group,
-        q1,
-        q3,
-        pathway,
-        bin_edges=(bin_edges if feature == "zipf" else None),
-        bin_weights=(bin_weights if feature == "zipf" else None),
-    )
+    if pathway not in ["skip", "duration", "ert"]:
+        raise ValueError("pathway must be one of {'skip','duration','ert'}")
+
+    deltas = deltas_df[pathway].to_numpy()
     deltas = deltas[np.isfinite(deltas)]
     if deltas.size == 0:
         return {
@@ -310,7 +424,7 @@ def bootstrap_pathway_effect(
             "skip_cohens_h": 0.0 if pathway == "skip" else np.nan,
         }
 
-    # 2) Bootstrap on subject means
+    # Bootstrap on subject means
     rng = np.random.default_rng(123)
     boot_means = np.empty(n_bootstrap, dtype=float)
     for b in range(n_bootstrap):
@@ -321,28 +435,17 @@ def bootstrap_pathway_effect(
     ci_low, ci_high = np.percentile(boot_means, [2.5, 97.5])
     p_value = compute_two_tailed_pvalue_corrected(obs, boot_means)
 
-    # 3) Descriptive effect size from full predicted arrays at Q1 vs Q3
-    X = data.loc[data["group"] == group, ["length", "zipf", "surprisal"]].copy()
-    X_q1, X_q3 = X.copy(), X.copy()
-    X_q1[feature] = q1
-    X_q3[feature] = q3
-
+    # Descriptive effect sizes reusing already-computed predictions (no extra model calls)
     if pathway == "skip":
-        _, p1, _ = ert_predictor.predict_ert(X_q1, group, return_components=True)
-        _, p3, _ = ert_predictor.predict_ert(X_q3, group, return_components=True)
-        h = cohens_h(float(np.mean(p1)), float(np.mean(p3)))
+        h = cohens_h(float(np.mean(preds["p1"])), float(np.mean(preds["p3"])))
         d_desc, d_lo, d_hi = np.nan, np.nan, np.nan
     elif pathway == "duration":
-        _, _, trt1 = ert_predictor.predict_ert(X_q1, group, return_components=True)
-        _, _, trt3 = ert_predictor.predict_ert(X_q3, group, return_components=True)
-        d_desc = compute_cohens_d_from_data(trt1, trt3)
-        d_lo, d_hi = np.nan, np.nan  # (optional: bootstrap CI for d)
+        d_desc = compute_cohens_d_from_data(preds["trt1"], preds["trt3"])
+        d_lo, d_hi = np.nan, np.nan
         h = np.nan
     else:  # "ert"
-        ert1 = ert_predictor.predict_ert(X_q1, group)
-        ert3 = ert_predictor.predict_ert(X_q3, group)
-        d_desc = compute_cohens_d_from_data(ert1, ert3)
-        d_lo, d_hi = np.nan, np.nan  # (optional: bootstrap CI for d)
+        d_desc = compute_cohens_d_from_data(preds["ert1"], preds["ert3"])
+        d_lo, d_hi = np.nan, np.nan
         h = np.nan
 
     return {
@@ -350,7 +453,7 @@ def bootstrap_pathway_effect(
         "mean": obs,
         "ci_low": float(ci_low),
         "ci_high": float(ci_high),
-        "n_bootstrap": n_bootstrap,
+        "n_bootstrap": int(n_bootstrap),
         "std_dev": float(np.std(boot_means, ddof=1)),
         "cohens_d": float(d_desc) if np.isfinite(d_desc) else np.nan,
         "cohens_d_ci_low": float(d_lo),

@@ -116,28 +116,47 @@ class CompleteAnalysisPipeline:
             # ===== DIAGNOSTIC: Zipf-Length Interaction =====
             run_zipf_diagnostic(prepared_data, n_bins=10, results_dir=self.results_dir)
 
-            # ===== PHASE 2: MODEL FITTING =====
-            skip_meta, duration_meta, gam_models = fit_gam_models(
-                prepared_data, use_log_duration=True, quick_mode=self.quick_mode
+            # ===== PHASE 2: MODEL FITTING (with caching) =====
+            models_cache_path = self.cache_dir / (
+                f"gam_models_quick{int(self.quick_mode)}_logdur1.pkl"
+            )
+            models_cache_existed = models_cache_path.exists()
+
+            def compute_models():
+                return fit_gam_models(
+                    prepared_data, use_log_duration=True, quick_mode=self.quick_mode
+                )
+
+            logger.info(
+                f"Model caching: {'ENABLED' if self.use_cache else 'DISABLED'} | "
+                f"path={models_cache_path}"
             )
 
+            skip_meta, duration_meta, gam_models = load_or_recompute(
+                models_cache_path, compute_models, reuse=self.use_cache
+            )
+
+            model_cache_status = (
+                "hit"
+                if (self.use_cache and models_cache_existed)
+                else ("write" if self.use_cache else "bypass")
+            )
+            logger.info(f"Model cache status: {model_cache_status}")
+
+            # Build predictor (cheap) from cached or freshly fit models
             ert_predictor = create_ert_predictor(gam_models)
 
-            model_metadata = {"skip_model": skip_meta, "duration_model": duration_meta}
+            model_metadata = {
+                "skip_model": skip_meta,
+                "duration_model": duration_meta,
+                "cache_status": model_cache_status,
+                "cache_path": str(models_cache_path),
+            }
             self._save_json(model_metadata, "model_metadata.json")
 
             logger.info("✅ Phase 2 complete")
 
             # ===== PHASE 3: HYPOTHESIS TESTING =====
-            logger.info("\n" + "=" * 80)
-            logger.info("PHASE 3: HYPOTHESIS TESTING (with comprehensive statistics)")
-            logger.info("=" * 80)
-            print("\n" + "=" * 80, flush=True)
-            print("PHASE 3: HYPOTHESIS TESTING", flush=True)
-            print(
-                f"  Bootstrap (H1, H2, H3): {self.n_bootstrap} iterations", flush=True
-            )
-            print("=" * 80 + "\n", flush=True)
 
             # H1: Feature Effects (with p-values and CIs)
             h1_cache = self.cache_dir / f"h1_results_n{self.n_bootstrap}.pkl"
@@ -218,7 +237,11 @@ class CompleteAnalysisPipeline:
                     "n_bootstrap": self.n_bootstrap,
                     "data_note": metadata.get("note", ""),
                     "used_cache": self.use_cache,
-                    "model_cache": "disabled",
+                    "model_cache": {
+                        "enabled": self.use_cache,
+                        "status": model_cache_status,
+                        "path": str(models_cache_path),
+                    },
                 },
                 "hypotheses": {
                     "h1": {
@@ -292,7 +315,9 @@ class CompleteAnalysisPipeline:
         logger.info("\nHYPOTHESIS RESULTS:")
         for h_key in ["h1", "h2", "h3"]:
             h_data = results["hypotheses"][h_key]
-            logger.info(f"  {h_key.upper()}: {h_data['status']}")
+            logger.info(
+                f"  {h_key.UPPER() if hasattr(h_key,'upper') else str(h_key).upper()}: {h_data['status']}"
+            )
 
         if "h2" in results["hypotheses"]:
             h2 = results["hypotheses"]["h2"]
@@ -340,12 +365,12 @@ def main():
         "--use-cache",
         action="store_true",
         default=True,
-        help="Use cached results if available (models always recomputed)",
+        help="Use cached results if available (models and results)",
     )
     parser.add_argument(
         "--no-cache",
         action="store_true",
-        help="Force recomputation of all results",
+        help="Force recomputation of all results (and refit models)",
     )
     parser.add_argument(
         "--results-dir",
@@ -358,12 +383,6 @@ def main():
         type=int,
         default=2000,
         help="Number of bootstrap iterations for H2 and H3 (default: 2000)",
-    )
-    parser.add_argument(
-        "--n-permutations",
-        type=int,
-        default=200,
-        help="Number of permutations for H3 p-values (default: 500)",
     )
     parser.add_argument(
         "--quick",
