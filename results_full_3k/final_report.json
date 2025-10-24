@@ -2,10 +2,14 @@
   "metadata": {
     "n_total": 322776,
     "n_bins": 6,
-    "n_bootstrap": 1000,
+    "n_bootstrap": 3000,
     "data_note": "Using RAW zipf with conditional evaluation within length bins",
-    "used_cache": false,
-    "model_cache": "disabled"
+    "used_cache": true,
+    "model_cache": {
+      "enabled": true,
+      "status": "hit",
+      "path": "results_full_3k\\cache_full\\gam_models_quick0_logdur1.pkl"
+    }
   },
   "hypotheses": {
     "h1": {

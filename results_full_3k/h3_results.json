@@ -1,0 +1,88 @@
+{
+  "status": "CONFIRMED",
+  "canonical_gap_G0": 97.27984892585587,
+  "canonical_gap_stats": {
+    "mean": 97.27984892585587,
+    "ci_low": 94.2521996521046,
+    "ci_high": 100.51453565665847,
+    "p_value": 0.0006664445184938354,
+    "n_bootstrap": 3000,
+    "n_effective_bootstrap": 3000
+  },
+  "sample_size": 322776,
+  "random_seed": 42,
+  "shapley_decomposition": {
+    "skip_contribution": 34.07195965459417,
+    "skip_contribution_stats": {
+      "mean": 34.07195965459417,
+      "ci_low": 33.88923974267189,
+      "ci_high": 34.26017896990254,
+      "p_value": 0.0006664445184938354,
+      "n_bootstrap": 3000
+    },
+    "duration_contribution": 63.20788927126171,
+    "duration_contribution_stats": {
+      "mean": 63.20788927126171,
+      "ci_low": 62.5340104812381,
+      "ci_high": 63.88549775797689,
+      "p_value": 0.0006664445184938354,
+      "n_bootstrap": 3000
+    },
+    "skip_pct": 35.02468397187059,
+    "duration_pct": 64.97531602812941
+  },
+  "equal_ease_counterfactual": {
+    "baseline_gap": 97.27984892585587,
+    "counterfactual_gap": 66.61488713992561,
+    "counterfactual_gap_stats": {
+      "mean": 66.61488713992561,
+      "ci_low": 66.321716202495,
+      "ci_high": 66.84973115087499,
+      "p_value": 0.0006664445184938354,
+      "n_bootstrap": 3000
+    },
+    "gap_shrink_stats": {
+      "mean": 30.66496178593026,
+      "ci_low": 27.727189172577585,
+      "ci_high": 33.693592730283655,
+      "p_value": 0.0006664445184938354,
+      "n_bootstrap": 3000
+    },
+    "gap_shrink_ms": 30.66496178593026,
+    "gap_shrink_pct": 31.522419210685946
+  },
+  "equal_ease_feature_contributions": {
+    "feature_contributions_ms": {
+      "length": 9.977581378101103,
+      "zipf": 7.014006887251752,
+      "surprisal": 13.673373520577401
+    },
+    "feature_contributions_stats": {
+      "length": {
+        "mean": 9.977581378101103,
+        "ci_low": 13.36775612523925,
+        "ci_high": 6.493102100696245,
+        "p_value": 0.0006664445184938354,
+        "n_bootstrap": 3000
+      },
+      "zipf": {
+        "mean": 7.014006887251752,
+        "ci_low": 7.897662955306446,
+        "ci_high": 6.147541964814963,
+        "p_value": 0.0006664445184938354,
+        "n_bootstrap": 3000
+      },
+      "surprisal": {
+        "mean": 13.673373520577401,
+        "ci_low": 14.464783760409626,
+        "ci_high": 12.87926598720506,
+        "p_value": 0.0006664445184938354,
+        "n_bootstrap": 3000
+      }
+    },
+    "total_ms": 30.66496178593026,
+    "n_orders": 6,
+    "n_bootstrap": 3000
+  },
+  "summary": "text difficulty (simplification reduces gap)"
+}

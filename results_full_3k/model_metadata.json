@@ -33,5 +33,7 @@
     "has_tensor_product": false,
     "uses_smearing_factor": true,
     "method": "additive_smooths_only"
-  }
+  },
+  "cache_status": "hit",
+  "cache_path": "results_full_3k\\cache_full\\gam_models_quick0_logdur1.pkl"
 }
