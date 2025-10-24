@@ -1,414 +1,158 @@
-# Dyslexia GAM Analysis
-
-## 📋 Overview
-
-This codebase implements the complete Analysis Plan for studying dyslexic reading patterns using Generalized Additive Models (GAMs).
-
-### Key Features
-
-✅ **Raw zipf frequency** (natural correlation with length)  
-✅ **Pooled binning** infrastructure  
-✅ **Conditional zipf evaluation** (within length bins)  
-✅ **Tensor product interactions** `te(length, zipf)` in GAMs  
-✅ **Subject-clustered bootstrap** (resamples subjects, not observations)  
-✅ **Comprehensive hypothesis testing** (H1, H2, H3)  
-✅ **Automated validation** checks  
-✅ **Publication figures** and tables
+Here’s a clean, step-by-step **README.md** you can drop in the repo.
 
 ---
 
-## 🚀 Quick Start
+# Dyslexia Time Cost Analysis
 
-### Installation
+End-to-end pipeline to preprocess CopCo eye-tracking data, compute linguistic features, fit GAM models for skipping and duration, and test three hypotheses (H1–H3) with APA-7-styled figures.
+
+---
+
+## 0) Quick start
 
 ```bash
-# Clone repository
-git clone [your-repo]
-cd dyslexia_analysis
+# 1) Create & activate an environment (example with venv)
+python -m venv .venv
+source .venv/bin/activate  # on Windows: .venv\Scripts\activate
 
-# Create environment
-python3 -m venv venv
-source venv/bin/activate
+# 2) Install deps
+pip install -r requirements.txt
 
-# Install dependencies
-pip install numpy pandas scipy scikit-learn matplotlib seaborn tqdm pygam
+# 3) Configure paths (see next section), then:
+python preprocess_data.py
+python run_complete_analysis.py --data-path preprocessing_output/preprocessed_data.csv --results-dir results_final
 ```
 
-### Run data pre-processing script
+---
+
+## 1) Configure data paths
+
+Set the path to the CopCo dataset in **`utils/config.py`** (`COPCO_PATH`), which should contain `ExtractedFeatures/` and (optionally) `DatasetStatistics/`. The preprocessing entrypoint validates this setting at startup, so you’ll get a clear warning/error if it’s missing or incorrect.
+
+---
+
+## 2) Prepare frequency data (for linguistic features)
+
+The pipeline expects a Danish frequency list at:
+
+```
+preprocessing_output/danish_frequencies/danish_leipzig_for_analysis.txt
+```
+
+That file is read automatically by the linguistic features component (`DanishLinguisticFeatures`), which computes Zipf frequencies (and later surprisal) for each word. If the file is missing, you’ll get a `FileNotFoundError` pointing to that path. You can generate or place the file there before running preprocessing.
+
+> Where it’s used: the frequency dictionary is loaded during feature computation; surprisal values are cached to `preprocessing_output/word_surprisal/`.
+
+---
+
+## 3) Preprocess the CopCo data
+
+Run:
 
 ```bash
 python preprocess_data.py
 ```
 
-### Run Analysis
+What it does:
+
+- Loads **`ExtractedFeatures/`** (and merges `DatasetStatistics/` if available), cleans/derives measures, identifies dyslexic participants, and computes skipping-related measures.
+- Computes linguistic features (Zipf frequency, length, surprisal) and caches surprisal.
+- Saves **`preprocessing_output/preprocessed_data.csv`** plus a data dictionary **`preprocessing_output/preprocessed_data.txt`**.
+- Writes summary JSONs and PNGs to **`preprocessing_output/preprocessing_summary/`**:
+
+  - `exploratory_summary.json`, `participant_statistics.json`
+  - `exploratory_plots.png`, `group_summary_plots.png` (descriptive visuals)
+
+- Logs to `dyslexia_analysis.log`.
+
+> Tip: The preprocessing step saves the CSV at `preprocessing_output/preprocessed_data.csv`. Use that exact path for the hypothesis pipeline unless you override it.
+
+---
+
+## 4) Run the hypothesis pipeline (H1–H3)
+
+Run:
 
 ```bash
-# Full analysis (~30 minutes with 1000 bootstrap iterations)
-python run_complete_analysis.py --data-path input_data/preprocessed_data.csv
-
-# Quick test (~5 minutes with 100 bootstrap iterations)
-python run_complete_analysis.py --data-path input_data/preprocessed_data.csv --quick
+python run_complete_analysis.py \
+  --data-path preprocessing_output/preprocessed_data.csv \
+  --results-dir results_final
 ```
 
-### View Results
+Key CLI flags:
 
-```bash
-# Summary
-cat results_final/RESULTS_SUMMARY.md
+- `--data-path` : path to the CSV from step 3 (defaults to a preprocessed CSV; passing it explicitly is safest).
+- `--results-dir` : output directory for everything (default `results_final`).
+- `--no-cache` : force recomputation; otherwise caching is used by default.
+- `--quick` : fast mode (100 bootstraps) to sanity-check the pipeline.
 
-# Figures
-open results_final/figures/
+What happens:
 
-# Tables
-open results_final/tables/
-```
+1. **Data prep for modeling** (binning, quartiles, pooled weights) → `data_metadata.json`.
+2. **Zipf–length diagnostic** written to the results directory (under diagnostics).
+3. **Model fitting with caching**: GAMs for skipping (LogisticGAM) and log-duration (LinearGAM). Caches to `cache_full/` (or `cache_quick/` in quick mode).
 
----
+   - Caching is handled via `load_or_recompute(...)`.
 
-## 📁 Repository Structure
+4. **Hypotheses** (saves JSONs in the results root):
 
-```
-dyslexia_analysis/
-├── hypothesis_testing_utils/          # Core analysis modules
-│   ├── data_preparation_v2.py         # ✨ NEW: Raw zipf + pooled bins
-│   ├── gam_models_v2.py               # ✨ NEW: Tensor products + CV
-│   ├── h1_feature_effects_v2.py       # ✨ NEW: Conditional zipf
-│   ├── h2_amplification_v2.py         # ✨ NEW: Comprehensive bootstrap
-│   ├── h3_gap_decomposition.py        # (mostly reused)
-│   ├── ert_predictor.py               # (unchanged)
-│   ├── visualization_utils.py         # ✨ NEW: Figure generation
-│   ├── table_generator.py             # ✨ NEW: Table generation
-│   └── validate_migration.py          # ✨ NEW: Validation checks
-│
-├── input_data/
-│   └── preprocessed_data.csv          # Your eye-tracking data
-│
-├── run_complete_analysis.py           # ✨ NEW: Main pipeline
-├── GETTING_STARTED.md                 # Step-by-step guide
-├── REVISION_SUMMARY.md                # What changed and why
-├── QUICK_REFERENCE.md                 # Old vs new code
-└── README.md                          # This file
-```
+   - H1 feature effects → `h1_results.json`
+   - H2 amplification (slope ratios & AMIE) → `h2_results.json`
+   - H3 gap decomposition (G₀, counterfactual gap, shrink, Shapley) → `h3_results.json`
+
+5. **Figures** in `results_dir/figures/` (APA-7 style):
+
+   - `figure_1_overall_effects.png`, `figure_2_gam_smooths.png`, `figure_3_gap_decomposition.png` (+ machine-readable JSON alongside each).
+   - Model stats → `model_statistics.json`.
+
+6. **Final summary**: `final_report.json` and a detailed `hypothesis_testing_output.log`. The pipeline prints a completion recap with where to find everything.
 
 ---
 
-## 🔄 What Changed?
+## 5) Outputs at a glance
 
-### Critical Fixes
+Inside `--results-dir` you’ll find:
 
-| Issue                | OLD ❌                 | NEW ✓                             |
-| -------------------- | ---------------------- | --------------------------------- |
-| **Zipf handling**    | Orthogonalized (r≈0)   | Raw (r≈-0.80)                     |
-| **Zipf evaluation**  | Unconditional          | Conditional within length bins    |
-| **GAM interactions** | None                   | `te(length, zipf)` tensor product |
-| **Bootstrap**        | Resampled observations | Resamples subjects                |
-| **Bootstrap scope**  | Separate per metric    | Comprehensive (all metrics)       |
-| **Binning**          | Per-group or none      | Pooled once, applied to both      |
-
-### New Features
-
-- ✨ Pathway decomposition (skip, duration, ERT) for ALL features
-- ✨ Cohen's h effect size for skip pathway
-- ✨ Automated validation with detailed diagnostics
-- ✨ Publication-ready figures (3 main + supplementary)
-- ✨ Formatted tables (CSV, TXT, LaTeX)
-- ✨ Comprehensive markdown summary
+- `figures/`: publication-ready PNGs + the exact data used to render them as `.json`.
+- `h1_results.json`, `h2_results.json`, `h3_results.json`, `data_metadata.json`, `model_metadata.json`, `final_report.json`.
+- `hypothesis_testing_output.log` and a printed checklist of “what’s next”.
 
 ---
 
-## 📊 Analysis Pipeline
+## 6) Reproducibility & performance notes
 
-### Phase 1: Data Preparation
-
-```python
-prepared_data, metadata = prepare_data_pipeline(data)
-```
-
-**Outputs:**
-
-- Raw zipf values (no orthogonalization)
-- Pooled length bins (5 bins)
-- Feature quartiles
-- Orientation checks
-
-### Phase 2: Model Fitting
-
-```python
-skip_meta, duration_meta, gam_models = fit_gam_models(data)
-```
-
-**Models:**
-
-- Skip: `LogisticGAM` with `te(length, zipf)`
-- Duration: `LinearGAM` on log(TRT) with `te(length, zipf)`
-- Grid search over n_splines [8, 10, 12]
-- GroupKFold CV by subject
-
-### Phase 3: Hypothesis Testing
-
-**H1: Feature Effects**
-
-- Standard AMIE for length, surprisal
-- Conditional AMIE for zipf (within length bins)
-- Pathway decomposition (skip, duration, ERT)
-
-**H2: Amplification**
-
-- Slope ratios for all features × all pathways
-- Subject-clustered bootstrap (1000 iterations)
-- Conditional SR for zipf
-
-**H3: Gap Decomposition**
-
-- Shapley decomposition (skip vs duration)
-- Equal-ease counterfactual
-- Per-feature equalization
-
-### Phase 4: Validation
-
-Automated checks:
-
-- ✅ Raw zipf correlation (≈ -0.80)
-- ✅ Pooled bins present
-- ✅ Tensor products in GAMs
-- ✅ Conditional zipf evaluation
-- ✅ Bootstrap structure correct
-
-### Phase 5-6: Outputs
-
-**Figures:**
-
-1. Overall effects overview
-2. Zipf pathway decomposition
-3. Gap decomposition waterfall
-
-**Tables:**
-
-1. Feature effects & amplification
-2. Gap decomposition & counterfactuals
-3. Model performance
+- **Bootstraps**: default `n_bootstrap=2000` (use `--quick` to test with 100).
+- **Caching**: models & results are cached under `results_dir/cache_full/` (or `cache_quick/`). You can force recompute with `--no-cache` or manually clear the cache directory. The caching utilities handle atomic writes and safe loads.
+- **Seeds**: model selection and bootstraps set internal RNGs in various places (e.g., hyperparameter pre-selection uses a fixed RNG for subsampling). Exact seeds are logged where relevant.
 
 ---
 
-## 📈 Expected Results
+## 7) Troubleshooting
 
-### H1: Feature Effects ✓
+- **`FileNotFoundError: CopCo data not found …`**
+  Ensure `COPCO_PATH` in `utils/config.py` points to the CopCo root containing `ExtractedFeatures/`.
 
-| Feature   | Direction | Control AMIE  | Dyslexic AMIE |
-| --------- | --------- | ------------- | ------------- |
-| Length    | +         | +100-120 ms   | +120-150 ms   |
-| Zipf\*    | −         | -15 to -20 ms | -5 to -10 ms  |
-| Surprisal | +         | +15-20 ms     | +30-40 ms     |
+- **`Frequency file not found … danish_leipzig_for_analysis.txt`**
+  Place the file at `preprocessing_output/danish_frequencies/` before preprocessing (or generate it with your helper script), then re-run `preprocess_data.py`.
 
-\*Zipf evaluated conditionally within length bins
+- **“Cache load failed” messages**
+  The pipeline will recompute automatically and attempt to overwrite the cache atomically. You can also delete `results_dir/cache_full/*.pkl`.
 
-### H2: Amplification ✓
-
-| Feature   | SR(skip) | SR(duration) | SR(ERT) |
-| --------- | -------- | ------------ | ------- |
-| Length    | ~0.80    | ~1.45        | ~1.20   |
-| Zipf\*    | ~0.05†   | ~4.60        | ~0.40   |
-| Surprisal | ~1.10    | ~2.35        | ~2.20   |
-
-\*Zipf shows complex pathway effects  
-†Unstable: control Δp ≈ 0
-
-### H3: Gap Decomposition ✓
-
-- **Total gap:** ~90 ms
-- **Skip contribution:** ~30% (28-30 ms)
-- **Duration contribution:** ~70% (65-70 ms)
-- **Equal-ease reduction:** ~55-60%
+- **Figure styling**
+  All figures are produced via `hypothesis_testing_utils/visualization_utils.py`. You can regenerate/modify styles by editing that file and re-running the pipeline (JSON data are saved next to each PNG).
 
 ---
 
-## 🔬 Methodology Highlights
+## 8) How to cite / License
 
-### Why Conditional Evaluation for Zipf?
-
-Zipf frequency correlates strongly with length (r ≈ -0.80):
-
-- Longer words tend to be rarer
-- Shorter words tend to be more frequent
-
-**Problem:** Unconditioned Q1→Q3 confounds length and frequency effects
-
-**Solution:** Evaluate zipf **within each length bin**:
-
-1. Hold length approximately constant
-2. Vary only frequency
-3. Weight by pooled distribution
-4. This isolates "frequency beyond length" effect
-
-### Why Tensor Products?
-
-`te(length, zipf)` captures:
-
-- Non-linear length × frequency interactions
-- Different frequency effects at different lengths
-- Resolves TRT vs ERT paradox
-
-### Why Subject-Clustered Bootstrap?
-
-Observations within subjects are correlated.
-
-**Wrong approach:** Resample observations
-
-- Breaks within-subject correlation
-- Underestimates standard errors
-
-**Correct approach:** Resample entire subjects
-
-- Preserves correlation structure
-- Valid confidence intervals
+See `LICENSE` for licensing; if you use the code, please cite the repository and (if applicable) your accompanying manuscript.
 
 ---
 
-## 🧪 Testing & Validation
+### Appendix: What each stage computes
 
-### Validation Script
-
-```bash
-python validate_migration.py
-```
-
-Checks:
-
-- Raw zipf (not orthogonalized)
-- Pooled binning infrastructure
-- Tensor products in models
-- Conditional zipf evaluation
-- Bootstrap resamples subjects
-- All expected metrics present
-
-### Unit Tests (Future)
-
-```bash
-# Run tests (when available)
-pytest tests/
-```
+- **Preprocessing**: cleaning, dyslexia grouping, derived measures (skipping, etc.), linguistic features (Zipf, length, surprisal), exploratory summaries & plots.
+- **Modeling**: group-specific GAMs for skipping (LogisticGAM) and log-duration (LinearGAM) with cross-validated hyperparameters.
+- **H1**: feature effects with uncertainty; **H2**: amplification (slope ratios/AMIE); **H3**: gap decomposition (baseline gap G₀, equal-ease counterfactual, shrink % + Shapley contributions).
 
 ---
-
-## 📖 Documentation
-
-- **[GETTING_STARTED.md](GETTING_STARTED.md)** - Step-by-step tutorial
-- **[REVISION_SUMMARY.md](REVISION_SUMMARY.md)** - Detailed change log
-- **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** - Old vs new code comparison
-- **Analysis Plan V1** - Original specification document
-
----
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**Issue 1:** "High zipf correlation warning"  
-**Solution:** This is CORRECT for raw zipf. Ignore warning.
-
-**Issue 2:** "Unstable SR for zipf skip pathway"  
-**Solution:** EXPECTED. Control shows minimal skip effect. Focus on duration.
-
-**Issue 3:** "Bootstrap taking too long"  
-**Solution:** Use `--quick` flag or reduce `--n-bootstrap`
-
-See [GETTING_STARTED.md](GETTING_STARTED.md) for more troubleshooting.
-
----
-
-## 🤝 Contributing
-
-### Code Style
-
-- Follow PEP 8
-- Use type hints
-- Add docstrings to all functions
-- Keep functions focused and small
-
-### Testing
-
-- Add unit tests for new features
-- Run validation script before committing
-- Check that bootstrap is properly clustered
-
-### Documentation
-
-- Update relevant .md files
-- Add examples for new features
-- Keep REVISION_SUMMARY.md current
-
----
-
-## 📚 Citation
-
-If using this code, please cite:
-
-```bibtex
-@software{dyslexia_gam_v2,
-  title={Dyslexia GAM Analysis Pipeline V2},
-  author={[Your Name]},
-  year={2025},
-  note={Revised implementation with conditional zipf evaluation,
-        tensor product interactions, and subject-clustered bootstrap},
-  url={[your-repo-url]}
-}
-```
-
----
-
-## 📄 License
-
-[Your License Here]
-
----
-
-## 🙏 Acknowledgments
-
-- Analysis plan developed from reading research literature
-- PyGAM library for GAM implementation
-- Scikit-learn for cross-validation utilities
-
----
-
-## 📞 Contact & Support
-
-- **Issues:** [GitHub Issues](your-repo/issues)
-- **Email:** [your-email]
-- **Documentation:** See docs/ folder
-
----
-
-## ✅ Checklist for New Users
-
-- [ ] Read GETTING_STARTED.md
-- [ ] Install dependencies
-- [ ] Prepare data in correct format
-- [ ] Run analysis with `--quick` flag first
-- [ ] Review validation output
-- [ ] Check RESULTS_SUMMARY.md
-- [ ] Review figures and tables
-- [ ] Run full analysis (1000 bootstrap)
-- [ ] Write up methods section
-
----
-
-## 🎯 Project Status
-
-**Current Version:** 2.0.0 (Revised)  
-**Status:** ✅ Production Ready  
-**Last Updated:** 2025-01-XX
-
-### Version History
-
-- **v2.0.0** (2025-01) - Complete rewrite aligned with Analysis Plan V1
-  - Raw zipf + conditional evaluation
-  - Tensor products + comprehensive bootstrap
-  - Automated validation + visualization
-- **v1.0.0** (2024-XX) - Initial implementation
-  - Orthogonalized zipf (deprecated)
-  - Simple smooths without interactions
-  - Separate bootstrap per metric
-
----
-
-**Ready to analyze dyslexic reading patterns?** Start with [GETTING_STARTED.md](GETTING_STARTED.md)! 🚀

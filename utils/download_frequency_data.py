@@ -46,7 +46,7 @@ OUTPUT_DIR = (
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Processing parameters
-TOP_N_WORDS = 1500000  # Keep top 3M words
+TOP_N_WORDS = 1500000  # Keep top #N words
 MIN_FREQUENCY = 2  # Minimum frequency threshold
 REMOVE_PUNCT_ONLY = True  # Remove entries that are only punctuation
 ADD_LOG_TRANSFORM = True  # Add log-transformed frequency columns
