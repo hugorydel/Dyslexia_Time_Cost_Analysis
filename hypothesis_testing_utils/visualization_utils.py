@@ -110,160 +110,195 @@ def set_row_ylim(axes_row):
 def create_figure_1_overall_effects(
     h1_results: Dict, h2_results: Dict, output_path: Path
 ):
-    """Figure 1: Overall Effects Overview with JSON export"""
-    logger.info("Creating Figure 1: Overall Effects Overview...")
+    """Figure 1: Overall Effects Overview with JSON export (APA-7 style, legend fix, tiny-CI visibility)"""
+    logger.info("Creating Figure 1: Overall Effects Overview (APA-7)...")
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
-    # === Panel A: Delta ERT ===
+    # -------------------------------
+    # Panel A: Delta ERT (bars + CI)
+    # -------------------------------
     features = ["length", "zipf", "surprisal"]
+    feat_labels = ["Length", "Zipf Frequency", "Surprisal"]
     x = np.arange(len(features))
-    width = 0.35
+    width = 0.36
 
-    ctrl_amies, dys_amies = [], []
-    ctrl_err_lo, ctrl_err_hi, dys_err_lo, dys_err_hi = [], [], [], []
+    ctrl_vals, dys_vals = [], []
+    ctrl_yerr, dys_yerr = [], []
+
+    def _center_and_yerr(rec):
+        ci_lo = rec.get("ci_low", np.nan)
+        ci_hi = rec.get("ci_high", np.nan)
+        amie = rec.get("amie_ms", np.nan)
+        if np.isfinite(ci_lo) and np.isfinite(ci_hi):
+            center = 0.5 * (ci_lo + ci_hi)
+            err_low = max(0.0, center - ci_lo)
+            err_high = max(0.0, ci_hi - center)
+        else:
+            center, err_low, err_high = amie, 0.0, 0.0
+        return center, (err_low, err_high)
 
     for feat in features:
         fd = h1_results["features"][feat]
         c = fd["amie_control"]
         d = fd["amie_dyslexic"]
 
-        ctrl_amies.append(c.get("amie_ms", np.nan))
-        dys_amies.append(d.get("amie_ms", np.nan))
+        c_center, (c_lo, c_hi) = _center_and_yerr(c)
+        d_center, (d_lo, d_hi) = _center_and_yerr(d)
 
-        # asymmetric yerr around the point estimate
-        ctrl_err_lo.append(max(0.0, c["amie_ms"] - c["ci_low"]))
-        ctrl_err_hi.append(max(0.0, c["ci_high"] - c["amie_ms"]))
-        dys_err_lo.append(max(0.0, d["amie_ms"] - d["ci_low"]))
-        dys_err_hi.append(max(0.0, d["ci_high"] - d["amie_ms"]))
+        ctrl_vals.append(c_center)
+        dys_vals.append(d_center)
+        ctrl_yerr.append([c_lo, c_hi])
+        dys_yerr.append([d_lo, d_hi])
 
-    ctrl_yerr = np.vstack([ctrl_err_lo, ctrl_err_hi])
-    dys_yerr = np.vstack([dys_err_lo, dys_err_hi])
+    ctrl_yerr = np.array(ctrl_yerr).T
+    dys_yerr = np.array(dys_yerr).T
 
+    # APA grayscale bars with black outlines & error bars
     ax1.bar(
         x - width / 2,
-        ctrl_amies,
+        ctrl_vals,
         width,
         label="Control",
-        color="steelblue",
-        alpha=0.85,
+        color="#C7C7C7",
+        edgecolor="black",
+        linewidth=1.0,
         yerr=ctrl_yerr,
-        capsize=4,
         ecolor="black",
-        error_kw=dict(linewidth=1),
+        capsize=4,
+        error_kw=dict(linewidth=1.2),
     )
     ax1.bar(
         x + width / 2,
-        dys_amies,
+        dys_vals,
         width,
         label="Dyslexic",
-        color="coral",
-        alpha=0.85,
+        color="#6E6E6E",
+        edgecolor="black",
+        linewidth=1.0,
         yerr=dys_yerr,
-        capsize=4,
         ecolor="black",
-        error_kw=dict(linewidth=1),
+        capsize=4,
+        error_kw=dict(linewidth=1.2),
     )
 
     ax1.set_xlabel("Feature")
-    ax1.set_ylabel("Delta ERT (ms, Q1->Q3)")
-    ax1.set_title("Feature Effects on Expected Reading Time")
+    ax1.set_ylabel("Delta ERT (ms, Q1→Q3)")
     ax1.set_xticks(x)
-    ax1.set_xticklabels(["Length", "Zipf Frequency", "Surprisal"])
-    ax1.legend()
-    ax1.axhline(y=0, color="black", linestyle="-", linewidth=0.5)
-    ax1.grid(axis="y", alpha=0.3)
+    ax1.set_xticklabels(feat_labels)
+    ax1.axhline(0, color="black", linewidth=1)
 
-    # === Panel B: Slope Ratios ===
+    # Legend ABOVE the panel to avoid overlap with bars
+    ax1.legend(
+        frameon=False,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.02),
+        ncol=2,
+        handlelength=1.6,
+        columnspacing=1.4,
+    )
+
+    ax1.grid(False)
+    ax1.spines["top"].set_visible(False)
+    ax1.spines["right"].set_visible(False)
+
+    # -------------------------------------------------
+    # Panel B: Dyslexic amplification (dot + whiskers)
+    # -------------------------------------------------
     pathways = ["skip", "duration", "ert"]
     pathway_labels = ["Skip", "Duration", "ERT"]
-    colors_pathway = ["lightblue", "lightcoral", "lightgreen"]
 
-    sr_data = []
-
+    sr_rows = []
     for feat in features:
         if feat in h2_results["slope_ratios"]:
-            feat_srs = h2_results["slope_ratios"][feat]
-
-            for pathway in pathways:
-                sr = feat_srs.get(f"sr_{pathway}", np.nan)
-                ci_low = feat_srs.get(f"sr_{pathway}_ci_low", np.nan)
-                ci_high = feat_srs.get(f"sr_{pathway}_ci_high", np.nan)
-
-                sr_data.append(
+            srs = h2_results["slope_ratios"][feat]
+            for pw in pathways:
+                sr_rows.append(
                     {
                         "feature": feat,
-                        "pathway": pathway,
-                        "sr": sr,
-                        "ci_low": ci_low,
-                        "ci_high": ci_high,
+                        "pathway": pw,
+                        "sr": srs.get(f"sr_{pw}", np.nan),
+                        "ci_low": srs.get(f"sr_{pw}_ci_low", np.nan),
+                        "ci_high": srs.get(f"sr_{pw}_ci_high", np.nan),
                     }
                 )
+    df_sr = pd.DataFrame(sr_rows)
 
-    df_sr = pd.DataFrame(sr_data)
+    y_pos = 0.0
+    yticks, ylabels = [], []
+    points_for_xlim = []
 
-    # Forest plot
-    y_pos = 0
-    yticks = []
-    ytick_labels = []
+    MIN_VIS_WHISK = 0.01  # SR units; purely for visibility when CI≈0
 
-    for i, feat in enumerate(features):
-        feat_data = df_sr[df_sr["feature"] == feat]
+    for feat, feat_lab in zip(features, feat_labels):
+        sub = df_sr[df_sr["feature"] == feat]
+        for pw, pw_lab in zip(pathways, pathway_labels):
+            row = sub[sub["pathway"] == pw]
+            if len(row) == 1:
+                r = row.iloc[0]
 
-        for j, (pathway, label, color) in enumerate(
-            zip(pathways, pathway_labels, colors_pathway)
-        ):
-            pathway_data = feat_data[feat_data["pathway"] == pathway]
+                if np.isfinite(r["ci_low"]) and np.isfinite(r["ci_high"]):
+                    m = 0.5 * (r["ci_low"] + r["ci_high"])
+                    xl = max(0.0, m - r["ci_low"])
+                    xh = max(0.0, r["ci_high"] - m)
+                    if (xl + xh) <= 1e-9:
+                        # draw a tiny whisker so ultra-small CIs are still visible
+                        xl = xh = MIN_VIS_WHISK
+                else:
+                    m = r.get("sr", np.nan)
+                    xl = xh = MIN_VIS_WHISK if np.isfinite(m) else 0.0
 
-            if len(pathway_data) > 0:
-                row = pathway_data.iloc[0]
-                sr = row["sr"]
-                ci_low = row["ci_low"]
-                ci_high = row["ci_high"]
+                # errorbar with caps (APA style)
+                ax2.errorbar(
+                    m,
+                    y_pos,
+                    xerr=np.array([[xl], [xh]]),
+                    fmt="o",
+                    color="black",
+                    elinewidth=1.5,
+                    capsize=3,
+                    markersize=5,
+                )
 
-                if not np.isnan(sr):
-                    ax2.plot(sr, y_pos, "o", color=color, markersize=8)
-
-                    if not np.isnan(ci_low) and not np.isnan(ci_high):
-                        ax2.plot(
-                            [ci_low, ci_high], [y_pos, y_pos], color=color, linewidth=2
-                        )
+                # track for x-limits
+                points_for_xlim.extend([m - xl, m + xh])
 
                 yticks.append(y_pos)
-                ytick_labels.append(f"{feat.capitalize()}\n{label}")
-                y_pos += 1
+                ylabels.append(f"{feat_lab} — {pw_lab}")
+                y_pos += 1.0
+        y_pos += 0.6  # spacing between feature blocks
 
-        y_pos += 0.5
-
-    ax2.axvline(
-        x=1.0,
-        color="black",
-        linestyle="--",
-        linewidth=1,
-        label="SR = 1.0 (no amplification)",
-    )
+    ax2.axvline(1.0, linestyle="--", color="black", linewidth=1)
+    ax2.set_xlabel("Slope ratio (Dyslexic / Control), 95% CI")
     ax2.set_yticks(yticks)
-    ax2.set_yticklabels(ytick_labels, fontsize=9)
-    ax2.set_xlabel("Slope Ratio (Dyslexic / Control)")
-    ax2.set_title("Dyslexic Amplification by Pathway")
-    ax2.set_xlim(0, max(3, df_sr["sr"].max() * 1.1))
-    ax2.legend(loc="upper right", fontsize=9)
-    ax2.grid(axis="x", alpha=0.3)
+    ax2.set_yticklabels(ylabels, fontsize=9)
+
+    ax2.grid(False)
+    ax2.spines["top"].set_visible(False)
+    ax2.spines["right"].set_visible(False)
+
+    if points_for_xlim:
+        xmin = max(0.6, float(np.nanmin(points_for_xlim)) * 0.98)
+        xmax = float(np.nanmax(points_for_xlim)) * 1.02
+        ax2.set_xlim(xmin, max(1.4, xmax))
+
+    # Panel letters
+    fig.text(0.01, 0.98, "A", fontsize=12, fontweight="bold", va="top")
+    fig.text(0.51, 0.98, "B", fontsize=12, fontweight="bold", va="top")
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
 
-    # === EXPORT JSON DATA ===
+    # JSON export (unchanged)
     figure_data = {
         "panel_a_bar_chart": {
-            "features": ["Length", "Zipf Frequency", "Surprisal"],
-            "control_amies": [float(a) for a in ctrl_amies],
-            "dyslexic_amies": [float(a) for a in dys_amies],
+            "features": feat_labels,
+            "control_amies": [float(a) for a in ctrl_vals],
+            "dyslexic_amies": [float(a) for a in dys_vals],
         },
         "panel_b_forest_plot": df_sr.to_dict("records"),
     }
-
     json_path = output_path.with_suffix(".json")
     with open(json_path, "w") as f:
         json.dump(figure_data, f, indent=2)
@@ -272,7 +307,7 @@ def create_figure_1_overall_effects(
     logger.info(f"  Saved data: {json_path}")
 
 
-def create_figure_s1_gam_smooths(
+def create_figure_2_gam_smooths(
     ert_predictor, data: pd.DataFrame, gam_models, output_path: Path
 ):
     """Figure S1: GAM Smooth Effects (3x3) with JSON export"""
@@ -624,7 +659,7 @@ def generate_all_figures(
     )
 
     # Figure 2: GAM Smooths
-    create_figure_s1_gam_smooths(
+    create_figure_2_gam_smooths(
         ert_predictor,
         data,
         gam_models,
