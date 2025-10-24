@@ -14,7 +14,8 @@ import seaborn as sns
 
 logger = logging.getLogger(__name__)
 
-sns.set_style("whitegrid")
+# APA-7 friendly base style: minimal gridlines, consistent typography
+sns.set_style("white")
 plt.rcParams["font.size"] = 10
 plt.rcParams["axes.labelsize"] = 11
 plt.rcParams["axes.titlesize"] = 12
@@ -80,12 +81,11 @@ def set_row_ylim(axes_row):
     lo = q_lo - pad
     hi = q_hi + pad
 
-    # ---- NEW: make sure the true extrema are inside the range with tiny headroom ----
+    # Ensure the true extrema are inside the range with tiny headroom
     y_min, y_max = float(np.nanmin(y)), float(np.nanmax(y))
-    edge_pad = 0.01 * span  # just a hair to prevent touching the frame
+    edge_pad = 0.01 * span
     lo = min(lo, y_min - edge_pad)
     hi = max(hi, y_max + edge_pad)
-    # -------------------------------------------------------------------------------
 
     # Probability-like vs ms rows
     is_prob_like = (np.nanmin(y) >= -0.05) and (np.nanmax(y) <= 1.05)
@@ -310,13 +310,22 @@ def create_figure_1_overall_effects(
 def create_figure_2_gam_smooths(
     ert_predictor, data: pd.DataFrame, gam_models, output_path: Path
 ):
-    """Figure S1: GAM Smooth Effects (3x3) with JSON export"""
-    logger.info("Creating Figure S1: GAM Smooth Effects (3x3 with confidence bands)...")
+    """Figure S1: GAM Smooth Effects (3x3) with JSON export (APA-7 compliant styling)"""
+    logger.info("Creating Figure S1: GAM Smooth Effects (3x3, APA-7)...")
 
     fig, axes = plt.subplots(3, 3, figsize=(15, 13))
 
     features = ["length", "zipf", "surprisal"]
-    feature_labels = ["Word Length", "Zipf Frequency", "Surprisal"]
+    # Sentence-case x-axis labels; Zipf is a proper noun
+    feature_labels = ["Word length", "Zipf frequency", "Surprisal"]
+
+    # Styles: grayscale + distinct line styles for print / color-blind safety
+    STYLE = {
+        "control": {"color": "0.1", "linestyle": "-", "linewidth": 2.5},
+        "dyslexic": {"color": "0.55", "linestyle": "--", "linewidth": 2.5},
+    }
+    CI_FACE = {"control": "0.3", "dyslexic": "0.75"}
+    CI_ALPHA = 0.22
 
     # Data for JSON export
     json_data = {
@@ -341,7 +350,7 @@ def create_figure_2_gam_smooths(
 
         json_data["skip_pathway"][feat] = {"feature_values": feat_range.tolist()}
 
-        for group, color in [("control", "steelblue"), ("dyslexic", "coral")]:
+        for group in ("control", "dyslexic"):
             model = gam_models.skip_model[group]
             p_skip = model.predict_proba(X_grid)
 
@@ -349,7 +358,7 @@ def create_figure_2_gam_smooths(
                 ci = model.confidence_intervals(X_grid, width=0.95)
                 ci_low, ci_high = ci[:, 0], ci[:, 1]
 
-                # Clip confidence intervals to fit within bounds.
+                # Clip confidence intervals to [0, 1]
                 ci_low = np.clip(ci_low, 0.0, 1.0)
                 ci_high = np.clip(ci_high, 0.0, 1.0)
 
@@ -357,40 +366,37 @@ def create_figure_2_gam_smooths(
                     feat_range,
                     p_skip,
                     label=group.capitalize(),
-                    linewidth=2.5,
-                    color=color,
+                    **STYLE[group],
                 )
-                ax.fill_between(feat_range, ci_low, ci_high, color=color, alpha=0.2)
+                ax.fill_between(
+                    feat_range, ci_low, ci_high, color=CI_FACE[group], alpha=CI_ALPHA
+                )
 
                 json_data["skip_pathway"][feat][group] = {
                     "predictions": p_skip.tolist(),
                     "ci_low": ci_low.tolist(),
                     "ci_high": ci_high.tolist(),
                 }
-            except:
+            except Exception:
                 ax.plot(
                     feat_range,
                     p_skip,
                     label=group.capitalize(),
-                    linewidth=2.5,
-                    color=color,
+                    **STYLE[group],
                 )
                 json_data["skip_pathway"][feat][group] = {
                     "predictions": p_skip.tolist(),
                 }
 
         q1, q3 = data[feat].quantile([0.25, 0.75])
-        ax.axvline(q1, color="gray", linestyle="--", alpha=0.5, linewidth=1)
-        ax.axvline(q3, color="gray", linestyle="--", alpha=0.5, linewidth=1)
+        for q in (q1, q3):
+            if feat_range[0] <= q <= feat_range[-1]:
+                ax.axvline(q, color="0.6", linestyle="--", alpha=0.5, linewidth=1)
 
         ax.set_xlabel(label)
         ax.set_ylabel("P(skip)")
-        if i == 0:
-            ax.set_title("Skip Pathway", fontweight="bold", fontsize=12)
-        ax.legend()
-        ax.grid(alpha=0.3)
-
-        # --- Remove x-axis gaps and prevent clipping at ends ---
+        ax.grid(False)
+        # Prevent x-end clipping
         ax.set_xlim(feat_range[0], feat_range[-1])
         ax.margins(x=0)
 
@@ -412,7 +418,7 @@ def create_figure_2_gam_smooths(
 
         json_data["duration_pathway"][feat] = {"feature_values": feat_range.tolist()}
 
-        for group, color in [("control", "steelblue"), ("dyslexic", "coral")]:
+        for group in ("control", "dyslexic"):
             model = gam_models.duration_model[group]
 
             y_log = model.predict(X_grid)
@@ -423,7 +429,7 @@ def create_figure_2_gam_smooths(
                 ci_low = np.exp(ci[:, 0]) * gam_models.smearing_factors[group]
                 ci_high = np.exp(ci[:, 1]) * gam_models.smearing_factors[group]
 
-                # Clip confidence intervals to fit within bounds.
+                # Ensure ordering for fill_between
                 ci_low, ci_high = np.minimum(ci_low, ci_high), np.maximum(
                     ci_low, ci_high
                 )
@@ -432,40 +438,36 @@ def create_figure_2_gam_smooths(
                     feat_range,
                     trt,
                     label=group.capitalize(),
-                    linewidth=2.5,
-                    color=color,
+                    **STYLE[group],
                 )
-                ax.fill_between(feat_range, ci_low, ci_high, color=color, alpha=0.2)
+                ax.fill_between(
+                    feat_range, ci_low, ci_high, color=CI_FACE[group], alpha=CI_ALPHA
+                )
 
                 json_data["duration_pathway"][feat][group] = {
                     "predictions": trt.tolist(),
                     "ci_low": ci_low.tolist(),
                     "ci_high": ci_high.tolist(),
                 }
-            except:
+            except Exception:
                 ax.plot(
                     feat_range,
                     trt,
                     label=group.capitalize(),
-                    linewidth=2.5,
-                    color=color,
+                    **STYLE[group],
                 )
                 json_data["duration_pathway"][feat][group] = {
                     "predictions": trt.tolist(),
                 }
 
         q1, q3 = data[feat].quantile([0.25, 0.75])
-        ax.axvline(q1, color="gray", linestyle="--", alpha=0.5, linewidth=1)
-        ax.axvline(q3, color="gray", linestyle="--", alpha=0.5, linewidth=1)
+        for q in (q1, q3):
+            if feat_range[0] <= q <= feat_range[-1]:
+                ax.axvline(q, color="0.6", linestyle="--", alpha=0.5, linewidth=1)
 
         ax.set_xlabel(label)
-        ax.set_ylabel("TRT | fixated (ms)")
-        if i == 0:
-            ax.set_title("Duration Pathway", fontweight="bold", fontsize=12)
-        ax.legend()
-        ax.grid(alpha=0.3)
-
-        # --- Remove x-axis gaps and prevent clipping at ends ---
+        ax.set_ylabel("TRT (ms)")
+        ax.grid(False)
         ax.set_xlim(feat_range[0], feat_range[-1])
         ax.margins(x=0)
 
@@ -486,10 +488,9 @@ def create_figure_2_gam_smooths(
 
         json_data["ert_pathway"][feat] = {"feature_values": feat_range.tolist()}
 
-        for group, color in [("control", "steelblue"), ("dyslexic", "coral")]:
+        for group in ("control", "dyslexic"):
             ert = ert_predictor.predict_ert(grid, group)
 
-            # Calculate confidence intervals by propagating uncertainty
             try:
                 # Get skip probability and CI
                 skip_model = gam_models.skip_model[group]
@@ -508,7 +509,7 @@ def create_figure_2_gam_smooths(
                 trt_high = np.exp(dur_ci[:, 1]) * gam_models.smearing_factors[group]
 
                 # Propagate uncertainty: ERT = (1 - p_skip) * trt
-                # Use conservative approach: combine extremes
+                # Conservative extremes
                 ert_low = (1 - p_skip_high) * trt_low
                 ert_high = (1 - p_skip_low) * trt_high
 
@@ -516,47 +517,73 @@ def create_figure_2_gam_smooths(
                     feat_range,
                     ert,
                     label=group.capitalize(),
-                    linewidth=2.5,
-                    color=color,
+                    **STYLE[group],
                 )
-                ax.fill_between(feat_range, ert_low, ert_high, color=color, alpha=0.2)
+                ax.fill_between(
+                    feat_range, ert_low, ert_high, color=CI_FACE[group], alpha=CI_ALPHA
+                )
 
                 json_data["ert_pathway"][feat][group] = {
                     "predictions": ert.tolist(),
                     "ci_low": ert_low.tolist(),
                     "ci_high": ert_high.tolist(),
                 }
-            except:
+            except Exception:
                 ax.plot(
                     feat_range,
                     ert,
                     label=group.capitalize(),
-                    linewidth=2.5,
-                    color=color,
+                    **STYLE[group],
                 )
-
                 json_data["ert_pathway"][feat][group] = {
                     "predictions": ert.tolist(),
                 }
 
         q1, q3 = data[feat].quantile([0.25, 0.75])
-        ax.axvline(q1, color="gray", linestyle="--", alpha=0.5, linewidth=1)
-        ax.axvline(q3, color="gray", linestyle="--", alpha=0.5, linewidth=1)
+        for q in (q1, q3):
+            if feat_range[0] <= q <= feat_range[-1]:
+                ax.axvline(q, color="0.6", linestyle="--", alpha=0.5, linewidth=1)
 
         ax.set_xlabel(label)
         ax.set_ylabel("ERT (ms)")
-        if i == 0:
-            ax.set_title("Combined ERT", fontweight="bold", fontsize=12)
-        ax.legend()
-        ax.grid(alpha=0.3)
-
-        # --- Remove x-axis gaps and prevent clipping at ends ---
+        ax.grid(False)
         ax.set_xlim(feat_range[0], feat_range[-1])
         ax.margins(x=0)
 
     set_row_ylim(axes[2, :])
 
-    plt.tight_layout()
+    # Add panel letters (A–I) in the top-left of each subplot
+    letters = list("ABCDEFGHI")
+    for ax, L in zip(axes.flatten(), letters):
+        ax.text(
+            0.02,
+            0.98,
+            L,
+            transform=ax.transAxes,
+            ha="left",
+            va="top",
+            fontsize=12,
+            fontweight="bold",
+        )
+
+    # Shared legend (single, for the whole figure)
+    legend_lines = [
+        plt.Line2D([0], [0], **STYLE["control"], label="Control"),
+        plt.Line2D([0], [0], **STYLE["dyslexic"], label="Dyslexic"),
+    ]
+    # Make some space at the bottom for the legend
+    plt.tight_layout(rect=[0, 0.08, 1, 1])
+    fig.legend(
+        handles=legend_lines,
+        labels=["Control", "Dyslexic"],
+        loc="lower center",
+        ncol=2,
+        frameon=False,
+        bbox_to_anchor=(0.5, 0.01),
+        handlelength=2.2,
+        columnspacing=1.6,
+    )
+
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
 
@@ -658,7 +685,7 @@ def generate_all_figures(
         h1_results, h2_results, output_dir / "figure_1_overall_effects.png"
     )
 
-    # Figure 2: GAM Smooths
+    # Figure 2: GAM Smooths (APA-7 formatted)
     create_figure_2_gam_smooths(
         ert_predictor,
         data,
