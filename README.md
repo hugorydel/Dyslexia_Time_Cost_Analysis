@@ -1,7 +1,3 @@
-Here’s a clean, step-by-step **README.md** you can drop in the repo.
-
----
-
 # Dyslexia Time Cost Analysis
 
 End-to-end pipeline to preprocess CopCo eye-tracking data, compute linguistic features, fit GAM models for skipping and duration, and test three hypotheses (H1–H3) with APA-7-styled figures.
