@@ -524,6 +524,216 @@ class StruggleHeatmapGenerator:
         print(f"\n✓ Saved: {output_path}")
         print(f"{'='*70}\n")
 
+    def create_residual_heatmap(self, passages):
+        """
+        Create a heatmap showing residuals (model - real)
+        Blue = model under-predicts, Red = model over-predicts
+
+        Args:
+            passages: List of passage dicts
+        """
+        print(f"\n{'='*70}")
+        print(f"Creating RESIDUAL visualization with {len(passages)} paragraphs")
+        print(f"{'='*70}")
+
+        # Create diverging colormap: blue (negative) -> white (0) -> red (positive)
+        colors_diverging = [
+            (0.0, 0.0, 0.8),  # dark blue (-150ms or less)
+            (0.3, 0.5, 1.0),  # light blue (-75ms)
+            (1.0, 1.0, 1.0),  # white (0ms - perfect prediction)
+            (1.0, 0.5, 0.3),  # light red (+75ms)
+            (0.8, 0.0, 0.0),  # dark red (+150ms or more)
+        ]
+        residual_cmap = LinearSegmentedColormap.from_list(
+            "residual", colors_diverging, N=100
+        )
+
+        # Create figure
+        fig, (ax_text, ax_colorbar) = plt.subplots(
+            1, 2, figsize=(14, 16), gridspec_kw={"width_ratios": [10, 1]}
+        )
+
+        ax_text.set_xlim(0, 100)
+        ax_text.set_ylim(0, 100)
+        ax_text.axis("off")
+
+        # Layout parameters
+        line_height = 3.0
+        char_width = 0.65
+        max_line_width = 95
+        paragraph_gap = 6
+
+        # Add main title
+        ax_text.text(
+            50,
+            97,
+            "Model Residuals",
+            fontsize=16,
+            fontweight="bold",
+            ha="center",
+            va="top",
+        )
+        ax_text.text(
+            50,
+            93,
+            "Blue = under-predicts, Red = over-predicts",
+            fontsize=10,
+            style="italic",
+            ha="center",
+            va="top",
+            color="gray",
+        )
+
+        # Start rendering paragraphs
+        current_y = 89
+
+        all_residuals = []
+
+        for para_idx, passage_info in enumerate(passages):
+            passage_df = passage_info["data"]
+
+            # Compute scores
+            modeled_scores, real_scores, sample_sizes = self.compute_struggle_scores(
+                passage_df
+            )
+
+            # Apply shrinkage to real scores for fair comparison
+            real_scores_shrunk = []
+            for (word_text, score), n_samples in zip(real_scores, sample_sizes):
+                reliability = min(n_samples / 20.0, 1.0)
+                shrunk_score = score * reliability
+                real_scores_shrunk.append((word_text, shrunk_score))
+
+            # Compute residuals: model - real
+            residuals = []
+            for (word_text_m, model_score), (word_text_r, real_score) in zip(
+                modeled_scores, real_scores_shrunk
+            ):
+                residual = model_score - real_score
+                residuals.append((word_text_m, residual))
+                all_residuals.append(residual)
+
+            # Render words
+            current_x = 2
+
+            for i, (word_text, residual) in enumerate(residuals):
+                word_width = len(word_text) * char_width
+                space_width = char_width * 0.8
+
+                # Line wrap
+                if current_x + word_width > max_line_width and current_x > 2:
+                    current_y -= line_height
+                    current_x = 2
+
+                # Get color for residual (-150 to +150 range)
+                color = self._get_color_for_residual(residual, residual_cmap)
+
+                # Draw word rectangle
+                rect = mpatches.Rectangle(
+                    (current_x, current_y - 2.2),
+                    word_width,
+                    2.8,
+                    facecolor=color,
+                    edgecolor="none",
+                    zorder=1,
+                )
+                ax_text.add_patch(rect)
+
+                # Draw word text
+                ax_text.text(
+                    current_x + 0.1,
+                    current_y,
+                    word_text,
+                    fontsize=10,
+                    fontfamily="monospace",
+                    verticalalignment="center",
+                    zorder=2,
+                    color="black",
+                )
+
+                current_x += word_width
+
+                # Add colored space
+                if i < len(residuals) - 1:
+                    space_rect = mpatches.Rectangle(
+                        (current_x, current_y - 2.2),
+                        space_width,
+                        2.8,
+                        facecolor=color,
+                        edgecolor="none",
+                        zorder=1,
+                    )
+                    ax_text.add_patch(space_rect)
+                    current_x += space_width
+
+            # Add gap before next paragraph
+            current_y -= line_height + paragraph_gap
+
+            # Print stats
+            resid_vals = [r for _, r in residuals]
+            print(
+                f"  Para {para_idx + 1}: mean residual={np.mean(resid_vals):.1f}ms, "
+                f"range=[{min(resid_vals):.1f}, {max(resid_vals):.1f}]ms"
+            )
+
+        # Print overall statistics
+        print(
+            f"\n  Overall: mean residual={np.mean(all_residuals):.1f}ms, "
+            f"SD={np.std(all_residuals):.1f}ms"
+        )
+
+        # Create colorbar
+        ax_colorbar.axis("off")
+
+        # Symmetric gradient around zero
+        thresholds = [-150, -75, 0, 75, 150]
+        gradient_positions = np.linspace(0, 1, 256).reshape(256, 1)
+
+        ax_colorbar.imshow(
+            gradient_positions,
+            aspect="auto",
+            cmap=residual_cmap,
+            extent=[0, 1, -150, 150],
+            vmin=0,
+            vmax=1,
+        )
+
+        # Add colorbar labels
+        for threshold in thresholds:
+            ax_colorbar.text(
+                1.5, threshold, f"{threshold:+d}ms", fontsize=10, va="center"
+            )
+            ax_colorbar.plot([0, 1], [threshold, threshold], "k-", linewidth=0.5)
+
+        ax_colorbar.set_xlim(0, 1)
+        ax_colorbar.set_ylim(-150, 150)
+
+        ax_colorbar.text(
+            0.5,
+            165,
+            "Residual\n(Model - Real)",
+            fontsize=10,
+            fontweight="bold",
+            ha="center",
+        )
+
+        # Save
+        output_path = self.output_dir / "struggle_heatmap_residual.jpg"
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches="tight", format="jpg")
+        plt.close()
+
+        print(f"\n✓ Saved: {output_path}")
+        print(f"{'='*70}\n")
+
+    def _get_color_for_residual(self, residual, cmap):
+        """Get RGB color for a residual value"""
+        # Map -150 to +150 range to 0-1 for colormap
+        # 0 (blue) for -150, 0.5 (white) for 0, 1.0 (red) for +150
+        normalized = (residual + 150) / 300.0
+        normalized = np.clip(normalized, 0, 1)
+        return cmap(normalized)
+
     def create_feature_heatmap(self, passages, feature_name):
         """
         Create a heatmap colored by a specific linguistic feature
@@ -718,6 +928,386 @@ class StruggleHeatmapGenerator:
 
         # Save
         output_path = self.output_dir / filename
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches="tight", format="jpg")
+        plt.close()
+
+        print(f"\n✓ Saved: {output_path}")
+        print(f"{'='*70}\n")
+
+    def create_scanpath_visualization(self, passages):
+        """
+        Create a scanpath visualization showing actual eye movements over text
+
+        Args:
+            passages: List of passage dicts
+        """
+        print(f"\n{'='*70}")
+        print(f"Creating SCANPATH visualization with {len(passages)} paragraphs")
+        print(f"{'='*70}")
+
+        # Create figure
+        fig, ax = plt.subplots(1, 1, figsize=(14, 16))
+
+        ax.set_xlim(0, 100)
+        ax.set_ylim(0, 100)
+        ax.axis("off")
+
+        # Layout parameters
+        line_height = 3.0
+        char_width = 0.65
+        max_line_width = 95
+        paragraph_gap = 6
+
+        # Add main title
+        ax.text(
+            50,
+            97,
+            "Eye Movement Scanpath",
+            fontsize=16,
+            fontweight="bold",
+            ha="center",
+            va="top",
+        )
+        ax.text(
+            50,
+            93,
+            "Circles = fixations (size = duration), Lines = saccades",
+            fontsize=10,
+            style="italic",
+            ha="center",
+            va="top",
+            color="gray",
+        )
+
+        # Start rendering
+        current_y = 89
+
+        # For each paragraph, we'll pick ONE participant and show their scanpath
+        for para_idx, passage_info in enumerate(passages):
+            passage_df = passage_info["data"]
+            speech_id = passage_info["speech_id"]
+            para_id = passage_info["paragraph_ids"][0]
+
+            # Get one dyslexic participant's data for this passage
+            all_passage_data = self.data[
+                (self.data["speech_id"] == speech_id)
+                & (self.data["paragraph_id"] == para_id)
+            ]
+
+            # Find a dyslexic participant with complete data
+            dyslexic_subjects = all_passage_data[all_passage_data["dyslexic"] == True][
+                "subject_id"
+            ].unique()
+
+            if len(dyslexic_subjects) == 0:
+                print(f"  Para {para_idx + 1}: No dyslexic data, skipping scanpath")
+                continue
+
+            selected_subject = dyslexic_subjects[0]
+            subject_data = all_passage_data[
+                all_passage_data["subject_id"] == selected_subject
+            ].copy()
+            subject_data = subject_data.sort_values(["sentence_id", "word_position"])
+
+            # Build word position map
+            word_positions = {}  # (sentence_id, word_position) -> (x, y)
+            current_x = 2
+            temp_y = current_y
+
+            for _, row in passage_df.iterrows():
+                word_text = row["word_text"]
+                word_width = len(word_text) * char_width
+
+                # Line wrap
+                if current_x + word_width > max_line_width and current_x > 2:
+                    temp_y -= line_height
+                    current_x = 2
+
+                # Store center position of this word
+                word_center_x = current_x + word_width / 2
+                word_center_y = temp_y
+                word_positions[(row["sentence_id"], row["word_position"])] = (
+                    word_center_x,
+                    word_center_y,
+                )
+
+                # Draw word text in light gray
+                ax.text(
+                    current_x + 0.1,
+                    temp_y,
+                    word_text,
+                    fontsize=10,
+                    fontfamily="monospace",
+                    verticalalignment="center",
+                    color="lightgray",
+                    zorder=1,
+                )
+
+                current_x += word_width + char_width * 0.8
+
+            # Now draw fixations and saccades for this participant
+            fixation_positions = []
+            fixation_durations = []
+
+            for _, row in subject_data.iterrows():
+                key = (row["sentence_id"], row["word_position"])
+                if (
+                    key in word_positions
+                    and "total_reading_time" in subject_data.columns
+                ):
+                    trt = row["total_reading_time"]
+                    if pd.notna(trt) and trt > 50:  # Only fixated words
+                        x, y = word_positions[key]
+                        fixation_positions.append((x, y))
+                        fixation_durations.append(trt)
+
+            if len(fixation_positions) > 1:
+                # Draw saccades (lines between fixations)
+                for i in range(len(fixation_positions) - 1):
+                    x1, y1 = fixation_positions[i]
+                    x2, y2 = fixation_positions[i + 1]
+                    ax.plot([x1, x2], [y1, y2], "b-", alpha=0.3, linewidth=1, zorder=2)
+
+                # Draw fixations (circles sized by duration)
+                for (x, y), duration in zip(fixation_positions, fixation_durations):
+                    # Size circle by duration (50-500ms -> radius 0.2-1.0)
+                    radius = 0.2 + (min(duration, 500) / 500.0) * 0.8
+                    circle = plt.Circle(
+                        (x, y), radius, color="red", alpha=0.6, zorder=3
+                    )
+                    ax.add_patch(circle)
+
+                print(
+                    f"  Para {para_idx + 1}: {len(fixation_positions)} fixations, subject {selected_subject}"
+                )
+            else:
+                print(f"  Para {para_idx + 1}: Insufficient fixation data")
+
+            # Update y position for next paragraph
+            current_y = temp_y - (line_height + paragraph_gap)
+
+        # Save
+        output_path = self.output_dir / "struggle_heatmap_scanpath.jpg"
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches="tight", format="jpg")
+        plt.close()
+
+        print(f"\n✓ Saved: {output_path}")
+        print(f"{'='*70}\n")
+
+    def create_scanpath_visualization(self, passages):
+        """
+        Create a scanpath visualization showing eye movements over text
+
+        Args:
+            passages: List of passage dicts
+        """
+        print(f"\n{'='*70}")
+        print(f"Creating SCANPATH visualization with {len(passages)} paragraphs")
+        print(f"{'='*70}")
+
+        # Create figure
+        fig, ax_text = plt.subplots(1, 1, figsize=(14, 16))
+
+        ax_text.set_xlim(0, 100)
+        ax_text.set_ylim(0, 100)
+        ax_text.axis("off")
+
+        # Layout parameters
+        line_height = 3.0
+        char_width = 0.65
+        max_line_width = 95
+        paragraph_gap = 6
+
+        # Add main title
+        ax_text.text(
+            50,
+            97,
+            "Scanpath Visualization",
+            fontsize=16,
+            fontweight="bold",
+            ha="center",
+            va="top",
+        )
+        ax_text.text(
+            50,
+            93,
+            "Eye movements from a single dyslexic reader",
+            fontsize=10,
+            style="italic",
+            ha="center",
+            va="top",
+            color="gray",
+        )
+
+        # Start rendering
+        current_y = 89
+
+        # Track word positions for scanpath overlay
+        word_positions = []  # List of (word_text, x, y, word_id)
+
+        for para_idx, passage_info in enumerate(passages):
+            passage_df = passage_info["data"]
+
+            # Render text first to get positions
+            current_x = 2
+
+            for _, row in passage_df.iterrows():
+                word_text = row["word_text"]
+                word_width = len(word_text) * char_width
+                space_width = char_width * 0.8
+
+                # Line wrap
+                if current_x + word_width > max_line_width and current_x > 2:
+                    current_y -= line_height
+                    current_x = 2
+
+                # Draw word text (gray background)
+                ax_text.text(
+                    current_x + word_width / 2,
+                    current_y,
+                    word_text,
+                    fontsize=10,
+                    fontfamily="monospace",
+                    verticalalignment="center",
+                    ha="center",
+                    color="black",
+                    bbox=dict(
+                        boxstyle="round,pad=0.1",
+                        facecolor="lightgray",
+                        edgecolor="none",
+                        alpha=0.3,
+                    ),
+                )
+
+                # Store position for scanpath
+                word_id = (
+                    row["speech_id"],
+                    row["paragraph_id"],
+                    row["sentence_id"],
+                    row["word_position"],
+                )
+                word_center_x = current_x + word_width / 2
+                word_positions.append((word_text, word_center_x, current_y, word_id))
+
+                current_x += word_width + space_width
+
+            # Add gap before next paragraph
+            current_y -= line_height + paragraph_gap
+
+        # Now overlay scanpath from ONE reader's fixations
+        print(f"  Extracting fixation data for scanpath...")
+
+        # Get fixation data for the passages
+        all_fixations = []
+
+        for word_text, x, y, word_id in word_positions:
+            # Get all fixations on this word
+            word_fixations = self.data[
+                (self.data["speech_id"] == word_id[0])
+                & (self.data["paragraph_id"] == word_id[1])
+                & (self.data["sentence_id"] == word_id[2])
+                & (self.data["word_position"] == word_id[3])
+            ]
+
+            # Filter for dyslexic readers only and valid fixations
+            if (
+                "dyslexic" in word_fixations.columns
+                and "total_reading_time" in word_fixations.columns
+            ):
+                dyslexic_fixations = word_fixations[
+                    (word_fixations["dyslexic"] == True)
+                    & (word_fixations["total_reading_time"] > 50)
+                ]
+
+                if len(dyslexic_fixations) > 0:
+                    # Pick first dyslexic reader for consistency
+                    reader_id = dyslexic_fixations["subject_id"].iloc[0]
+                    reader_fixation = dyslexic_fixations[
+                        dyslexic_fixations["subject_id"] == reader_id
+                    ].iloc[0]
+
+                    duration = reader_fixation["total_reading_time"]
+
+                    all_fixations.append(
+                        {
+                            "x": x,
+                            "y": y,
+                            "duration": duration,
+                            "word": word_text,
+                            "word_id": word_id,
+                        }
+                    )
+
+        if len(all_fixations) == 0:
+            print(f"  ⚠ No fixation data available for scanpath")
+        else:
+            print(f"  Found {len(all_fixations)} fixations")
+
+            # Draw scanpath: lines connecting fixations
+            for i in range(len(all_fixations) - 1):
+                fix1 = all_fixations[i]
+                fix2 = all_fixations[i + 1]
+
+                # Draw line
+                ax_text.plot(
+                    [fix1["x"], fix2["x"]],
+                    [fix1["y"], fix2["y"]],
+                    color="blue",
+                    alpha=0.3,
+                    linewidth=1,
+                    zorder=1,
+                )
+
+            # Draw fixation circles (sized by duration)
+            durations = [f["duration"] for f in all_fixations]
+            min_dur = min(durations)
+            max_dur = max(durations)
+
+            for i, fixation in enumerate(all_fixations):
+                # Normalize duration to circle size
+                if max_dur > min_dur:
+                    norm_duration = (fixation["duration"] - min_dur) / (
+                        max_dur - min_dur
+                    )
+                else:
+                    norm_duration = 0.5
+
+                # Circle radius: 0.3 to 1.2
+                radius = 0.3 + norm_duration * 0.9
+
+                # Color gradient: early fixations = green, late = red
+                fixation_order = i / len(all_fixations)
+                color = plt.cm.RdYlGn_r(fixation_order)
+
+                circle = mpatches.Circle(
+                    (fixation["x"], fixation["y"]),
+                    radius,
+                    facecolor=color,
+                    edgecolor="darkblue",
+                    linewidth=1.5,
+                    alpha=0.6,
+                    zorder=2,
+                )
+                ax_text.add_patch(circle)
+
+            print(f"  Duration range: {min_dur:.0f}ms - {max_dur:.0f}ms")
+
+        # Add legend
+        legend_y = 5
+        ax_text.text(
+            50,
+            legend_y,
+            "Circle size = fixation duration | Color: green (early) → red (late)",
+            fontsize=9,
+            ha="center",
+            style="italic",
+            color="gray",
+        )
+
+        # Save
+        output_path = self.output_dir / "struggle_heatmap_scanpath.jpg"
         plt.tight_layout()
         plt.savefig(output_path, dpi=300, bbox_inches="tight", format="jpg")
         plt.close()
@@ -921,6 +1511,10 @@ class StruggleHeatmapGenerator:
         print("\nGenerating empirical data visualization...")
         self.create_stacked_heatmap(passages, score_type="real")
 
+        # Generate residual visualization (model - real)
+        print("\nGenerating residual visualization...")
+        self.create_residual_heatmap(passages)
+
         # Generate linguistic feature visualizations
         print("\nGenerating word length visualization...")
         self.create_feature_heatmap(passages, feature_name="word_length")
@@ -931,15 +1525,20 @@ class StruggleHeatmapGenerator:
         print("\nGenerating surprisal visualization...")
         self.create_feature_heatmap(passages, feature_name="surprisal")
 
+        print("\nGenerating scanpath visualization...")
+        self.create_scanpath_visualization(passages)
+
         print("\n" + "=" * 70)
         print("✓ COMPLETE!")
         print("=" * 70)
-        print(f"Generated 5 heatmap visualizations:")
+        print(f"Generated 7 heatmap visualizations:")
         print(f"  - GAM predictions (dyslexic vs control time)")
-        print(f"  - Empirical data (dyslexic vs control time)")
+        print(f"  - Empirical data (dyslexic vs control time, with shrinkage)")
+        print(f"  - Residuals (model - real)")
         print(f"  - Word length (characters)")
         print(f"  - Word frequency (zipf scale)")
         print(f"  - Surprisal (bits)")
+        print(f"  - Scanpath (eye movement trajectory)")
         print(f"Output directory: {self.output_dir.absolute()}")
 
 
@@ -972,7 +1571,7 @@ def main():
         "--n-passages",
         type=int,
         default=4,
-        help="Number of passages to stack in each visualization (creates 5 total images)",
+        help="Number of passages to stack in each visualization (creates 7 total images)",
     )
 
     args = parser.parse_args()
